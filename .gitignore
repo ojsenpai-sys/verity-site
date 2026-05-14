@@ -33,6 +33,24 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
+# PM2 config and deploy scripts contain secrets — never commit
+ecosystem.config.js
+deploy.sh
+
+# SSL/TLS keys
+*.key
+
+# Debug / local output files
+dev_debug.log
+media_debug.json
+social_debug.json
+
+# Claude Code internal state
+.claude/
+
+# Local helper scripts with embedded tokens
+vp_ask2.bat
+
 # vercel
 .vercel
 

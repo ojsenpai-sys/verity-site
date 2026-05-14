@@ -1,0 +1,24 @@
+{
+  "crons": [
+    {
+      "path": "/verity/api/cron/ranking-snapshot",
+      "schedule": "5 15 * * *"
+    },
+    {
+      "path": "/verity/api/cron/maker-sync",
+      "schedule": "30 15 * * *"
+    },
+    {
+      "path": "/verity/api/cron",
+      "schedule": "35 15 * * *"
+    },
+    {
+      "path": "/verity/api/cron/generate-news",
+      "schedule": "0 16 * * *"
+    },
+    {
+      "path": "/verity/api/cron/generate-actress-profile",
+      "schedule": "0 17 * * *"
+    }
+  ]
+}

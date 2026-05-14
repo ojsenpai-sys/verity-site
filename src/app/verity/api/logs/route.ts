@@ -2,10 +2,10 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@/lib/supabase/server'
 
 const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
-const VALID_TARGET_TYPES  = new Set(['genre', 'actress'])
-const VALID_ACTION_TYPES  = new Set(['click', 'purchase_click', 'reserve_click'])
+const VALID_TARGET_TYPES = new Set(['genre', 'actress', 'article', 'search', 'sns'])
+const VALID_ACTION_TYPES = new Set(['click', 'purchase_click', 'reserve_click', 'view', 'search', 'share', 'lp_transfer', 'lp_failed'])
 
-// POST /verity/api/logs — クリックイベントを記録
+// POST /verity/api/logs — クリック・閲覧イベントを記録
 export async function POST(req: Request) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
@@ -58,7 +58,7 @@ export async function GET() {
     [...m.entries()].sort((a, b) => b[1] - a[1]).map(([id, count]) => ({ id, count }))
 
   return NextResponse.json({
-    genres:   rank(genreCount).slice(0, 10),
+    genres:    rank(genreCount).slice(0, 10),
     actresses: rank(actressCount).slice(0, 10),
   })
 }

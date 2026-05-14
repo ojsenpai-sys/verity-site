@@ -1,0 +1,62 @@
+@import "tailwindcss";
+
+:root {
+  --magenta: #E20074;
+  --magenta-dim: #b30059;
+  --bg: #0a0a0f;
+  --surface: #12121a;
+  --surface-2: #1a1a26;
+  --border: #2a2a3a;
+  --text: #f0f0f8;
+  --text-muted: #8888aa;
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+::-webkit-scrollbar-thumb:hover { background: var(--magenta); }
+
+*:focus-visible {
+  outline: 2px solid var(--magenta);
+  outline-offset: 2px;
+}
+
+.glow-magenta {
+  box-shadow: 0 0 20px rgba(226, 0, 116, 0.3);
+}
+
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+@keyframes neon-crown-pulse {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(251,191,36,0.25), 0 0 16px rgba(251,191,36,0.12);
+    border-color: rgba(251,191,36,0.55);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(251,191,36,0.65), 0 0 36px rgba(251,191,36,0.3), inset 0 0 8px rgba(251,191,36,0.08);
+    border-color: rgba(251,191,36,0.95);
+  }
+}
+
+.crown-neon-frame {
+  animation: neon-crown-pulse 2.2s ease-in-out infinite;
+}

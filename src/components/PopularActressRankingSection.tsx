@@ -3,7 +3,6 @@ import { Trophy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { NowPrinting } from '@/components/NowPrinting'
-import { actressColor } from '@/lib/actressColor'
 import { isBadImageUrl, cidToCdnUrl } from '@/lib/cidUtils'
 import type { Actress } from '@/lib/types'
 
@@ -18,29 +17,50 @@ type RankedActress = {
 async function getRanking(): Promise<RankedActress[]> {
   const supabase = await createClient()
 
-  const { data: rankRows, error: rankErr } = await supabase
-    .rpc('get_actress_ranking', { p_brand_id: BRAND_ID, p_limit: 10 })
+  // 最新スナップショット日付を取得
+  const { data: latest } = await supabase
+    .from('actress_ranking_cache')
+    .select('snapshot_date')
+    .eq('brand_id', BRAND_ID)
+    .order('snapshot_date', { ascending: false })
+    .limit(1)
+    .maybeSingle()
 
-  if (rankErr || !rankRows || rankRows.length === 0) return []
+  if (!latest) return []
 
-  const externalIds = (rankRows as { actress_external_id: string; points: number }[])
-    .map(r => r.actress_external_id)
+  // その日付のキャッシュを取得
+  const { data: cache, error: cacheErr } = await supabase
+    .from('actress_ranking_cache')
+    .select('rank, points, actress_id, image_url')
+    .eq('brand_id', BRAND_ID)
+    .eq('snapshot_date', latest.snapshot_date)
+    .order('rank', { ascending: true })
+    .limit(10)
+
+  if (cacheErr || !cache || cache.length === 0) return []
+
+  const actressIds = cache.map(c => c.actress_id as string)
 
   const { data: actresses } = await supabase
     .from('actresses')
     .select('id, external_id, name, ruby, image_url, metadata, is_active')
-    .in('external_id', externalIds)
+    .in('id', actressIds)
     .eq('is_active', true)
 
   const actressMap = new Map(
-    ((actresses ?? []) as Actress[]).map(a => [a.external_id, a])
+    ((actresses ?? []) as Actress[]).map(a => [a.id, a])
   )
 
-  return (rankRows as { actress_external_id: string; points: number }[])
-    .map((r, i) => {
-      const actress = actressMap.get(r.actress_external_id)
+  return cache
+    .map(c => {
+      const actress = actressMap.get(c.actress_id as string)
       if (!actress) return null
-      return { rank: i + 1, points: Number(r.points), actress }
+      // キャッシュの最新単体作品画像を優先、なければ actresses.image_url
+      const merged: Actress = {
+        ...actress,
+        image_url: (c.image_url as string | null) ?? actress.image_url,
+      }
+      return { rank: c.rank as number, points: Number(c.points), actress: merged }
     })
     .filter((r): r is RankedActress => r !== null)
 }
@@ -85,12 +105,24 @@ const RANK_STYLES: Record<number, {
 
 // ── ランキングカード ──────────────────────────────────────────────────────────
 
-function RankCard({ item }: { item: RankedActress }) {
+function RankCard({
+  item,
+  className,
+  heroOnMobile = false,
+}: {
+  item:           RankedActress
+  className?:     string
+  heroOnMobile?:  boolean
+}) {
   const { rank, actress } = item
   const imgSrc   = getProxiedSrc(actress)
   const top3      = RANK_STYLES[rank]
   const borderCls = top3?.border ?? 'border-[var(--border)]'
-  const glowCls   = top3?.glow   ?? ''
+
+  // 1位モバイルヒーローは強めのゴールドグロー、それ以外は標準
+  const glowCls = heroOnMobile
+    ? 'shadow-[0_0_48px_rgba(251,191,36,0.55)] sm:shadow-[0_0_28px_rgba(251,191,36,0.3)]'
+    : (top3?.glow ?? '')
 
   return (
     <Link
@@ -100,10 +132,14 @@ function RankCard({ item }: { item: RankedActress }) {
         'transition-all duration-200 hover:-translate-y-0.5',
         'hover:border-[var(--magenta)]/50 hover:shadow-[0_0_24px_rgba(226,0,116,0.18)]',
         borderCls, glowCls,
+        className ?? '',
       ].join(' ')}
     >
-      {/* 画像（表紙右側フォーカス） */}
-      <div className="relative aspect-[2/3] w-full overflow-hidden bg-[var(--surface-2)]">
+      {/* 画像（モバイルヒーローは縦長を抑えてワイドに、通常は 2:3 ポートレート） */}
+      <div className={[
+        'relative w-full overflow-hidden bg-[var(--surface-2)]',
+        heroOnMobile ? 'aspect-[3/4] sm:aspect-[2/3]' : 'aspect-[2/3]',
+      ].join(' ')}>
         {imgSrc ? (
           <>
             <ProxiedImage
@@ -112,48 +148,48 @@ function RankCard({ item }: { item: RankedActress }) {
               className="absolute inset-0 h-full w-full object-cover object-right
                          transition-transform duration-300 group-hover:scale-105"
             />
-            <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/70 via-transparent to-transparent" />
+            <div className={[
+              'absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent',
+              heroOnMobile ? 'sm:from-[var(--surface)]/70' : '',
+            ].join(' ')} />
           </>
         ) : (
           <NowPrinting />
         )}
+      </div>
 
+      {/* 女優名エリア — ランクバッジ・王冠を名前の隣に表示 */}
+      <div className="flex items-center gap-2 border-t border-[var(--border)] px-3 py-2.5">
         {/* 順位バッジ */}
         {top3 ? (
-          <div className={[
-            'absolute left-2 top-2 flex h-7 w-7 items-center justify-center',
-            'rounded-full text-[11px] font-black shadow-lg',
+          <span className={[
+            'inline-flex shrink-0 items-center justify-center rounded-full font-black shadow',
+            heroOnMobile ? 'h-7 w-7 text-sm' : 'h-6 w-6 text-xs',
             top3.badge,
           ].join(' ')}>
             {rank}
-          </div>
+          </span>
         ) : (
-          <div className="absolute left-2 top-2 flex h-6 w-6 items-center justify-center
-                          rounded-full bg-[var(--surface)]/80 text-[10px] font-bold
-                          text-[var(--text-muted)] ring-1 ring-[var(--border)]">
+          <span className="inline-flex h-5 w-5 shrink-0 items-center justify-center
+                           rounded-full bg-[var(--surface-2)] text-[10px] font-bold
+                           text-[var(--text-muted)] ring-1 ring-[var(--border)]">
             {rank}
-          </div>
+          </span>
         )}
-
-        {/* 1位のみゴールドクラウン */}
+        {/* 1位の王冠 */}
         {rank === 1 && (
-          <div className="absolute right-2 top-2 text-base leading-none" aria-hidden>
+          <span className={[
+            'shrink-0 leading-none',
+            heroOnMobile ? 'text-xl' : 'text-base',
+          ].join(' ')} aria-hidden>
             👑
-          </div>
+          </span>
         )}
-      </div>
-
-      {/* 女優名エリア */}
-      <div className="flex items-center gap-2 border-t border-[var(--border)] px-3 py-2.5">
-        <span
-          className="inline-flex h-4 w-4 shrink-0 items-center justify-center
-                     rounded-full text-[9px] font-bold text-white"
-          style={{ backgroundColor: actressColor(actress.name) }}
-        >
-          {actress.name[0]}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-sm font-semibold text-[var(--text)]
-                         group-hover:text-[var(--magenta)] transition-colors">
+        <span className={[
+          'min-w-0 flex-1 truncate font-semibold text-[var(--text)]',
+          'group-hover:text-[var(--magenta)] transition-colors',
+          heroOnMobile ? 'text-base sm:text-sm' : 'text-sm',
+        ].join(' ')}>
           {actress.name}
         </span>
       </div>
@@ -167,8 +203,9 @@ export async function PopularActressRankingSection() {
   const ranking = await getRanking()
   if (ranking.length === 0) return null
 
-  const top3  = ranking.slice(0, 3)
-  const rest  = ranking.slice(3)
+  const [first, ...others] = ranking
+  const top2and3 = others.slice(0, 2)
+  const rest     = ranking.slice(3)
 
   return (
     <section className="space-y-5">
@@ -183,9 +220,20 @@ export async function PopularActressRankingSection() {
         </span>
       </div>
 
-      {/* Top 3：大きめカード */}
-      <div className="grid grid-cols-3 gap-4">
-        {top3.map(item => (
+      {/*
+        Top 3 グリッド
+        モバイル (< sm): 2列グリッド — 1位が col-span-2（全幅）、2位・3位が各1列
+        デスクトップ (sm+): 3列均等
+      */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
+        {first && (
+          <RankCard
+            item={first}
+            className="col-span-2 sm:col-span-1"
+            heroOnMobile
+          />
+        )}
+        {top2and3.map(item => (
           <RankCard key={item.actress.id} item={item} />
         ))}
       </div>

@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
 import { revalidatePath } from 'next/cache'
-import { computeUnlocks, TITLE_MAP, CROWN_POINTS_THRESHOLD } from '@/lib/titles'
+import { computeUnlocks, CROWN_CLICK_THRESHOLD, CROWN_LP_THRESHOLD } from '@/lib/titles'
 import type { UnlockedTitle } from '@/lib/types'
 
 const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
@@ -25,7 +25,6 @@ export async function GET() {
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
   if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
 
-  // お気に入り女優の詳細を JOIN
   let favoriteActresses: Record<string, unknown>[] = []
   if ((profile.favorite_actress_ids as string[]).length > 0) {
     const { data: actresses } = await supabase
@@ -35,11 +34,7 @@ export async function GET() {
     favoriteActresses = actresses ?? []
   }
 
-  return NextResponse.json({
-    ...profile,
-    email: user.email,
-    favoriteActresses,
-  })
+  return NextResponse.json({ ...profile, email: user.email, favoriteActresses })
 }
 
 // ── PATCH /verity/api/profile ─────────────────────────────────────────────────
@@ -57,24 +52,23 @@ export async function PATCH(request: NextRequest) {
     if (key in body) patch[key] = body[key]
   }
 
-  // favorite_actress_ids のバリデーション
+  // ── 現在のプロフィールを取得（バリデーション + 二つ名チェック用）──────────────
+  const { data: currentProfile } = await supabase
+    .from('profiles')
+    .select('titles_data, stars_count, favorite_actress_ids, favorite_change_count, display_name, created_at')
+    .eq('user_id', user.id)
+    .eq('brand_id', BRAND_ID)
+    .maybeSingle()
+
+  // ── favorite_actress_ids バリデーション ───────────────────────────────────
   if ('favorite_actress_ids' in patch) {
     const ids = patch.favorite_actress_ids as unknown[]
     if (!Array.isArray(ids)) {
       return NextResponse.json({ error: 'favorite_actress_ids must be an array' }, { status: 400 })
     }
 
-    // VERITY マスター保持者は最大6名、それ以外は最大3名
-    const { data: currentProfile } = await supabase
-      .from('profiles')
-      .select('titles_data')
-      .eq('user_id', user.id)
-      .eq('brand_id', BRAND_ID)
-      .maybeSingle()
-
-    const unlockedIds = ((currentProfile?.titles_data ?? []) as UnlockedTitle[]).map(t => t.id)
-    const isMaster = unlockedIds.includes('verity_master')
-    const maxFavs  = isMaster ? 6 : 3
+    const stars   = (currentProfile?.stars_count ?? 0) as number
+    const maxFavs = stars >= 6 ? 9 : stars >= 3 ? 6 : 3
 
     if (ids.length > maxFavs) {
       return NextResponse.json(
@@ -87,23 +81,20 @@ export async function PATCH(request: NextRequest) {
     if (!ids.every(id => typeof id === 'string' && uuidRe.test(id))) {
       return NextResponse.json({ error: 'Invalid actress UUID' }, { status: 400 })
     }
+
+    // お気に入り変更回数をインクリメント
+    patch.favorite_change_count = (currentProfile?.favorite_change_count ?? 0) + 1
   }
 
-  // title のバリデーション（解除済みのもののみ設定可）
+  // ── title バリデーション ──────────────────────────────────────────────────
   if ('title' in patch && patch.title !== null) {
-    const { data: current } = await supabase
-      .from('profiles')
-      .select('titles_data')
-      .eq('user_id', user.id)
-      .eq('brand_id', BRAND_ID)
-      .maybeSingle()
-
-    const unlocked = ((current?.titles_data ?? []) as UnlockedTitle[]).map(t => t.id)
+    const unlocked = ((currentProfile?.titles_data ?? []) as UnlockedTitle[]).map(t => t.id)
     if (!unlocked.includes(patch.title as string)) {
       return NextResponse.json({ error: 'Title not unlocked' }, { status: 400 })
     }
   }
 
+  // ── 更新 ──────────────────────────────────────────────────────────────────
   const { data: updated, error: dbErr } = await supabase
     .from('profiles')
     .update(patch)
@@ -114,9 +105,80 @@ export async function PATCH(request: NextRequest) {
 
   if (dbErr) return NextResponse.json({ error: dbErr.message }, { status: 500 })
 
-  // お気に入り更新時: 称号解除チェック（VERITY マスター含む）
+  // ── 二つ名: shadow_warrior（初回 display_name 設定）─────────────────────────
+  if ('display_name' in patch && patch.display_name && !currentProfile?.display_name) {
+    void supabase.from('user_achievements').upsert([{
+      user_id:     user.id,
+      brand_id:    BRAND_ID,
+      epithet_id:  'shadow_warrior',
+      achieved_at: new Date().toISOString(),
+    }], { onConflict: 'user_id,brand_id,epithet_id', ignoreDuplicates: true })
+  }
+
+  // ── お気に入り更新後の処理 ────────────────────────────────────────────────
   if ('favorite_actress_ids' in patch) {
-    const favIds = patch.favorite_actress_ids as string[]
+    const newFavIds  = patch.favorite_actress_ids as string[]
+    const oldFavIds  = (currentProfile?.favorite_actress_ids ?? []) as string[]
+    const removedIds = oldFavIds.filter(id => !newFavIds.includes(id))
+    const allIds     = [...new Set([...newFavIds, ...removedIds])]
+
+    // 王冠判定用データ（新旧まとめて並列取得）
+    const [actressResult, clickResult, lpResult] = await Promise.all([
+      allIds.length > 0
+        ? supabase.from('actresses').select('id, external_id').in('id', allIds)
+        : Promise.resolve({ data: [] }),
+      supabase.rpc('get_user_actress_purchase_clicks', { p_user_id: user.id, p_brand_id: BRAND_ID }),
+      allIds.length > 0
+        ? supabase.from('sn_favorite_actresses')
+            .select('actress_id, lp_points')
+            .eq('user_id',  user.id)
+            .eq('brand_id', BRAND_ID)
+            .in('actress_id', allIds)
+        : Promise.resolve({ data: [] }),
+    ])
+
+    const allActresses = (actressResult.data ?? []) as { id: string; external_id: string }[]
+    const clickMap = new Map(
+      ((clickResult.data ?? []) as { actress_external_id: string; purchase_clicks: number }[])
+        .map(r => [r.actress_external_id, Number(r.purchase_clicks)])
+    )
+    const lpMap = new Map(
+      ((lpResult.data ?? []) as { actress_id: string; lp_points: number }[])
+        .map(r => [r.actress_id, Number(r.lp_points)])
+    )
+
+    const hasCrown = (a: { id: string; external_id: string }) =>
+      (clickMap.get(a.external_id) ?? 0) >= CROWN_CLICK_THRESHOLD &&
+      (lpMap.get(a.id) ?? 0) >= CROWN_LP_THRESHOLD
+
+    // 二つ名: kabukimono（王冠達成女優を解除）
+    if (removedIds.length > 0) {
+      const removedActresses = allActresses.filter(a => removedIds.includes(a.id))
+      if (removedActresses.some(hasCrown)) {
+        void supabase.from('user_achievements').upsert([{
+          user_id:     user.id,
+          brand_id:    BRAND_ID,
+          epithet_id:  'kabukimono',
+          achieved_at: new Date().toISOString(),
+        }], { onConflict: 'user_id,brand_id,epithet_id', ignoreDuplicates: true })
+      }
+    }
+
+    // 二つ名: endless_cycle（累計 10 回お気に入り変更）
+    if ((patch.favorite_change_count as number) >= 10) {
+      void supabase.from('user_achievements').upsert([{
+        user_id:     user.id,
+        brand_id:    BRAND_ID,
+        epithet_id:  'endless_cycle',
+        achieved_at: new Date().toISOString(),
+      }], { onConflict: 'user_id,brand_id,epithet_id', ignoreDuplicates: true })
+    }
+
+    // 称号解除チェック（VERITY マスター含む）
+    const crownIds = allActresses
+      .filter(a => newFavIds.includes(a.id) && hasCrown(a))
+      .map(a => a.id)
+
     const { data: prof } = await supabase
       .from('profiles')
       .select('created_at, titles_data, favorite_actress_ids')
@@ -126,54 +188,24 @@ export async function PATCH(request: NextRequest) {
 
     if (prof) {
       const existing = (prof.titles_data as UnlockedTitle[]).map(t => t.id)
-
-      // 王冠バッジ獲得済み女優UUIDを取得（SECURITY DEFINER経由）
-      let crownIds: string[] = []
-      if (favIds.length >= 3) {
-        // 女優UUIDからexternal_idを取得
-        const { data: actressRows } = await supabase
-          .from('actresses')
-          .select('id, external_id')
-          .in('id', favIds)
-
-        if (actressRows && actressRows.length > 0) {
-          const extIds = actressRows.map(a => a.external_id as string)
-          const { data: pointRows } = await supabase
-            .rpc('get_user_actress_points', { p_user_id: user.id, p_brand_id: BRAND_ID })
-
-          if (pointRows) {
-            const pointMap = new Map(
-              (pointRows as { actress_external_id: string; points: number }[])
-                .map(r => [r.actress_external_id, r.points])
-            )
-            crownIds = actressRows
-              .filter(a => (pointMap.get(a.external_id as string) ?? 0) >= CROWN_POINTS_THRESHOLD)
-              .map(a => a.id as string)
-          }
-        }
-      }
-
-      const newIds = computeUnlocks({
+      const newTitleIds = computeUnlocks({
         createdAt:        new Date(prof.created_at),
-        favCount:         favIds.length,
+        favCount:         newFavIds.length,
         existingUnlocked: existing,
-        favoriteIds:      favIds,
+        favoriteIds:      newFavIds,
         crownIds,
       })
 
-      if (newIds.length > 0) {
+      if (newTitleIds.length > 0) {
         const now       = new Date().toISOString()
-        const additions = newIds.map(id => ({ id, unlocked_at: now }))
-        await supabase.from('profiles').update({
-          titles_data: [...(prof.titles_data as UnlockedTitle[]), ...additions],
-        })
-        .eq('user_id', user.id)
-        .eq('brand_id', BRAND_ID)
+        const additions = newTitleIds.map(id => ({ id, unlocked_at: now }))
+        await supabase.from('profiles')
+          .update({ titles_data: [...(prof.titles_data as UnlockedTitle[]), ...additions] })
+          .eq('user_id', user.id)
+          .eq('brand_id', BRAND_ID)
       }
     }
-  }
 
-  if ('favorite_actress_ids' in patch) {
     revalidatePath('/verity/profile',        'layout')
     revalidatePath('/verity/actresses/[id]', 'page')
   }

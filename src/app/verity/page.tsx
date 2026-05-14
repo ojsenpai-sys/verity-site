@@ -1,5 +1,6 @@
 import { Suspense } from 'react'
-import { Bookmark, Clock } from 'lucide-react'
+import Link from 'next/link'
+import { Bookmark, Clock, Newspaper } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { ArticleCard } from '@/components/ArticleCard'
 import { FilterBar } from '@/components/FilterBar'
@@ -9,7 +10,8 @@ import { RecommendedActressSection } from '@/components/RecommendedActressSectio
 import { MustOneSection } from '@/components/MustOneSection'
 import { SocialFeedSection } from '@/components/SocialFeedSection'
 import { PopularActressRankingSection } from '@/components/PopularActressRankingSection'
-import type { Article, Actress, FilterParams } from '@/lib/types'
+import { fetchNewsList } from '@/app/verity/actions/news'
+import type { Article, Actress, FilterParams, SnNewsWithActress } from '@/lib/types'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -197,6 +199,92 @@ async function ThisWeekGrid({
   )
 }
 
+// ── Latest News ────────────────────────────────────────────────────────────────
+
+function proxyImg(url: string) {
+  return `/verity/api/proxy/image?url=${encodeURIComponent(url)}`
+}
+
+function newsDate(iso: string | null): string {
+  if (!iso) return ''
+  return new Date(iso).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })
+}
+
+async function LatestNewsSection() {
+  const { items } = await fetchNewsList(9, 0)
+  if (!items.length) return null
+
+  return (
+    <section id="latest-news" className="space-y-6">
+      {/* ヘッダー */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-7 w-1 rounded-full bg-gradient-to-b from-[var(--magenta)] to-[var(--magenta)]/10" />
+          <Newspaper size={17} className="text-[var(--magenta)]" />
+          <h2 className="text-lg font-bold tracking-widest uppercase text-[var(--text)]">
+            Latest News
+          </h2>
+        </div>
+        <span className="hidden sm:block text-[11px] tracking-widest text-[var(--text-muted)] uppercase">
+          VERITY Editorial
+        </span>
+      </div>
+
+      {/* カードグリッド */}
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map((news: SnNewsWithActress) => (
+          <Link
+            key={news.id}
+            href={`/verity/news/${news.slug}`}
+            className="group flex gap-3.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3.5 transition-all duration-200 hover:border-[var(--magenta)]/50 hover:shadow-[0_0_24px_rgba(226,0,116,0.14)] hover:-translate-y-0.5"
+          >
+            {/* サムネイル */}
+            {news.thumbnail_url ? (
+              <div className="relative h-16 w-[88px] flex-shrink-0 overflow-hidden rounded-lg bg-[var(--surface-2)]">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={proxyImg(news.thumbnail_url)}
+                  alt={news.title}
+                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+                />
+              </div>
+            ) : (
+              <div className="h-16 w-[88px] flex-shrink-0 rounded-lg bg-[var(--surface-2)]" />
+            )}
+
+            {/* テキスト */}
+            <div className="flex flex-1 flex-col justify-between min-w-0 gap-1">
+              {news.category && (
+                <span className="text-[9px] font-bold uppercase tracking-widest text-[var(--magenta)]">
+                  {news.category}
+                </span>
+              )}
+              <p className="text-sm font-semibold leading-snug text-[var(--text)] line-clamp-2 group-hover:text-[var(--magenta)] transition-colors">
+                {news.title}
+              </p>
+              <span className="text-[10px] text-[var(--text-muted)]">
+                {newsDate(news.published_at)}
+              </span>
+            </div>
+          </Link>
+        ))}
+      </div>
+
+      {/* News一覧へ */}
+      <div className="flex justify-center pt-1">
+        <Link
+          href="/verity/news"
+          className="inline-flex items-center gap-2.5 rounded-full border border-[var(--magenta)]/40 bg-gradient-to-r from-[var(--magenta)]/10 to-transparent px-8 py-3 text-sm font-semibold tracking-wider text-[var(--magenta)] transition-all hover:border-[var(--magenta)] hover:bg-[var(--magenta)]/15 hover:shadow-[0_0_28px_rgba(226,0,116,0.28)]"
+        >
+          <Newspaper size={14} />
+          News一覧へ
+          <span className="opacity-50 text-xs">→</span>
+        </Link>
+      </div>
+    </section>
+  )
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -255,28 +343,44 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </Suspense>
       </section>
 
-      {/* ── 5. VERITYオススメ女優 ─────────────────────────────────────────── */}
+      {/* ── 5. LATEST NEWS ───────────────────────────────────────────────── */}
+      <section id="latest-news-preview">
+        <Suspense fallback={
+          <div className="space-y-4">
+            <div className="h-7 w-48 animate-pulse rounded bg-[var(--surface)]" />
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 9 }).map((_, i) => (
+                <div key={i} className="h-24 animate-pulse rounded-xl bg-[var(--surface)]" />
+              ))}
+            </div>
+          </div>
+        }>
+          <LatestNewsSection />
+        </Suspense>
+      </section>
+
+      {/* ── 6. VERITYオススメ女優 ─────────────────────────────────────────── */}
       <section id="recommended-actresses">
         <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--surface)]" />}>
           <FeaturedSection />
         </Suspense>
       </section>
 
-      {/* ── 6. 旬の女優 最新作（FANZAイチオシ 30 名）────────────────────────── */}
+      {/* ── 7. 旬の女優 最新作（FANZAイチオシ 30 名）────────────────────────── */}
       <section id="latest-releases">
         <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--surface)]" />}>
           <RecommendedActressSection />
         </Suspense>
       </section>
 
-      {/* ── 7. 【最速】予約・先行公開 ─────────────────────────────────────── */}
+      {/* ── 8. 【最速】予約・先行公開 ─────────────────────────────────────── */}
       <section id="pre-orders">
         <Suspense>
           <UpcomingSection filters={filters} top100Names={top100Names} />
         </Suspense>
       </section>
 
-      {/* ── 8. 今週のリリース ─────────────────────────────────────────────── */}
+      {/* ── 9. 今週のリリース ─────────────────────────────────────────────── */}
       <section id="weekly-releases" className="space-y-5">
         <div className="flex items-center gap-2.5">
           <Clock size={17} className="text-[var(--magenta)]" />

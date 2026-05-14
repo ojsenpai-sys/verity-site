@@ -10,15 +10,18 @@ export interface UnlockedTitle {
   unlocked_at: string
 }
 
-/** 女優カードに王冠バッジを表示するポイント閾値 */
-export const CROWN_POINTS_THRESHOLD = 50
+/** 王冠バッジ条件: 購入/予約クリック数（per actress） */
+export const CROWN_CLICK_THRESHOLD = 10
+/** 王冠バッジ条件: 捧げた累計 LP（per actress） */
+export const CROWN_LP_THRESHOLD = 30
 
 export const TITLE_DEFS: TitleDef[] = [
-  { id: 'newcomer',      name: '新参者',          desc: '会員登録完了',                          icon: '🌱' },
-  { id: 'oshi_katsu',    name: '推し活家',         desc: 'お気に入り女優を3名設定',                icon: '💜' },
-  { id: 'veteran',       name: '常連',             desc: '会員歴30日以上',                        icon: '🏅' },
-  { id: 'collector',     name: 'コレクター',        desc: '記事を100件以上既読',                   icon: '📚' },
-  { id: 'verity_master', name: 'VERITY マスター',  desc: '推し女優3名全員が王冠バッジを獲得',       icon: '👑' },
+  { id: 'newcomer',          name: '新参者',             desc: '会員登録完了',                          icon: '🌱' },
+  { id: 'oshi_katsu',        name: '推し活家',            desc: 'お気に入り女優を3名設定',                icon: '💜' },
+  { id: 'veteran',           name: '常連',                desc: '会員歴30日以上',                        icon: '🏅' },
+  { id: 'collector',         name: 'コレクター',           desc: '記事を100件以上既読',                   icon: '📚' },
+  { id: 'verity_master',     name: 'VERITY マスター',     desc: '推し女優3名全員が王冠バッジを獲得',       icon: '👑' },
+  { id: 'legend_of_verity',  name: 'LEGEND OF VERITY',   desc: '9名の女優に王冠バッジを授与',             icon: '⭐' },
 ]
 
 export const TITLE_MAP = Object.fromEntries(TITLE_DEFS.map(t => [t.id, t]))
@@ -30,7 +33,7 @@ export function computeUnlocks(params: {
   existingUnlocked: string[]
   /** お気に入り女優UUIDリスト */
   favoriteIds?:     string[]
-  /** 王冠バッジ獲得済み女優UUIDリスト (points >= CROWN_POINTS_THRESHOLD) */
+  /** 王冠バッジ獲得済み女優UUIDリスト (clicks >= CROWN_CLICK_THRESHOLD && lp >= CROWN_LP_THRESHOLD) */
   crownIds?:        string[]
 }): string[] {
   const { createdAt, favCount, existingUnlocked, favoriteIds = [], crownIds = [] } = params

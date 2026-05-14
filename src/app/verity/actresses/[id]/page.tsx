@@ -7,25 +7,41 @@ import { ArrowLeft, CalendarDays, ShoppingCart, Bookmark, UserCircle } from 'luc
 import { createClient } from '@/lib/supabase/server'
 import { ArticleCard } from '@/components/ArticleCard'
 import { LogView } from '@/components/LogView'
-import { actressColor } from '@/lib/actressColor'
+import { ShareButton } from '@/components/ShareButton'
 import { withAffiliate } from '@/lib/affiliate'
 import { PurchaseLink } from '@/components/PurchaseLink'
 import type { Article, Actress } from '@/lib/types'
 
 type Params = { id: string }
 
+const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
+
 export async function generateMetadata({ params }: { params: Promise<Params> }) {
   const { id } = await params
   const supabase = await createClient()
   const { data } = await supabase
     .from('actresses')
-    .select('name, ruby')
+    .select('name, ruby, image_url')
     .eq('external_id', id)
     .single()
   if (!data) return {}
+  const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
+  const rubyPart = data.ruby ? `（${data.ruby}）` : ''
+  const description = `${data.name}の最新作・動画を一覧。FANZAで購入できる${data.name}のおすすめAV作品をVERITY編集部がキュレーション。`
   return {
-    title: `${data.name} — VERITY`,
-    description: `${data.name}の最新作・準新作`,
+    title: `${data.name}${rubyPart}の作品一覧`,
+    description,
+    alternates: { canonical: `${BASE}/actresses/${id}` },
+    openGraph: {
+      title:       `${data.name} — VERITY`,
+      description,
+      images:      data.image_url ? [{ url: data.image_url, alt: data.name }] : undefined,
+    },
+    twitter: {
+      title:       `${data.name} — VERITY`,
+      description,
+      images:      data.image_url ? [data.image_url] : undefined,
+    },
   }
 }
 
@@ -45,14 +61,15 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
   const actress = actressData as Actress
   const now = new Date().toISOString()
 
-  // Fetch 12 candidates each so we can sort solo works first in JS.
-  // NOTE: gt/lte both exclude NULL in PostgREST — undated items need explicit OR.
-  const [{ data: upcomingData }, { data: recentData }] = await Promise.all([
+  const aliases = (actress.metadata?.aliases ?? []) as string[]
+  const searchNames = [actress.name, ...aliases]
+
+  const [{ data: upcomingData }, { data: recentData }, { data: lpRankRows }] = await Promise.all([
     supabase
       .from('articles')
       .select('*')
       .eq('is_active', true)
-      .contains('tags', [actress.name])
+      .overlaps('tags', searchNames)
       .or(`published_at.gt.${now},published_at.is.null`)
       .order('published_at', { ascending: true, nullsFirst: false })
       .limit(12),
@@ -60,13 +77,17 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
       .from('articles')
       .select('*')
       .eq('is_active', true)
-      .contains('tags', [actress.name])
+      .overlaps('tags', searchNames)
       .lte('published_at', now)
       .order('published_at', { ascending: false })
       .limit(12),
+    supabase.rpc('get_actress_lp_ranking', {
+      p_actress_id: actress.id,
+      p_brand_id:   BRAND_ID,
+      p_limit:      10,
+    }),
   ])
 
-  // Sort: solo works (metadata.actress.length === 1) first, then group works — within each tier keep date order
   function soloFirst(rows: Article[]): Article[] {
     const isSolo = (a: Article) => {
       const meta = a.metadata as Record<string, unknown> | null
@@ -82,9 +103,11 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
   const recent   = soloFirst((recentData   as Article[]) ?? [])
   const total    = upcoming.length + recent.length
 
+  type LpRankRow = { rank: number; display_name: string; lp_points: number }
+  const lpRanking = (lpRankRows ?? []) as LpRankRow[]
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 space-y-10">
-      {/* 女優ページ閲覧をログに記録（ログイン済みユーザーのみ API 側で記録） */}
       <LogView targetType="actress" targetId={actress.external_id} />
 
       {/* Back navigation */}
@@ -107,13 +130,7 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
       </div>
 
       {/* Actress header */}
-      <div className="flex items-center gap-5">
-        <div
-          className="flex h-20 w-20 shrink-0 items-center justify-center rounded-full text-3xl font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.3)] ring-4 ring-[var(--magenta)]/30"
-          style={{ backgroundColor: actressColor(actress.name) }}
-        >
-          {actress.name[0]}
-        </div>
+      <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="space-y-1">
           <h1 className="text-3xl font-bold text-[var(--text)]">{actress.name}</h1>
           {actress.ruby && (
@@ -123,6 +140,7 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
             最新 {total} 作品を表示
           </p>
         </div>
+        <ShareButton url={`/verity/actresses/${actress.external_id}`} title={actress.name} />
       </div>
 
       {total === 0 && (
@@ -162,8 +180,7 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
               <ArticleCard key={article.id} article={article} />
             ))}
           </div>
-          {/* FANZA search link (affiliate 付き) — purchase_click をログ記録 */}
-          <div className="pt-2">
+          <div className="pt-2 flex items-center gap-2.5 flex-wrap">
             <PurchaseLink
               href={withAffiliate(`https://www.dmm.co.jp/digital/videoa/-/list/search/=/searchstr=${encodeURIComponent(actress.name)}/`) ?? '#'}
               targetId={actress.external_id}
@@ -173,7 +190,88 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
               <ShoppingCart size={13} />
               FANZAで{actress.name}の全作品を検索
             </PurchaseLink>
+            <span className="rounded px-1.5 py-0.5 text-[11px] font-bold tracking-widest bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">
+              PR
+            </span>
           </div>
+        </section>
+      )}
+
+      {/* 宣伝担当ランキング */}
+      {lpRanking.length > 0 && (
+        <section className="space-y-4">
+          {/* スプレーアート風ヘッダー */}
+          <div className="relative overflow-hidden rounded-2xl px-6 py-5"
+            style={{
+              background: 'linear-gradient(135deg, #0a0a0f 0%, #150a20 50%, #0a0f1a 100%)',
+              border: '1px solid rgba(226,0,116,0.25)',
+            }}>
+            {/* 背景グリッドライン演出 */}
+            <div className="pointer-events-none absolute inset-0 opacity-10"
+              style={{
+                backgroundImage: 'linear-gradient(rgba(226,0,116,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(226,0,116,0.6) 1px, transparent 1px)',
+                backgroundSize: '40px 40px',
+              }} />
+            <div className="relative z-10 flex items-center gap-3">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src="/assets/verity/king.png" alt="" width={22} height={22} style={{ objectFit: 'contain', filter: 'drop-shadow(0 0 6px rgba(251,191,36,0.7))' }} />
+              <div>
+                <p className="text-xs font-black tracking-[0.2em] uppercase" style={{ color: '#E20074' }}>
+                  宣伝担当ランキング
+                </p>
+                <p className="text-[10px]" style={{ color: 'rgba(240,240,248,0.5)' }}>
+                  {actress.name}に最も LP を捧げた推し人
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* ランキングリスト */}
+          <ol className="space-y-2">
+            {lpRanking.map((row, i) => {
+              const isTop3  = i < 3
+              const rankColors = ['#fbbf24', '#94a3b8', '#b45309']
+              const glowColors = ['rgba(251,191,36,0.3)', 'rgba(148,163,184,0.2)', 'rgba(180,83,9,0.2)']
+              return (
+                <li key={i} className="relative overflow-hidden rounded-xl px-4 py-3 flex items-center gap-4"
+                  style={{
+                    background:  isTop3
+                      ? `linear-gradient(90deg, rgba(0,0,0,0.6), ${glowColors[i]}20, rgba(0,0,0,0.6))`
+                      : 'rgba(18,18,26,0.8)',
+                    border: isTop3
+                      ? `1px solid ${rankColors[i]}30`
+                      : '1px solid rgba(42,42,58,0.6)',
+                    boxShadow: isTop3 ? `0 0 20px ${glowColors[i]}` : 'none',
+                  }}>
+                  {/* ランク番号 */}
+                  <span className="w-8 shrink-0 text-center text-sm font-black font-mono"
+                    style={{ color: isTop3 ? rankColors[i] : 'rgba(136,136,170,0.6)',
+                             textShadow: isTop3 ? `0 0 8px ${rankColors[i]}` : 'none' }}>
+                    {i < 9 ? `0${i + 1}` : `${i + 1}`}
+                  </span>
+
+                  {/* ユーザー名 */}
+                  <span className="flex-1 min-w-0 truncate font-bold text-sm"
+                    style={{
+                      color:       isTop3 ? '#f0f0f8' : 'rgba(240,240,248,0.7)',
+                      textShadow:  isTop3 ? `0 0 12px ${rankColors[i]}40` : 'none',
+                      letterSpacing: '0.03em',
+                    }}>
+                    {row.display_name}
+                  </span>
+
+                  {/* LP ポイント */}
+                  <span className="shrink-0 font-black text-sm font-mono"
+                    style={{
+                      color:      isTop3 ? rankColors[i] : '#8888aa',
+                      textShadow: isTop3 ? `0 0 10px ${rankColors[i]}` : 'none',
+                    }}>
+                    💙 {row.lp_points} LP
+                  </span>
+                </li>
+              )
+            })}
+          </ol>
         </section>
       )}
     </div>
