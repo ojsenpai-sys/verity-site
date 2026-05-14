@@ -4,7 +4,7 @@ import { useState, useEffect } from 'react'
 import { LogOut, Edit2, Check, X, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown } from 'lucide-react'
 import { FavoriteActressSelector } from '@/components/FavoriteActressSelector'
 import { MyGalleryGrid } from '@/components/MyGalleryGrid'
-import { StatusCard } from '@/components/StatusCard'
+// import { StatusCard } from '@/components/StatusCard'  // TODO: デザイン再検討中のため一時非表示
 import { EPITHET_DEFS, EPITHET_MAP, RARITY_STYLE } from '@/lib/epithets'
 import type { Actress, Profile } from '@/lib/types'
 import type { TitleDef, GenreStats } from '@/lib/titles'
@@ -461,7 +461,7 @@ export function ProfileClient({
           />
         </section>
 
-        {/* ── ステータスカード ── */}
+        {/* ── ステータスカード（TODO: デザイン再検討中のため一時非表示） ──
         <section className="space-y-3">
           <h2 className="text-sm font-semibold text-[var(--text)]">ステータスカード</h2>
           <p className="text-[11px] text-[var(--text-muted)]">SNS 投稿用の画像をダウンロードできます。</p>
@@ -478,6 +478,7 @@ export function ProfileClient({
             lpPointsMap={lpPointsMap}
           />
         </section>
+        ── */}
 
       </div>
       )}
