@@ -9,19 +9,19 @@ export const FEATURED_CIDS = [
   'mida00653', // 小野六花
   'ipzz00795', // 佐々木さき
   // ── VERITYオススメ ───────────────────────────────────────────
-  'snos183',   // 瀬戸環奈
-  'snos208',   // 白石透羽
+  'snos00183', // 瀬戸環奈（動画配信版）
+  'snos00208', // 白石透羽（動画配信版）
   'snos207',   // 渡部ほの
   'jufe622',   // 彩月七緒
   '1fns197',   // 女神ジュン
   'dass971',   // 千咲ちな
   'ipzz868',   // ひなの花音
-  'snos220',   // 小日向みゆう
+  'snos00220', // 小日向みゆう（動画配信版）
   'ipzz821',   // 山田鈴奈
   'hmn863',    // 五日市芽依
   'mikr00095', // 白岩冬萌
   'mida00584', // 福田ゆあ
-  'jums168',   // 新妻ゆうか
+  'jums00168', // 新妻ゆうか（動画配信版）
 ] as const
 
 /**
@@ -31,7 +31,7 @@ export const FEATURED_CIDS = [
 export const MARQUEE_SYNC_CIDS = [
   'same00196',  // 宮西ひかる
   'mkmp00726',  // 逢沢みゆ
-  '1jera00031', // 北岡果林
+  'hmn00845',   // 北岡果林
   '1namh00064', // 花守夏歩
 ] as const
 
@@ -41,7 +41,7 @@ export const MARQUEE_SYNC_CIDS = [
 export const FORCE_DIGITAL_CIDS = [
   'same00196',  // 宮西ひかる
   'mkmp00726',  // 逢沢みゆ
-  '1jera00031', // 北岡果林
+  'hmn00845',   // 北岡果林
   '1namh00064', // 花守夏歩
   'ipzz00795',  // 佐々木さき
 ] as const
@@ -54,7 +54,7 @@ export const FORCE_DIGITAL_CIDS = [
 export const PINNED_ACTRESS_LATEST_CIDS: Record<string, string> = {
   '宮西ひかる': 'same00196',
   '逢沢みゆ': 'mkmp00726',
-  '北岡果林': '1jera00031',
+  '北岡果林': 'hmn00845',
   '花守夏歩': '1namh00064',
   '佐々木さき': 'ipzz00795',
 }

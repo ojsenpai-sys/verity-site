@@ -23,6 +23,7 @@ export type ArticleInput = {
   imageUrl:     string | null
   affiliateUrl: string | null
   publishedAt:  string | null   // ISO 8601
+  floor?:       string | null   // 'videoa' | 'dvd'
 }
 
 export type GeneratedNews = {
@@ -44,6 +45,10 @@ function buildPrompt(input: ArticleInput): string {
 
   const makerFull = [input.makerName, input.labelName].filter(Boolean).join(' / ')
   const genreStr  = input.genres.slice(0, 6).join('・')
+  const isDvd     = input.floor === 'dvd'
+  const mediaNote = isDvd
+    ? '※ この作品は DVD/Blu-ray 通販版の情報です。リリース情報欄に「動画配信版でも視聴可能な場合があります」と一文添えてください。'
+    : '※ この作品は動画配信（ストリーミング/ダウンロード）版の情報です。リリース情報欄では動画配信を主軸に紹介し、DVD版が存在する場合は「パッケージ版でも購入可能」として一行程度に留めてください。'
 
   return `あなたは音楽ナタリー・映画ナタリーのスタイルで執筆するエンタメ専門ライターです。
 以下の作品データをもとに、誠実・熱量高め・事実ベースのニュース記事を日本語で生成してください。
@@ -56,6 +61,9 @@ ${input.seriesName ? `シリーズ: ${input.seriesName}` : ''}
 ジャンル: ${genreStr}
 リリース日: ${releaseDate}
 
+【媒体種別の指示】
+${mediaNote}
+
 【執筆ルール】
 1. 露骨な性的表現は一切使わない。「映像表現」「演技力」「作品のテーマ」「存在感」「パフォーマンス」「魅力」「表情」「世界観」といったエンタメ・芸術的な語彙に変換する。
 2. 読者の想像力を刺激する、上品かつプロフェッショナルな文体を維持する。
@@ -67,7 +75,7 @@ ${input.seriesName ? `シリーズ: ${input.seriesName}` : ''}
 {
   "title": "キャッチーなニュース記事タイトル（35文字以内、女優名を含む）",
   "summary": "リード文（60〜90文字。配信日・女優名・作品の核心を事実ベースで1文にまとめる）",
-  "content": "本文（Markdown 形式、600〜900文字）\n\n構成:\n## 見どころ\n（この作品ならではの演技・世界観・テーマを2〜3段落で紹介）\n\n## リリース情報\n（配信日・メーカー・ジャンル・入手方法などの事実情報）",
+  "content": "本文（Markdown 形式、600〜900文字）\n\n構成:\n## 見どころ\n（この作品ならではの演技・世界観・テーマを2〜3段落で紹介）\n\n## リリース情報\n（配信日・メーカー・ジャンル・入手方法などの事実情報。動画配信版を主軸に記載）",
   "tags": ["タグ1", "タグ2", "タグ3", "タグ4", "タグ5"]
 }`
 }
@@ -212,5 +220,6 @@ export function articleRowToInput(row: ArticleRow): ArticleInput | null {
     imageUrl:     row.image_url,
     affiliateUrl: (meta.affiliate_url as string | null) ?? null,
     publishedAt:  row.published_at,
+    floor:        (meta.floor as string | null) ?? null,
   }
 }

@@ -12,6 +12,7 @@ import { SocialFeedSection } from '@/components/SocialFeedSection'
 import { PopularActressRankingSection } from '@/components/PopularActressRankingSection'
 import { fetchNewsList } from '@/app/verity/actions/news'
 import type { Article, Actress, FilterParams, SnNewsWithActress } from '@/lib/types'
+import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -87,13 +88,14 @@ async function getUpcomingArticles(
   const supabase = await createClient()
   const hasFilter = !!(filters.category || filters.source || filters.tag || filters.q)
 
+  // 重複排除後に 24 件残るよう多めに取得
   let query = supabase
     .from('articles')
     .select('*')
     .eq('is_active', true)
     .gt('published_at', new Date().toISOString())
     .order('published_at', { ascending: true })
-    .limit(24)
+    .limit(48)
 
   if (filters.category) query = query.eq('category', filters.category)
   if (filters.source)   query = query.eq('source', filters.source)
@@ -104,7 +106,8 @@ async function getUpcomingArticles(
 
   const { data, error } = await query
   if (error) console.error('[page] upcoming error:', error)
-  return sortSClassFirst((data as Article[]) ?? [])
+  const deduped = deduplicateDigitalFirst((data as Article[]) ?? [])
+  return sortSClassFirst(deduped).slice(0, 24)
 }
 
 async function getThisWeekArticles(
@@ -117,6 +120,8 @@ async function getThisWeekArticles(
   const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
   const hasFilter   = !!(filters.category || filters.source || filters.tag || filters.q)
 
+  // 重複排除後に PAGE_SIZE 件残るよう offset も考慮して多めに取得
+  const fetchSize = PAGE_SIZE * 2
   let query = supabase
     .from('articles')
     .select('*')
@@ -124,7 +129,7 @@ async function getThisWeekArticles(
     .gte('published_at', sevenDaysAgo)
     .lte('published_at', now.toISOString())
     .order('published_at', { ascending: false })
-    .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1)
+    .range(page * PAGE_SIZE, page * PAGE_SIZE + fetchSize - 1)
 
   if (filters.category) query = query.eq('category', filters.category)
   if (filters.source)   query = query.eq('source', filters.source)
@@ -135,7 +140,8 @@ async function getThisWeekArticles(
 
   const { data, error } = await query
   if (error) console.error('[page] this week error:', error)
-  return sortSClassFirst((data as Article[]) ?? [])
+  const deduped = deduplicateDigitalFirst((data as Article[]) ?? [])
+  return sortSClassFirst(deduped).slice(0, PAGE_SIZE)
 }
 
 // ── Async section components ────────────────────────────────────────────────────

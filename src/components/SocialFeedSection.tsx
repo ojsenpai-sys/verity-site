@@ -1,6 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { SocialFeedGrid } from './SocialFeedGrid'
 import { buildFanzaUrl } from '@/lib/fanzaUtils'
+import { resolveLatestAffiliateHrefs } from '@/lib/socialHrefResolver'
 import type { SocialPostWithFanza } from '@/app/verity/actions/socialFeed'
 
 const INITIAL_LIMIT = 20
@@ -47,7 +48,7 @@ export async function SocialFeedSection() {
 
   if (slice.length === 0) return null
 
-  // Pre-compute FANZA hrefs server-side
+  // Pre-compute affiliate hrefs server-side（最新作品 URL を優先、フォールバック: 検索一覧）
   const uniqueNames = [...new Set(slice.map(p => p.actress_name))]
   const { data: actressRows } = await supabase
     .from('actresses')
@@ -60,9 +61,11 @@ export async function SocialFeedSection() {
     if (match) actressIdMap.set(row.name as string, parseInt(match[1], 10))
   }
 
+  const hrefMap = await resolveLatestAffiliateHrefs(supabase, uniqueNames, actressIdMap)
+
   const initialPosts: SocialPostWithFanza[] = slice.map(p => ({
     ...p,
-    fanzaHref: buildFanzaUrl(p.actress_name, actressIdMap.get(p.actress_name) ?? null),
+    fanzaHref: hrefMap.get(p.actress_name) ?? buildFanzaUrl(p.actress_name, actressIdMap.get(p.actress_name) ?? null),
   }))
 
   return (

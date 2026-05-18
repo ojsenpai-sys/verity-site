@@ -102,6 +102,55 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
   const fanzaUrl = withAffiliate(rawFanzaUrl)
   const sampleMovieUrl = typeof a.metadata?.sample_movie_url === 'string' ? a.metadata.sample_movie_url : null
 
+  // ── 媒体種別の判定 ──────────────────────────────────────────────────────────
+  const currentFloor  = typeof a.metadata?.floor === 'string' ? a.metadata.floor : null
+  const productNumber = typeof a.metadata?.number === 'string' ? a.metadata.number : null
+  // metadata.url は DMM API の生 URL（エンコードなし）→ DVD 判定の一番信頼できる情報源
+  // affiliate_url は al.fanza.co.jp/?lurl=エンコード形式の場合があり /mono/dvd/ が見えない
+  const metaDirectUrl   = typeof a.metadata?.url === 'string' ? (a.metadata.url as string) : null
+  const isDvdArticle    =
+    currentFloor === 'dvd' ||
+    (metaDirectUrl !== null && metaDirectUrl.includes('/mono/dvd/')) ||
+    (rawFanzaUrl !== null && (rawFanzaUrl.includes('/mono/dvd/') || rawFanzaUrl.includes('%2Fmono%2Fdvd%2F')))
+  const isDigitalPrimary = !isDvdArticle
+
+  // DB 上のカウンターパート（同一タイトルの異媒体版）を検索
+  // floor=null でも isDvdArticle で DVD 判定できる場合はカウンターパートを検索する
+  const effectiveFloor = isDvdArticle ? 'dvd' : (currentFloor ?? null)
+  let counterpartUrl: string | null = null
+  if (productNumber && effectiveFloor) {
+    const counterFloor = effectiveFloor === 'videoa' ? 'dvd' : 'videoa'
+    const { data: cpData } = await supabase
+      .from('articles')
+      .select('metadata')
+      .filter('metadata->>number', 'eq', productNumber)
+      .filter('metadata->>floor', 'eq', counterFloor)
+      .eq('is_active', true)
+      .limit(1)
+      .maybeSingle()
+
+    if (cpData) {
+      const cpMeta = cpData.metadata as Record<string, unknown> | null
+      const rawCpUrl =
+        (typeof cpMeta?.affiliate_url === 'string' ? cpMeta.affiliate_url : null) ??
+        (typeof cpMeta?.url === 'string' ? (cpMeta.url as string) : null)
+      const cpUrl = withAffiliate(rawCpUrl)
+      // カウンターパートが実際に期待する媒体のURLかを検証（データ不整合ガード）
+      // metadata.url（生 DMM URL）で確認するのが最も確実
+      const cpDirectUrl = typeof cpMeta?.url === 'string' ? (cpMeta.url as string) : null
+      const cpIsDvd = (cpDirectUrl !== null && cpDirectUrl.includes('/mono/dvd/'))
+      if (counterFloor === 'videoa' && cpUrl && !cpIsDvd) {
+        counterpartUrl = cpUrl
+      } else if (counterFloor === 'dvd' && cpUrl) {
+        counterpartUrl = cpUrl
+      }
+    }
+  }
+
+  const digitalUrl = isDigitalPrimary ? fanzaUrl : counterpartUrl
+  const dvdUrl     = isDigitalPrimary ? counterpartUrl : fanzaUrl
+  const hasBothVersions = !!(digitalUrl && dvdUrl)
+
   const actresses = Array.isArray(a.metadata?.actress)
     ? (a.metadata!.actress as DmmInfoEntry[])
     : []
@@ -161,29 +210,87 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
 
       {/* CTAs */}
       {(fanzaUrl || sampleMovieUrl) && (
-        <div className="flex flex-wrap justify-center gap-3">
-          {fanzaUrl && (
-            <a
-              href={fanzaUrl}
-              target="_blank"
-              rel="noopener noreferrer sponsored"
-              className="inline-flex min-w-[180px] items-center justify-center gap-2 rounded-full bg-[var(--magenta)] px-7 py-3 text-base font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.35)] hover:shadow-[0_0_36px_rgba(226,0,116,0.6)] hover:brightness-110 active:scale-95 transition-all"
-            >
-              {isUpcoming ? 'FANZAで予約する' : 'FANZAで購入する'}
-              <ExternalLink size={15} />
-            </a>
+        <div className="flex flex-col items-center gap-4">
+
+          {hasBothVersions ? (
+            /* ダブル導線: 動画ファースト階層 */
+            <>
+              {/* ── Primary Hero: 動画配信 ── */}
+              <a
+                href={digitalUrl!}
+                target="_blank"
+                rel="noopener noreferrer sponsored"
+                className="inline-flex w-full max-w-sm items-center justify-center gap-2.5 rounded-full bg-gradient-to-r from-sky-500 to-blue-600 px-8 py-4 text-base font-bold text-white shadow-[0_0_32px_rgba(14,165,233,0.45)] hover:shadow-[0_0_48px_rgba(14,165,233,0.65)] hover:brightness-110 active:scale-95 transition-all"
+              >
+                <Play size={16} className="fill-white shrink-0" />
+                {isUpcoming ? '動画版を予約する（最高画質）' : '動画で今すぐ見る（最高画質）'}
+                <ExternalLink size={14} className="shrink-0" />
+              </a>
+
+              {/* ── Secondary: DVD ── */}
+              <div className="flex flex-col items-center gap-1.5">
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  パッケージ版（現物）をお求めの方はこちら
+                </p>
+                <a
+                  href={dvdUrl!}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                  className="inline-flex items-center gap-2 rounded-full border border-orange-500/60 px-6 py-2.5 text-sm font-semibold text-orange-400 hover:bg-orange-500/10 hover:border-orange-400 active:scale-95 transition-all"
+                >
+                  {isUpcoming ? 'DVD・Blu-rayを予約する' : 'DVD・Blu-rayを購入する'}
+                  <ExternalLink size={13} className="shrink-0" />
+                </a>
+              </div>
+            </>
+          ) : (
+            /* シングル導線 */
+            fanzaUrl && (
+              !isDigitalPrimary ? (
+                /* DVD・Blu-ray のみ存在 */
+                <a
+                  href={fanzaUrl}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                  className="inline-flex w-full max-w-sm items-center justify-center gap-2 rounded-full bg-orange-500 px-8 py-4 text-base font-bold text-white shadow-[0_0_24px_rgba(249,115,22,0.35)] hover:shadow-[0_0_36px_rgba(249,115,22,0.6)] hover:brightness-110 active:scale-95 transition-all"
+                >
+                  {isUpcoming ? 'DVD・Blu-rayを予約する' : 'DVD・Blu-rayを購入する'}
+                  <ExternalLink size={15} />
+                </a>
+              ) : (
+                /* 動画配信のみ存在（デフォルト） */
+                <a
+                  href={fanzaUrl}
+                  target="_blank"
+                  rel="noopener noreferrer sponsored"
+                  className="inline-flex w-full max-w-sm items-center justify-center gap-2.5 rounded-full bg-gradient-to-r from-sky-500 to-blue-600 px-8 py-4 text-base font-bold text-white shadow-[0_0_32px_rgba(14,165,233,0.45)] hover:shadow-[0_0_48px_rgba(14,165,233,0.65)] hover:brightness-110 active:scale-95 transition-all"
+                >
+                  <Play size={16} className="fill-white shrink-0" />
+                  {isUpcoming ? '動画版を予約する（最高画質）' : '動画で今すぐ見る（最高画質）'}
+                  <ExternalLink size={14} />
+                </a>
+              )
+            )
           )}
+
+          {/* サンプル動画 */}
           {sampleMovieUrl && (
             <a
               href={sampleMovieUrl}
               target="_blank"
               rel="noopener noreferrer"
-              className="inline-flex min-w-[180px] items-center justify-center gap-2 rounded-full border-2 border-[var(--magenta)] px-7 py-3 text-base font-bold text-[var(--magenta)] hover:bg-[var(--magenta)]/10 active:scale-95 transition-all"
+              className="inline-flex items-center gap-2 rounded-full border-2 border-[var(--magenta)] px-6 py-2.5 text-sm font-bold text-[var(--magenta)] hover:bg-[var(--magenta)]/10 active:scale-95 transition-all"
             >
-              <Play size={15} className="fill-[var(--magenta)]" />
+              <Play size={14} className="fill-[var(--magenta)]" />
               サンプル動画を見る
             </a>
           )}
+
+          {/* PR 表記 */}
+          <p className="text-[10px] text-[var(--text-muted)]">
+            <span className="rounded px-1.5 py-0.5 font-bold tracking-widest bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">PR</span>
+            {' '}上記リンクはアフィリエイトリンクです
+          </p>
         </div>
       )}
 

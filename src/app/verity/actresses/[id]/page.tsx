@@ -10,6 +10,7 @@ import { LogView } from '@/components/LogView'
 import { ShareButton } from '@/components/ShareButton'
 import { withAffiliate } from '@/lib/affiliate'
 import { PurchaseLink } from '@/components/PurchaseLink'
+import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
 import type { Article, Actress } from '@/lib/types'
 
 type Params = { id: string }
@@ -99,8 +100,8 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
     ].slice(0, 6)
   }
 
-  const upcoming = soloFirst((upcomingData as Article[]) ?? [])
-  const recent   = soloFirst((recentData   as Article[]) ?? [])
+  const upcoming = soloFirst(deduplicateDigitalFirst((upcomingData as Article[]) ?? []))
+  const recent   = soloFirst(deduplicateDigitalFirst((recentData   as Article[]) ?? []))
   const total    = upcoming.length + recent.length
 
   type LpRankRow = { rank: number; display_name: string; lp_points: number }

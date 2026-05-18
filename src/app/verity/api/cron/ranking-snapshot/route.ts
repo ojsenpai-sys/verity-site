@@ -66,14 +66,20 @@ export async function GET(request: Request) {
     let imageUrl = actress.image_url as string | null
 
     if (articles && articles.length > 0) {
+      // イメージビデオ・グラビア系を除外してAV単体作品を優先
+      const avArticles = articles.filter(a => {
+        const tags = (a.tags ?? []) as string[]
+        return !tags.includes('アイドル・芸能人') && !tags.includes('グラビア')
+      })
+      const pool = avArticles.length > 0 ? avArticles : articles
       // 「単体作品」タグがあるか actress_count=1 の作品を優先
-      const solo = articles.find(a => {
+      const solo = pool.find(a => {
         const tags  = (a.tags ?? []) as string[]
         const meta  = a.metadata as Record<string, unknown> | null
         const count = typeof meta?.actress_count === 'number' ? meta.actress_count : null
         return tags.includes('単体作品') || count === 1
       })
-      const best = solo ?? articles[0]
+      const best = solo ?? pool[0]
       if (best?.image_url) imageUrl = best.image_url as string
     }
 

@@ -1482,10 +1482,11 @@ export async function syncMakerUpcoming(): Promise<{
   const supabase = getServiceClient()
   let inserted = 0, errors = 0
 
-  const allItems     = new Map<string, DmmItem>()
+  // content_id → { item, floor } — digital/videoa を先に巡回するので digital が優先で残る
+  const allItems     = new Map<string, { item: DmmItem; floor: string }>()
   const actressNames = new Map<number, string>()
 
-  // ── Step 1: 全メーカー × 両フロアを取得（重複は content_id で排除）────────
+  // ── Step 1: 全メーカー × 両フロアを取得（重複は content_id で排除、digital 優先）────────
   for (const makerId of MONITORED_MAKER_IDS) {
     for (const [service, floor] of [['digital', 'videoa'], ['mono', 'dvd']] as [string, string][]) {
       try {
@@ -1498,7 +1499,7 @@ export async function syncMakerUpcoming(): Promise<{
           floor,
         })
         for (const item of items) {
-          if (!allItems.has(item.content_id)) allItems.set(item.content_id, item)
+          if (!allItems.has(item.content_id)) allItems.set(item.content_id, { item, floor })
           for (const a of item.iteminfo?.actress ?? []) {
             if (!actressNames.has(a.id)) actressNames.set(a.id, a.name)
           }
@@ -1515,9 +1516,9 @@ export async function syncMakerUpcoming(): Promise<{
   }
 
   // ── Step 2: 記事を一括 upsert ────────────────────────────────────────────
-  for (const item of allItems.values()) {
+  for (const { item, floor: itemFloor } of allItems.values()) {
     if (isDmmItemExcluded(item)) continue
-    const record = normalizeDmmItem(item, 'videoa')
+    const record = normalizeDmmItem(item, itemFloor)
     const { error } = await supabase
       .from('articles')
       .upsert(record, { onConflict: 'external_id', ignoreDuplicates: false })

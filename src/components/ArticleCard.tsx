@@ -101,6 +101,26 @@ export function ArticleCard({ article }: ArticleCardProps) {
             NEW
           </span>
         )}
+        {/* 媒体種別バッジ */}
+        {(() => {
+          const floor      = typeof article.metadata?.floor === 'string' ? article.metadata.floor : null
+          // metadata.url（生 DMM URL）で DVD を確実に判定する
+          // affiliate_url は al.fanza.co.jp/?lurl=エンコード形式の場合があるため使わない
+          const metaUrl    = typeof article.metadata?.url === 'string' ? (article.metadata.url as string) : null
+          const isDvd      = floor === 'dvd' || (metaUrl !== null && metaUrl.includes('/mono/dvd/'))
+          const isDigital  = !isDvd && (floor === 'videoa' || (metaUrl !== null && metaUrl.includes('/digital/')))
+          if (!isDvd && !isDigital) return null
+          return (
+            <span className={[
+              'absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-wide',
+              isDvd
+                ? 'bg-orange-500/90 text-white shadow-[0_0_8px_rgba(249,115,22,0.5)]'
+                : 'bg-sky-500/90 text-white shadow-[0_0_8px_rgba(14,165,233,0.5)]',
+            ].join(' ')}>
+              {isDvd ? 'DVD' : '動画配信'}
+            </span>
+          )
+        })()}
       </div>
 
       <div className="flex flex-1 flex-col gap-2.5 p-4">

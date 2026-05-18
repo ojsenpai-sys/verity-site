@@ -2,6 +2,7 @@
 
 import { createClient } from '@/lib/supabase/server'
 import { buildFanzaUrl } from '@/lib/fanzaUtils'
+import { resolveLatestAffiliateHrefs } from '@/lib/socialHrefResolver'
 
 const LOAD_MORE_LIMIT = 20
 
@@ -56,12 +57,13 @@ export async function fetchMoreSocialPosts(
   const slice   = raw.slice(0, limit)
 
   const uniqueNames = [...new Set(slice.map(p => p.actress_name))]
-  const idMap = await resolveActressIds(supabase, uniqueNames)
+  const idMap   = await resolveActressIds(supabase, uniqueNames)
+  const hrefMap = await resolveLatestAffiliateHrefs(supabase, uniqueNames, idMap)
 
   return {
     posts: slice.map(p => ({
       ...p,
-      fanzaHref: buildFanzaUrl(p.actress_name, idMap.get(p.actress_name) ?? null),
+      fanzaHref: hrefMap.get(p.actress_name) ?? buildFanzaUrl(p.actress_name, idMap.get(p.actress_name) ?? null),
     })),
     hasMore,
   }
