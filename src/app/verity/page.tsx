@@ -270,13 +270,13 @@ async function getTimelineItems(): Promise<TimelineItem[]> {
       .eq('site_key', SITE_KEY)
       .eq('is_published', true)
       .order('created_at', { ascending: false })
-      .limit(5),
+      .limit(50),
     supabase
       .from('articles')
       .select('id, title, slug, published_at')
       .eq('is_active', true)
       .order('published_at', { ascending: false })
-      .limit(5),
+      .limit(50),
   ])
 
   const newsItems: TimelineItem[] = (newsData ?? []).map(
@@ -301,7 +301,7 @@ async function getTimelineItems(): Promise<TimelineItem[]> {
 
   return [...newsItems, ...workItems]
     .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
-    .slice(0, 5)
+    .slice(0, 50)
 }
 
 function fmtDate(iso: string | null): string {
@@ -337,11 +337,12 @@ async function TimelineSection() {
           href={`/${SITE_KEY}/news`}
           className="text-[11px] tracking-widest text-[var(--text-muted)] uppercase hover:text-[var(--magenta)] transition-colors"
         >
-          すべて見る →
+          Newsもチェック→
         </Link>
       </div>
 
-      {/* タイムライン */}
+      {/* タイムライン — スクロールコンテナ */}
+      <div className="max-h-[400px] overflow-y-auto rounded-xl border border-[var(--border)] pr-1 [scrollbar-width:thin] [scrollbar-color:var(--border)_transparent]">
       <ul className="divide-y divide-[var(--border)]">
         {items.map((item) => {
           const showNew = isWithin3Days(item.date)
@@ -384,6 +385,7 @@ async function TimelineSection() {
           )
         })}
       </ul>
+      </div>
     </section>
   )
 }
