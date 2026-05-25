@@ -1,4 +1,5 @@
 import type { Metadata } from 'next'
+import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { ProfileClient } from './ProfileClient'
@@ -43,6 +44,14 @@ export const metadata: Metadata = {
 }
 
 const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
+const CONCIERGE_DAILY_LIMIT = 15
+
+function todayJstStart(): string {
+  const now = new Date()
+  const jst = new Date(now.getTime() + 9 * 60 * 60 * 1000)
+  jst.setUTCHours(0, 0, 0, 0)
+  return new Date(jst.getTime() - 9 * 60 * 60 * 1000).toISOString()
+}
 
 export type LoginBonusResult = {
   already_claimed?: boolean
@@ -73,6 +82,15 @@ export default async function ProfilePage() {
     p_brand_id: BRAND_ID,
   })
   if (!bonusErr && bonusData) bonusResult = bonusData as LoginBonusResult
+
+  // ── コンシェルジュ 本日の会話数取得 ────────────────────────────────────────
+  const { count: conciergeDaily } = await supabase
+    .from('sn_concierge_chats')
+    .select('id', { count: 'exact', head: true })
+    .eq('user_id', user.id)
+    .eq('role', 'user')
+    .gte('created_at', todayJstStart())
+  const conciergeRemaining = Math.max(0, CONCIERGE_DAILY_LIMIT - (conciergeDaily ?? 0))
 
   // ── プロフィール取得 ────────────────────────────────────────────────────────
   const { data: profile } = await supabase
@@ -481,6 +499,60 @@ export default async function ProfilePage() {
 
   return (
     <div className="mx-auto max-w-2xl px-4 py-12 space-y-8">
+
+      {/* ── あかりコンシェルジュルーム カード ────────────────────────────────── */}
+      <Link href="/verity/mypage/concierge" className="block group">
+        <div className="relative overflow-hidden rounded-2xl border border-[var(--magenta)]/35 bg-gradient-to-r from-[#1a0814] via-[#12091a] to-[#0c0d1e] p-5 shadow-[0_0_40px_rgba(226,0,116,0.10)] transition-all duration-300 hover:border-[var(--magenta)]/60 hover:shadow-[0_0_60px_rgba(226,0,116,0.22)]">
+          <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-[var(--magenta)]/6 via-transparent to-purple-900/12" />
+          <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-[var(--magenta)]/10 blur-3xl" />
+
+          <div className="relative flex items-center gap-4">
+            {/* あかり画像 */}
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <div className="relative h-[84px] w-[60px] shrink-0 overflow-hidden rounded-xl border border-[var(--magenta)]/30 shadow-[0_0_20px_rgba(226,0,116,0.25)] sm:h-[96px] sm:w-[68px]">
+              <img
+                src="/assets/verity/akari_01.png"
+                alt="AIメイド あかり"
+                className="h-full w-full object-cover object-top"
+              />
+            </div>
+
+            {/* テキストエリア */}
+            <div className="min-w-0 flex-1 space-y-1.5">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded-full border border-[var(--magenta)]/45 bg-[var(--magenta)]/20 px-2.5 py-0.5 text-[10px] font-black tracking-widest text-[var(--magenta)] uppercase">
+                  AI Concierge
+                </span>
+                {conciergeRemaining > 0 ? (
+                  <span className="rounded-full bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 text-[10px] font-bold text-emerald-400">
+                    残り {conciergeRemaining} 回
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-[var(--surface-2)] border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]">
+                    本日は終了
+                  </span>
+                )}
+              </div>
+
+              <h3 className="text-sm font-black leading-snug text-[var(--text)] sm:text-base">
+                AIあかりコンシェルジュルーム
+              </h3>
+
+              <p className="text-[11px] leading-relaxed text-[var(--text-muted)] sm:text-xs">
+                ご主人様、お帰りなさいませ♡ 本日もあかりが作品のご案内や日常の雑談でお供いたします。
+              </p>
+            </div>
+
+            {/* 矢印 */}
+            <div className="shrink-0 text-[var(--magenta)] opacity-60 transition-all duration-300 group-hover:opacity-100 group-hover:translate-x-1">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M5 12h14M12 5l7 7-7 7" />
+              </svg>
+            </div>
+          </div>
+        </div>
+      </Link>
+
       <ProfileClient
         user={{ id: user.id, email: user.email ?? '' }}
         profile={resolvedProfile}

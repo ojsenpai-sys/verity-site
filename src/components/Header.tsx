@@ -2,8 +2,9 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Menu, X, Map, Newspaper, Users, LayoutDashboard } from 'lucide-react'
+import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Sparkles } from 'lucide-react'
 import { LoginButton } from './LoginButton'
+import { useAuth } from './AuthProvider'
 
 const NAV_LINKS = [
   { href: '/',             label: 'Dashboard',      icon: LayoutDashboard },
@@ -14,6 +15,7 @@ const NAV_LINKS = [
 
 export function Header() {
   const [isOpen, setIsOpen] = useState(false)
+  const { user } = useAuth()
 
   useEffect(() => {
     if (!isOpen) return
@@ -59,6 +61,15 @@ export function Header() {
               <Map size={12} />
               VERITYの遊び方
             </Link>
+            {user && (
+              <Link
+                href="/verity/mypage/concierge"
+                className="flex items-center gap-1.5 rounded-full border border-purple-500/50 bg-purple-500/10 px-3 py-1 text-xs font-bold text-purple-300 transition-all hover:bg-purple-500/20 hover:border-purple-400/70 hover:shadow-[0_0_12px_rgba(168,85,247,0.3)]"
+              >
+                <Sparkles size={12} />
+                あかりの部屋
+              </Link>
+            )}
             <LoginButton />
           </nav>
 
@@ -130,6 +141,16 @@ export function Header() {
                 </Link>
               )
             })}
+            {user && (
+              <Link
+                href="/verity/mypage/concierge"
+                onClick={() => setIsOpen(false)}
+                className="flex items-center gap-3 rounded-xl border border-purple-500/35 bg-purple-500/10 px-4 py-3.5 text-sm font-bold text-purple-300 transition-all hover:bg-purple-500/18 hover:border-purple-400/55"
+              >
+                <Sparkles size={16} className="text-purple-300" />
+                あかりの部屋（AI対話）
+              </Link>
+            )}
           </nav>
 
           {/* Login / Mypage at bottom */}
