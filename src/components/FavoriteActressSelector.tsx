@@ -79,8 +79,8 @@ function ConfirmRemoveModal({
           </h3>
           {hasCrown && (
             <p className="text-[11px] text-amber-300/70 leading-relaxed">
-              王冠バッジ取得済みの女優です。削除後も王冠の記録は保持されますが、
-              LP 上限は失われます。
+              王冠バッジ取得済みの女優です。解除後も<strong className="text-amber-300">捧げた LP は失われません</strong>。
+              再度お気に入り登録するとポイントがそのまま引き継がれます。
             </p>
           )}
         </div>

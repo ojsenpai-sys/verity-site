@@ -11,9 +11,11 @@ const CONTENT_RIGHT = [
   { label: '旬の女優最新作',       href: '/#latest-releases' },
   { label: '【最速】予約・先行公開', href: '/#pre-orders' },
   { label: '今週のリリース',        href: '/#weekly-releases' },
+  { label: '推薦コミック',          href: '/#doujin-pick' },
 ]
 
 const ABOUT_LINKS = [
+  { label: 'VERITYの遊び方',        href: '/verity/guide' },
   { label: '合同会社VERITY',         href: '/contact' },
   { label: 'Contact',               href: '/contact' },
   { label: 'プライバシーポリシー', href: '/privacy' },

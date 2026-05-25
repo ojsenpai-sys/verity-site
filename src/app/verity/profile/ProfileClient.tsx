@@ -12,6 +12,8 @@ import type { EpithetDef } from '@/lib/epithets'
 import { useProfileLogic } from './hooks/useProfileLogic'
 import type { UnlockedEntry } from './hooks/useProfileLogic'
 import type { LoginBonusResult } from './page'
+import { GentlemanAnalysis } from '@/components/GentlemanAnalysis'
+import type { AxisScore, RecommendedProduct } from '@/components/GentlemanAnalysis'
 
 type Props = {
   user:                  { id: string; email: string }
@@ -35,6 +37,9 @@ type Props = {
   hasNewGalleryPosts:    boolean
   missingSnsActresses:   Actress[]
   earnedEpithetIds:      string[]
+  axisScores:            AxisScore[]
+  topAxis:               string | null
+  recommendedProduct:    RecommendedProduct | null
 }
 
 // ── 小型 UI コンポーネント ─────────────────────────────────────────────────────
@@ -168,6 +173,7 @@ export function ProfileClient({
   lpBalance: initialLpBalance, lpTotalAccumulated, loginStreak, bonusResult,
   lpPointsMap: initialLpPointsMap, hasNewGalleryPosts,
   missingSnsActresses, earnedEpithetIds: initialEpithetIds,
+  axisScores, topAxis, recommendedProduct,
 }: Props) {
   const {
     activeTab, setActiveTab,
@@ -334,6 +340,13 @@ export function ProfileClient({
             )}
           </section>
         )}
+
+        {/* ── ジェントルマン成分解析 ── */}
+        <GentlemanAnalysis
+          axisScores={axisScores}
+          topAxis={topAxis}
+          recommendedProduct={recommendedProduct}
+        />
 
         {/* ── 称号 ── */}
         <section className="space-y-3">

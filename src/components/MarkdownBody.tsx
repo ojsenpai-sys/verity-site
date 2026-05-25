@@ -104,13 +104,17 @@ export function MarkdownBody({ content, className }: Props) {
     if (line.trim() === '') { blocks.push('<div class="my-3" />'); i++; continue }
 
     // Paragraph
+    // NOTE: [-*+]\s (not bare [-*+]) so lines starting with ** (bold) are not excluded
     const paraLines: string[] = []
-    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,4}|>|[-*+]|\d+\.|```|---|\*\*\*|___)/.test(lines[i])) {
+    while (i < lines.length && lines[i].trim() !== '' && !/^(#{1,4}|>|[-*+]\s|\d+\.|```|---|\*\*\*|___)/.test(lines[i])) {
       paraLines.push(parseInline(lines[i]))
       i++
     }
     if (paraLines.length > 0) {
       blocks.push(`<p class="leading-loose text-[var(--text)]">${paraLines.join('<br />')}</p>`)
+    } else {
+      // No handler matched and paragraph loop exited immediately — advance to prevent infinite loop
+      i++
     }
   }
 

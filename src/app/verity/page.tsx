@@ -1,6 +1,6 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
-import { Bookmark, Clock, Newspaper } from 'lucide-react'
+import { Bookmark, BookOpen, Clock, Newspaper } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { ArticleCard } from '@/components/ArticleCard'
 import { FilterBar } from '@/components/FilterBar'
@@ -8,10 +8,10 @@ import { ActressMarquee } from '@/components/ActressMarquee'
 import { FeaturedSection } from '@/components/FeaturedSection'
 import { RecommendedActressSection } from '@/components/RecommendedActressSection'
 import { MustOneSection } from '@/components/MustOneSection'
+import { FastReviewSection } from '@/components/FastReviewSection'
 import { SocialFeedSection } from '@/components/SocialFeedSection'
 import { PopularActressRankingSection } from '@/components/PopularActressRankingSection'
-import { fetchNewsList } from '@/app/verity/actions/news'
-import type { Article, Actress, FilterParams, SnNewsWithActress } from '@/lib/types'
+import type { Article, Actress, FilterParams } from '@/lib/types'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
 
 export const dynamic = 'force-dynamic'
@@ -205,88 +205,185 @@ async function ThisWeekGrid({
   )
 }
 
-// ── Latest News ────────────────────────────────────────────────────────────────
+// ── Doujin Comic Pick ─────────────────────────────────────────────────────────
 
-function proxyImg(url: string) {
-  return `/verity/api/proxy/image?url=${encodeURIComponent(url)}`
+async function getDoujinPickArticles(): Promise<Article[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase
+    .from('articles')
+    .select('*')
+    .eq('is_active', true)
+    .filter('metadata->>url', 'like', '%/dc/doujin/%')
+    .order('published_at', { ascending: false })
+    .limit(3)
+  if (error) console.error('[page] doujin pick error:', error)
+  return (data as Article[]) ?? []
 }
 
-function newsDate(iso: string | null): string {
-  if (!iso) return ''
-  return new Date(iso).toLocaleDateString('ja-JP', { month: 'long', day: 'numeric' })
+async function DoujinPickSection() {
+  const articles = await getDoujinPickArticles()
+  if (!articles.length) return null
+
+  return (
+    <section id="doujin-pick" className="space-y-5">
+      {/* ヘッダー */}
+      <div className="flex items-center gap-3">
+        <div className="h-7 w-1 rounded-full bg-gradient-to-b from-emerald-400 to-emerald-400/10" />
+        <BookOpen size={17} className="text-emerald-400" />
+        <h2 className="text-lg font-bold tracking-widest text-[var(--text)]">
+          VERITY推薦！新作コミック
+        </h2>
+        <span className="rounded-full bg-emerald-500/15 px-2.5 py-0.5 text-[10px] font-bold text-emerald-400 border border-emerald-500/30">
+          編集長厳選
+        </span>
+      </div>
+
+      {/* カードグリッド */}
+      <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+        {articles.map((article) => (
+          <ArticleCard key={article.id} article={article} />
+        ))}
+      </div>
+    </section>
+  )
 }
 
-async function LatestNewsSection() {
-  const { items } = await fetchNewsList(9, 0)
+// ── News + Works Timeline ──────────────────────────────────────────────────────
+
+type TimelineItem = {
+  id:    string
+  type:  'news' | 'work'
+  date:  string | null
+  title: string
+  href:  string
+}
+
+const SITE_KEY = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
+
+async function getTimelineItems(): Promise<TimelineItem[]> {
+  const supabase = await createClient()
+
+  const [{ data: newsData }, { data: worksData }] = await Promise.all([
+    supabase
+      .from('sn_news')
+      .select('id, title, slug, published_at, created_at')
+      .eq('site_key', SITE_KEY)
+      .eq('is_published', true)
+      .order('created_at', { ascending: false })
+      .limit(5),
+    supabase
+      .from('articles')
+      .select('id, title, slug, published_at')
+      .eq('is_active', true)
+      .order('published_at', { ascending: false })
+      .limit(5),
+  ])
+
+  const newsItems: TimelineItem[] = (newsData ?? []).map(
+    (n: { id: string; title: string; slug: string; published_at: string | null; created_at: string }) => ({
+      id:    `n-${n.id}`,
+      type:  'news',
+      date:  n.published_at ?? n.created_at,
+      title: n.title,
+      href:  `/${SITE_KEY}/news/${n.slug}`,
+    })
+  )
+
+  const workItems: TimelineItem[] = (worksData ?? []).map(
+    (a: { id: string; title: string; slug: string; published_at: string | null }) => ({
+      id:    `w-${a.id}`,
+      type:  'work',
+      date:  a.published_at,
+      title: a.title,
+      href:  `/${SITE_KEY}/articles/${a.slug}`,
+    })
+  )
+
+  return [...newsItems, ...workItems]
+    .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
+    .slice(0, 5)
+}
+
+function fmtDate(iso: string | null): string {
+  if (!iso) return '——.——.——'
+  const d = new Date(iso)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}.${m}.${day}`
+}
+
+function isWithin3Days(iso: string | null): boolean {
+  if (!iso) return false
+  return Date.now() - new Date(iso).getTime() < 3 * 24 * 60 * 60 * 1000
+}
+
+async function TimelineSection() {
+  const items = await getTimelineItems()
   if (!items.length) return null
 
   return (
-    <section id="latest-news" className="space-y-6">
+    <section id="latest-news" className="space-y-4">
       {/* ヘッダー */}
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-3">
           <div className="h-7 w-1 rounded-full bg-gradient-to-b from-[var(--magenta)] to-[var(--magenta)]/10" />
           <Newspaper size={17} className="text-[var(--magenta)]" />
           <h2 className="text-lg font-bold tracking-widest uppercase text-[var(--text)]">
-            Latest News
+            新着情報
           </h2>
         </div>
-        <span className="hidden sm:block text-[11px] tracking-widest text-[var(--text-muted)] uppercase">
-          VERITY Editorial
-        </span>
-      </div>
-
-      {/* カードグリッド */}
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {items.map((news: SnNewsWithActress) => (
-          <Link
-            key={news.id}
-            href={`/verity/news/${news.slug}`}
-            className="group flex gap-3.5 rounded-xl border border-[var(--border)] bg-[var(--surface)] p-3.5 transition-all duration-200 hover:border-[var(--magenta)]/50 hover:shadow-[0_0_24px_rgba(226,0,116,0.14)] hover:-translate-y-0.5"
-          >
-            {/* サムネイル */}
-            {news.thumbnail_url ? (
-              <div className="relative h-16 w-[88px] flex-shrink-0 overflow-hidden rounded-lg bg-[var(--surface-2)]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={proxyImg(news.thumbnail_url)}
-                  alt={news.title}
-                  className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                />
-              </div>
-            ) : (
-              <div className="h-16 w-[88px] flex-shrink-0 rounded-lg bg-[var(--surface-2)]" />
-            )}
-
-            {/* テキスト */}
-            <div className="flex flex-1 flex-col justify-between min-w-0 gap-1">
-              {news.category && (
-                <span className="text-[9px] font-bold uppercase tracking-widest text-[var(--magenta)]">
-                  {news.category}
-                </span>
-              )}
-              <p className="text-sm font-semibold leading-snug text-[var(--text)] line-clamp-2 group-hover:text-[var(--magenta)] transition-colors">
-                {news.title}
-              </p>
-              <span className="text-[10px] text-[var(--text-muted)]">
-                {newsDate(news.published_at)}
-              </span>
-            </div>
-          </Link>
-        ))}
-      </div>
-
-      {/* News一覧へ */}
-      <div className="flex justify-center pt-1">
         <Link
-          href="/verity/news"
-          className="inline-flex items-center gap-2.5 rounded-full border border-[var(--magenta)]/40 bg-gradient-to-r from-[var(--magenta)]/10 to-transparent px-8 py-3 text-sm font-semibold tracking-wider text-[var(--magenta)] transition-all hover:border-[var(--magenta)] hover:bg-[var(--magenta)]/15 hover:shadow-[0_0_28px_rgba(226,0,116,0.28)]"
+          href={`/${SITE_KEY}/news`}
+          className="text-[11px] tracking-widest text-[var(--text-muted)] uppercase hover:text-[var(--magenta)] transition-colors"
         >
-          <Newspaper size={14} />
-          News一覧へ
-          <span className="opacity-50 text-xs">→</span>
+          すべて見る →
         </Link>
       </div>
+
+      {/* タイムライン */}
+      <ul className="divide-y divide-[var(--border)]">
+        {items.map((item) => {
+          const showNew = isWithin3Days(item.date)
+          return (
+            <li key={item.id}>
+              <Link
+                href={item.href}
+                className="group flex items-center gap-3 py-3 transition-colors"
+              >
+                {/* 日付 — font-mono で縦揃え */}
+                <span className="font-mono text-[11px] tabular-nums shrink-0 text-[var(--text-muted)]">
+                  {fmtDate(item.date)}
+                </span>
+
+                {/* タイプバッジ */}
+                {item.type === 'news' ? (
+                  <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">
+                    ニュース
+                  </span>
+                ) : (
+                  <span className="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold tracking-wider bg-sky-500/15 text-sky-400 border border-sky-500/30">
+                    最新作
+                  </span>
+                )}
+
+                {/* タイトル */}
+                <span className="flex-1 min-w-0 text-sm text-[var(--text-muted)] group-hover:text-[var(--text)] group-hover:underline underline-offset-2 transition-colors leading-snug truncate">
+                  {item.title}
+                </span>
+
+                {/* NEW マーク（3日以内） */}
+                {showNew && (
+                  <span className="shrink-0 flex items-center gap-1 text-[9px] font-black tracking-widest text-[var(--magenta)]">
+                    <span className="h-1.5 w-1.5 rounded-full bg-[var(--magenta)] animate-pulse" />
+                    NEW
+                  </span>
+                )}
+              </Link>
+            </li>
+          )
+        })}
+      </ul>
     </section>
   )
 }
@@ -335,6 +432,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <MustOneSection />
       </section>
 
+      {/* ── 2.5. 最新作最速レビュー ──────────────────────────────────────── */}
+      <section id="fast-review">
+        <Suspense fallback={<div className="h-72 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <FastReviewSection />
+        </Suspense>
+      </section>
+
       {/* ── 3. VERITY 人気女優ランキング ─────────────────────────────────── */}
       <section id="popular-ranking">
         <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-[var(--surface)]" />}>
@@ -349,19 +453,17 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </Suspense>
       </section>
 
-      {/* ── 5. LATEST NEWS ───────────────────────────────────────────────── */}
+      {/* ── 5. 新着情報タイムライン ──────────────────────────────────────── */}
       <section id="latest-news-preview">
         <Suspense fallback={
-          <div className="space-y-4">
-            <div className="h-7 w-48 animate-pulse rounded bg-[var(--surface)]" />
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              {Array.from({ length: 9 }).map((_, i) => (
-                <div key={i} className="h-24 animate-pulse rounded-xl bg-[var(--surface)]" />
-              ))}
-            </div>
+          <div className="space-y-2">
+            <div className="h-7 w-36 animate-pulse rounded bg-[var(--surface)]" />
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-10 animate-pulse rounded bg-[var(--surface)]" />
+            ))}
           </div>
         }>
-          <LatestNewsSection />
+          <TimelineSection />
         </Suspense>
       </section>
 
@@ -379,14 +481,21 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </Suspense>
       </section>
 
-      {/* ── 8. 【最速】予約・先行公開 ─────────────────────────────────────── */}
+      {/* ── 8. VERITY推薦！新作コミック ──────────────────────────────────── */}
+      <section id="doujin-pick">
+        <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-[var(--surface)]" />}>
+          <DoujinPickSection />
+        </Suspense>
+      </section>
+
+      {/* ── 9. 【最速】予約・先行公開 ─────────────────────────────────────── */}
       <section id="pre-orders">
         <Suspense>
           <UpcomingSection filters={filters} top100Names={top100Names} />
         </Suspense>
       </section>
 
-      {/* ── 9. 今週のリリース ─────────────────────────────────────────────── */}
+      {/* ── 10. 今週のリリース ────────────────────────────────────────────── */}
       <section id="weekly-releases" className="space-y-5">
         <div className="flex items-center gap-2.5">
           <Clock size={17} className="text-[var(--magenta)]" />

@@ -1,5 +1,6 @@
 import type { Metadata } from 'next'
 import { Suspense } from 'react'
+import Script from 'next/script'
 import { Header } from '@/components/Header'
 import { MegaFooter } from '@/components/MegaFooter'
 import { ScrollToTop } from '@/components/ScrollToTop'
@@ -34,8 +35,21 @@ export default async function VerityLayout({ children }: { children: React.React
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
+  const gaId = process.env.NEXT_PUBLIC_GA_TRACKING_ID
+
   return (
     <AuthProvider initialUser={user}>
+      {gaId && (
+        <>
+          <Script
+            src={`https://www.googletagmanager.com/gtag/js?id=${gaId}`}
+            strategy="afterInteractive"
+          />
+          <Script id="ga4-init" strategy="afterInteractive">
+            {`window.dataLayer=window.dataLayer||[];function gtag(){dataLayer.push(arguments);}gtag('js',new Date());gtag('config','${gaId}');`}
+          </Script>
+        </>
+      )}
       <div className="min-h-full flex flex-col bg-[var(--bg)] text-[var(--text)]">
         {/* 景品表示法に基づく広告表示 */}
         <div className="w-full bg-[var(--surface)] border-b border-[var(--border)] px-4 py-1.5 text-center text-[11px] text-[var(--text-muted)] tracking-wide">

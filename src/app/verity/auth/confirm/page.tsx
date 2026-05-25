@@ -4,12 +4,37 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { createImplicitClient } from '@/lib/supabase/client'
+import type { Session } from '@supabase/supabase-js'
 
 // ── OTP マジックリンク用コールバックページ（Implicit フロー） ──────────────────
 //
 // Supabase が `#access_token=...&refresh_token=...` をハッシュフラグメントとして
 // このページに渡す。サーバーはハッシュを受け取れないため、クライアントサイドで処理する。
 // @supabase/auth-js の detectSessionInUrl が自動的にハッシュを検出してセッションを設定する。
+//
+// auth/callback（PKCE）と異なりここはクライアント限定なので、
+// セッション確立後にプロフィールをクライアント側で作成してからリダイレクトする。
+// サーバー側でセッション Cookie が読めない環境（IAB 等）でも profile が必ず作られる。
+
+const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
+
+async function ensureProfile(supabase: ReturnType<typeof createImplicitClient>, userId: string) {
+  const { data: existing } = await supabase
+    .from('profiles')
+    .select('user_id')
+    .eq('user_id', userId)
+    .eq('brand_id', BRAND_ID)
+    .maybeSingle()
+  if (!existing) {
+    const now = new Date().toISOString()
+    await supabase.from('profiles').insert({
+      user_id:     userId,
+      brand_id:    BRAND_ID,
+      title:       'newcomer',
+      titles_data: [{ id: 'newcomer', unlocked_at: now }],
+    })
+  }
+}
 
 export default function AuthConfirmPage() {
   const router       = useRouter()
@@ -22,6 +47,16 @@ export default function AuthConfirmPage() {
 
     const supabase = createImplicitClient()
 
+    async function handleSession(session: Session) {
+      try {
+        await ensureProfile(supabase, session.user.id)
+      } catch (e) {
+        console.error('[auth/confirm] ensureProfile error:', e)
+        // profile 作成失敗でもリダイレクトは続行（profile/page.tsx 側でも作成を試みる）
+      }
+      router.replace(safeNext)
+    }
+
     // getSession() を呼ぶことで detectSessionInUrl がハッシュフラグメントを処理する
     supabase.auth.getSession().then(({ data: { session }, error: err }) => {
       if (err) {
@@ -30,7 +65,7 @@ export default function AuthConfirmPage() {
         return
       }
       if (session) {
-        router.replace(safeNext)
+        handleSession(session)
         return
       }
 
@@ -38,7 +73,7 @@ export default function AuthConfirmPage() {
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if ((event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') && session) {
           subscription.unsubscribe()
-          router.replace(safeNext)
+          handleSession(session)
         }
       })
 

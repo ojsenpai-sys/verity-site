@@ -44,7 +44,7 @@ const UPDATES: { externalId: string; name: string; screenName: string }[] = [
   { externalId: 'dmm-actress-1106862', name: '福田ゆあ',       screenName: 'yua_fucuda' },
   { externalId: 'dmm-actress-1030262', name: '三上悠亜',       screenName: 'yua_mikami' },
   { externalId: 'dmm-actress-1087624', name: '佐々木さき',     screenName: 'Sasaki_Saki' },
-  { externalId: 'dmm-actress-1104926', name: '千咲ちな',       screenName: '' },
+  { externalId: 'dmm-actress-1104926', name: '千咲ちな',       screenName: '__chinadayo__' },
   { externalId: 'dmm-actress-1085289', name: '女神ジュン',     screenName: '' },
   { externalId: 'dmm-actress-1060677', name: '小野六花',       screenName: 'onorikka' },
   { externalId: 'dmm-actress-1088602', name: '逢沢みゆ',       screenName: 'Aizawa_miyu03' },

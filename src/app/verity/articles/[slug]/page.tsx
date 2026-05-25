@@ -105,14 +105,17 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
   // ── 媒体種別の判定 ──────────────────────────────────────────────────────────
   const currentFloor  = typeof a.metadata?.floor === 'string' ? a.metadata.floor : null
   const productNumber = typeof a.metadata?.number === 'string' ? a.metadata.number : null
-  // metadata.url は DMM API の生 URL（エンコードなし）→ DVD 判定の一番信頼できる情報源
+  // metadata.url は DMM API の生 URL（エンコードなし）→ DVD・同人判定の一番信頼できる情報源
   // affiliate_url は al.fanza.co.jp/?lurl=エンコード形式の場合があり /mono/dvd/ が見えない
   const metaDirectUrl   = typeof a.metadata?.url === 'string' ? (a.metadata.url as string) : null
+  const isDoujinArticle = metaDirectUrl !== null && metaDirectUrl.includes('/dc/doujin/')
   const isDvdArticle    =
-    currentFloor === 'dvd' ||
-    (metaDirectUrl !== null && metaDirectUrl.includes('/mono/dvd/')) ||
-    (rawFanzaUrl !== null && (rawFanzaUrl.includes('/mono/dvd/') || rawFanzaUrl.includes('%2Fmono%2Fdvd%2F')))
-  const isDigitalPrimary = !isDvdArticle
+    !isDoujinArticle && (
+      currentFloor === 'dvd' ||
+      (metaDirectUrl !== null && metaDirectUrl.includes('/mono/dvd/')) ||
+      (rawFanzaUrl !== null && (rawFanzaUrl.includes('/mono/dvd/') || rawFanzaUrl.includes('%2Fmono%2Fdvd%2F')))
+    )
+  const isDigitalPrimary = !isDvdArticle && !isDoujinArticle
 
   // DB 上のカウンターパート（同一タイトルの異媒体版）を検索
   // floor=null でも isDvdArticle で DVD 判定できる場合はカウンターパートを検索する
@@ -199,20 +202,49 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
       </h1>
 
       {/* Full-package image — natural aspect ratio, no cropping */}
-      {a.image_url && (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={proxyUrl(a.image_url)}
-          alt={a.title}
-          className="w-full h-auto rounded-xl bg-[var(--surface-2)]"
-        />
-      )}
+      {(() => {
+        // 同人コミックで image_url 未設定の場合、metadata.url から cid を抽出して FANZA 書影 URL を生成
+        const displayImageUrl = a.image_url ?? (
+          isDoujinArticle && metaDirectUrl
+            ? (() => {
+                const m = metaDirectUrl.match(/\/cid=([^/?]+)/)
+                return m ? `https://pics.dmm.co.jp/digital/comic/${m[1]}/${m[1]}pl.jpg` : null
+              })()
+            : null
+        )
+        if (!displayImageUrl) return null
+        return (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={proxyUrl(displayImageUrl)}
+            alt={a.title}
+            className="w-full h-auto rounded-xl bg-[var(--surface-2)]"
+          />
+        )
+      })()}
 
       {/* CTAs */}
       {(fanzaUrl || sampleMovieUrl) && (
         <div className="flex flex-col items-center gap-4">
 
-          {hasBothVersions ? (
+          {/* 同人コミック専用CTA — グリーングラデーション */}
+          {isDoujinArticle && fanzaUrl ? (
+            <>
+              <a
+                href={fanzaUrl}
+                target="_blank"
+                rel="noopener noreferrer sponsored"
+                className="inline-flex w-full max-w-sm items-center justify-center gap-2.5 rounded-full bg-gradient-to-r from-emerald-500 to-teal-600 px-8 py-4 text-base font-bold text-white shadow-[0_0_32px_rgba(16,185,129,0.45)] hover:shadow-[0_0_48px_rgba(16,185,129,0.65)] hover:brightness-110 active:scale-95 transition-all"
+              >
+                DMM同人で作品を見る
+                <ExternalLink size={14} className="shrink-0" />
+              </a>
+              <p className="text-[10px] text-[var(--text-muted)]">
+                <span className="rounded px-1.5 py-0.5 font-bold tracking-widest bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">PR</span>
+                {' '}上記リンクはアフィリエイトリンクです
+              </p>
+            </>
+          ) : hasBothVersions ? (
             /* ダブル導線: 動画ファースト階層 */
             <>
               {/* ── Primary Hero: 動画配信 ── */}
@@ -286,11 +318,13 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
             </a>
           )}
 
-          {/* PR 表記 */}
-          <p className="text-[10px] text-[var(--text-muted)]">
-            <span className="rounded px-1.5 py-0.5 font-bold tracking-widest bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">PR</span>
-            {' '}上記リンクはアフィリエイトリンクです
-          </p>
+          {/* PR 表記（同人コミックは専用CTAブロック内に含むため除外） */}
+          {!isDoujinArticle && (
+            <p className="text-[10px] text-[var(--text-muted)]">
+              <span className="rounded px-1.5 py-0.5 font-bold tracking-widest bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">PR</span>
+              {' '}上記リンクはアフィリエイトリンクです
+            </p>
+          )}
         </div>
       )}
 

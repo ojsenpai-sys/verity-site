@@ -97,6 +97,7 @@ export type SnNewsItem = {
   thumbnail_url: string | null
   gallery_urls:  string[]
   fanza_link:    string | null
+  affiliate_url: string | null
   tags:          string[]
   is_published:  boolean
   published_at:  string | null

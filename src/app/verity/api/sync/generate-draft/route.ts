@@ -104,6 +104,7 @@ export async function GET(request: Request) {
         thumbnail_url: input.imageUrl,
         gallery_urls:  JSON.stringify([]),
         fanza_link:    fanzaLink,
+        affiliate_url: fanzaLink,
         tags:          generated.tags,
         is_published:  false,
         published_at:  (row as { published_at?: string | null }).published_at ?? now,

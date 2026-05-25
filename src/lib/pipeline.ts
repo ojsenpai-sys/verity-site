@@ -1464,10 +1464,10 @@ async function restorePinnedActressLatestCids(): Promise<void> {
 
 /**
  * 監視メーカー一覧（メーカー ID）。毎日 0:00 JST (15:00 UTC) に巡回。
- * S1, Prestige, SOD Create, V&R, MagicBanana, MOODYZ, WANZ FACTORY,
- * E-BODY, Ksommelier, ALICE JAPAN, GIGA
+ * S1, Prestige, SOD Create, V&R, MagicBanana, MOODYZ, 本中,
+ * E-BODY, Ksommelier, ALICE JAPAN, GIGA, PREMIUM, OPPAI
  */
-const MONITORED_MAKER_IDS = [3152, 1509, 1219, 6329, 40488, 4641, 6304, 2661, 45276, 5032, 4469]
+const MONITORED_MAKER_IDS = [3152, 1509, 1219, 6329, 40488, 4641, 6304, 2661, 45276, 5032, 4469, 3890, 5238]
 
 /**
  * 監視メーカーの新作・予約作を DB に取り込み、未登録女優・SNS 未設定女優を報告する。

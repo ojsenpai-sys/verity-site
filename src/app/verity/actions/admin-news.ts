@@ -36,6 +36,7 @@ type RawRow = {
   thumbnail_url: string | null
   gallery_urls:  unknown
   fanza_link:    string | null
+  affiliate_url: string | null
   tags:          string[] | null
   is_published:  boolean
   published_at:  string | null
@@ -60,7 +61,7 @@ function normalise(row: RawRow): SnNewsWithActress {
 
 const SELECT = `
   id, site_key, actress_id, title, slug, category,
-  content, summary, thumbnail_url, gallery_urls, fanza_link,
+  content, summary, thumbnail_url, gallery_urls, fanza_link, affiliate_url,
   tags, is_published, published_at, created_at, updated_at,
   actress:actresses!sn_news_actress_id_fkey(
     id, name, ruby, external_id, image_url
@@ -133,18 +134,19 @@ export async function adminFetchActresses(): Promise<
 
 // ── 記事投稿・更新 ────────────────────────────────────────────────────────────
 export type AdminPostNewsInput = {
-  title:         string
-  slug:          string
-  content:       string
-  summary?:      string
-  category?:     string
-  actress_id?:   string   // external_id
+  title:          string
+  slug:           string
+  content:        string
+  summary?:       string
+  category?:      string
+  actress_id?:    string   // external_id
   thumbnail_url?: string
   gallery_urls?:  string[]
-  fanza_link?:   string
-  tags?:         string[]
-  is_published?: boolean
-  published_at?: string
+  fanza_link?:    string
+  affiliate_url?: string
+  tags?:          string[]
+  is_published?:  boolean
+  published_at?:  string
 }
 
 export async function adminPostNews(
@@ -167,6 +169,7 @@ export async function adminPostNews(
     thumbnail_url: input.thumbnail_url ?? null,
     gallery_urls:  JSON.stringify(input.gallery_urls ?? []),
     fanza_link:    fanzaLinkFinal,
+    affiliate_url: input.affiliate_url ?? null,
     tags:          input.tags ?? [],
     is_published:  input.is_published ?? true,
     updated_at:    now,

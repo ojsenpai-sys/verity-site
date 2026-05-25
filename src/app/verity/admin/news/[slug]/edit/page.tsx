@@ -44,6 +44,7 @@ export default async function AdminNewsEditPage({ params }: { params: Promise<Pa
           thumbnail_url: news.thumbnail_url ?? '',
           gallery_urls:  news.gallery_urls,
           fanza_link:    news.fanza_link ?? '',
+          affiliate_url: news.affiliate_url ?? '',
           tags:          news.tags,
           is_published:  news.is_published,
         }}

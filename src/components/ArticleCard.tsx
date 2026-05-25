@@ -10,12 +10,25 @@ function proxyUrl(url: string): string {
   return `/api/proxy/image?url=${encodeURIComponent(url)}`
 }
 
+/** metadata.url が /dc/doujin/ を含む場合、cid を抽出してFANZA書影URLを返す */
+function doujinCoverUrl(metaUrl: string | null | undefined): string | null {
+  if (!metaUrl?.includes('/dc/doujin/')) return null
+  const m = metaUrl.match(/\/cid=([^/?]+)/)
+  if (!m) return null
+  const cid = m[1]
+  return `https://pics.dmm.co.jp/digital/comic/${cid}/${cid}pl.jpg`
+}
+
 /**
- * image_url が null / 空 / 'NOW PRINTING' の場合、external_id（CID）から
- * CDN URL を再構築する。それも無ければ null を返す → NowPrinting を表示。
+ * image_url が null / 空 / 'NOW PRINTING' の場合:
+ *   1. 同人コミックなら metadata.url から cid を抽出して FANZA 書影 URL を生成
+ *   2. それ以外は external_id（CID）から CDN URL を再構築
+ *   いずれも無ければ null → NowPrinting を表示。
  */
 function effectiveImageUrl(article: Article): string | null {
   if (!isBadImageUrl(article.image_url)) return article.image_url!
+  const doujin = doujinCoverUrl(article.metadata?.url as string | null)
+  if (doujin) return doujin
   const cid = article.external_id as string | null | undefined
   return cid ? cidToCdnUrl(cid, 'pl') : null
 }
@@ -101,14 +114,25 @@ export function ArticleCard({ article }: ArticleCardProps) {
             NEW
           </span>
         )}
-        {/* 媒体種別バッジ */}
+        {/* 同人コミック バッジ（左上）— metadata.url で /dc/doujin/ を検知 */}
+        {(() => {
+          const metaUrl = typeof article.metadata?.url === 'string' ? (article.metadata.url as string) : null
+          if (!metaUrl?.includes('/dc/doujin/')) return null
+          return (
+            <span className="absolute left-2 top-2 rounded-full bg-emerald-500/90 px-2.5 py-0.5 text-[9px] font-bold tracking-wide text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]">
+              同人コミック
+            </span>
+          )
+        })()}
+        {/* 媒体種別バッジ（右上）— 同人コミックは左上バッジで表示するため除外 */}
         {(() => {
           const floor      = typeof article.metadata?.floor === 'string' ? article.metadata.floor : null
-          // metadata.url（生 DMM URL）で DVD を確実に判定する
+          // metadata.url（生 DMM URL）で DVD・同人を確実に判定する
           // affiliate_url は al.fanza.co.jp/?lurl=エンコード形式の場合があるため使わない
           const metaUrl    = typeof article.metadata?.url === 'string' ? (article.metadata.url as string) : null
-          const isDvd      = floor === 'dvd' || (metaUrl !== null && metaUrl.includes('/mono/dvd/'))
-          const isDigital  = !isDvd && (floor === 'videoa' || (metaUrl !== null && metaUrl.includes('/digital/')))
+          const isDoujin   = metaUrl !== null && metaUrl.includes('/dc/doujin/')
+          const isDvd      = !isDoujin && (floor === 'dvd' || (metaUrl !== null && metaUrl.includes('/mono/dvd/')))
+          const isDigital  = !isDoujin && !isDvd && (floor === 'videoa' || (metaUrl !== null && metaUrl.includes('/digital/')))
           if (!isDvd && !isDigital) return null
           return (
             <span className={[

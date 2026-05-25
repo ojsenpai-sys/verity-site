@@ -9,6 +9,33 @@ import {
 import type { Profile, Actress, UnlockedTitle } from '@/lib/types'
 import type { GenreStats, TitleDef } from '@/lib/titles'
 import { isBadImageUrl, cidToCdnUrl } from '@/lib/cidUtils'
+import type { AxisScore, RecommendedProduct } from '@/components/GentlemanAnalysis'
+
+// ── ジェントルマン成分解析: ジャンル → 5 軸マッピング ──────────────────────────
+const AXIS_GENRES: Record<string, string[]> = {
+  '母性・癒やし':     ['人妻', '熟女', '巨乳', 'お姉さん', '未亡人', 'ムチムチ', '豊満', 'ぽっちゃり', '人妻もの', 'Gカップ', 'Hカップ', '美乳', '爆乳', '美巨乳'],
+  '刺激・スパルタ':   ['SM', '調教', '拘束', 'ハード系', '淫乱・ハード系', '凌辱', '鬼畜', 'ドM', 'ドS', 'アナル', '潮吹き', '輪姦', '監禁', '中出し'],
+  '王道・清純':       ['美少女', '清純', '女子大生', '制服', '学生', 'キュート', '天然', '単体作品', '処女', '女子校生', 'キス・接吻', 'イタズラ'],
+  'ギャル・セクシー': ['ギャル', 'セクシー', 'ランジェリー', 'グラビア', 'ビキニ', 'ナンパ', '痴女', 'スレンダー', 'ミニスカ', '長身', '巨尻', '美脚'],
+  'マニアック・企画': ['企画', 'アイドル', 'コスプレ', 'フェチ', '素人', 'ドキュメント', '独占配信', '女教師', '配信専用'],
+}
+
+function computeAxisScores(genres: GenreStats[]): AxisScore[] {
+  const raw: Record<string, number> = Object.fromEntries(
+    Object.keys(AXIS_GENRES).map(k => [k, 0]),
+  )
+  for (const { id, count } of genres) {
+    for (const [axis, list] of Object.entries(AXIS_GENRES)) {
+      if (list.includes(id)) { raw[axis] += count; break }
+    }
+  }
+  const max = Math.max(...Object.values(raw), 1)
+  return Object.entries(raw).map(([axis, r]) => ({
+    axis,
+    score: Math.round((r / max) * 100),
+    fullMark: 100,
+  }))
+}
 
 export const metadata: Metadata = {
   title: 'マイページ — VERITY',
@@ -240,6 +267,94 @@ export default async function ProfilePage() {
       .map(r => [r.slug, r.published_at])
   )
 
+  // ── 成分解析: お気に入り女優記事タグからジャンルを推定（ジャンルログが空の場合の補完）──
+  // articles.tags = [女優名, ジャンル名, ...] なので女優名・ノイズタグを除去してジャンルだけ抽出
+  const NOISE_TAGS = new Set([
+    'サンプル動画', 'Blu-ray（ブルーレイ）', 'ハイビジョン', '4K',
+    '4時間以上作品', '特典付き・セット商品', 'イメージビデオ',
+  ])
+  // VR タグは "VR専用" "ハイクオリティVR" "8KVR" 等バリエーションがあるので部分一致で除外
+  const isNoisyTag = (tag: string) =>
+    NOISE_TAGS.has(tag) || tag.includes('VR') || /^\d/.test(tag) ||
+    tag.includes('年代') || tag.includes('DOD')
+
+  const favNameSet       = new Set(favNames)
+  const derivedTagCounts = new Map<string, number>()
+  for (const art of (soloArtResult.data ?? []) as { tags: string[] | null }[]) {
+    for (const tag of (art.tags ?? [])) {
+      if (!favNameSet.has(tag) && !isNoisyTag(tag)) {
+        derivedTagCounts.set(tag, (derivedTagCounts.get(tag) ?? 0) + 1)
+      }
+    }
+  }
+  const derivedGenres: GenreStats[] = [...derivedTagCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id, count]) => ({ id, count }))
+
+  // ジャンルログ優先、なければ記事タグから推定したジャンルを使用
+  const effectiveGenres = topGenres.length > 0 ? topGenres : derivedGenres
+
+  // 5 軸スコア計算
+  const axisScores = computeAxisScores(effectiveGenres)
+  const sortedAxes = [...axisScores].sort((a, b) => b.score - a.score)
+  const topAxis    = (sortedAxes[0]?.score ?? 0) > 0 ? sortedAxes[0].axis : null
+
+  // レコメンド用ジャンル: ユーザーのトップ軸ジャンルのみに絞る
+  const effectiveGenreSet = new Set(effectiveGenres.map(g => g.id))
+  const topAxisGenres     = topAxis ? AXIS_GENRES[topAxis].filter(g => effectiveGenreSet.has(g)) : []
+  // トップ軸ジャンルが取れない場合は effectiveGenres 上位10件にフォールバック
+  const queryGenres       = topAxisGenres.length > 0
+    ? topAxisGenres
+    : effectiveGenres.slice(0, 10).map(g => g.id)
+
+  // ── 運命の1本: 動画配信限定・VR/イメージビデオ除外・日付範囲絞り ─────────────
+  // metadata.url（生DMM URL）で動画判定。affiliate_url は使用しない。
+  let recommendedProduct: RecommendedProduct | null = null
+  if (queryGenres.length > 0) {
+    const dateFrom = new Date(Date.now() - 10 * 24 * 3600 * 1000).toISOString()
+    const dateTo   = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString()
+    // floor=videoa をDBレベルで絞る → 30件全部がvideoa、その中でVRをクライアント除外
+    const { data: recCandidates } = await supabase.from('articles')
+      .select('id, title, image_url, metadata, slug, tags')
+      .overlaps('tags', queryGenres)
+      .eq('is_active', true)
+      .filter('metadata->>floor', 'eq', 'videoa')
+      .gte('published_at', dateFrom)
+      .lte('published_at', dateTo)
+      .order('published_at', { ascending: false })
+      .limit(30)
+    type RecRow = {
+      id: string; title: string; image_url: string | null
+      metadata: Record<string, unknown> | null; slug: string; tags: string[] | null
+    }
+    // VR は "VR専用" "ハイクオリティVR" "8KVR" 等バリエーションがあるため部分一致で除外
+    const recFiltered = (recCandidates as RecRow[] ?? []).filter(a =>
+      a.metadata?.floor === 'videoa' &&
+      !a.tags?.some(t => t.includes('VR')) &&
+      !a.tags?.includes('イメージビデオ'),
+    )
+    // topAxis に最も多くタグが一致する作品を選ぶ（ギャル等の別軸タグ混在を避ける）
+    const topAxisGenreSet = new Set(topAxisGenres)
+    const recRaw: RecRow | null = (() => {
+      if (topAxisGenreSet.size === 0 || recFiltered.length === 0) return recFiltered[0] ?? null
+      return recFiltered.reduce((best, a) => {
+        const score     = (a.tags ?? []).filter(t => topAxisGenreSet.has(t)).length
+        const bestScore = (best.tags ?? []).filter(t => topAxisGenreSet.has(t)).length
+        return score > bestScore ? a : best
+      }, recFiltered[0])
+    })()
+    if (recRaw) {
+      recommendedProduct = {
+        id:            recRaw.id,
+        title:         recRaw.title,
+        image_url:     recRaw.image_url,
+        metadataUrl:   (recRaw.metadata?.url as string) ?? null,
+        metadataFloor: (recRaw.metadata?.floor as string) ?? null,
+        slug:          recRaw.slug,
+      }
+    }
+  }
+
   // ── ギャラリー未読判定 ──────────────────────────────────────────────────────
   const coveredSet = new Set(
     ((coverageResult.data ?? []) as { actress_name: string }[]).map(r => r.actress_name)
@@ -388,6 +503,9 @@ export default async function ProfilePage() {
         hasNewGalleryPosts={hasNewGalleryPosts}
         missingSnsActresses={missingSnsActresses}
         earnedEpithetIds={earnedEpithetIds}
+        axisScores={axisScores}
+        topAxis={topAxis}
+        recommendedProduct={recommendedProduct}
       />
     </div>
   )

@@ -82,7 +82,7 @@ const INPUT_BASE = [
   'focus:border-[var(--magenta)]/60 focus:outline-none transition-colors',
 ].join(' ')
 
-const CATEGORIES = ['NEWS', 'INTERVIEW', 'EVENT', 'COLUMN', 'REPORT']
+const CATEGORIES = ['NEWS', 'INTERVIEW', 'EVENT', 'COLUMN', 'REPORT', 'review']
 
 // ── 画像アップロードゾーン ────────────────────────────────────────────────────
 
@@ -200,6 +200,7 @@ export function NewsEditor({ actresses, initialData, editSlug }: Props) {
   const [gallery,      setGallery]      = useState((initialData?.gallery_urls ?? []).join(', '))
   const [fanzaLink,    setFanzaLink]    = useState(initialData?.fanza_link ?? '')
   const [tags,         setTags]         = useState((initialData?.tags ?? []).join(', '))
+  const [affiliateUrl, setAffiliateUrl] = useState(initialData?.affiliate_url ?? '')
   const [isPublished,  setIsPublished]  = useState(initialData?.is_published ?? true)
 
   const [previewMode,  setPreviewMode]  = useState<'edit' | 'preview' | 'split'>('split')
@@ -256,6 +257,7 @@ export function NewsEditor({ actresses, initialData, editSlug }: Props) {
         thumbnail_url: thumbnail.trim() || undefined,
         gallery_urls:  gallery.split(',').map(u => u.trim()).filter(Boolean),
         fanza_link:    fanzaLink.trim() || undefined,
+        affiliate_url: affiliateUrl.trim() || undefined,
         tags:          tags.split(',').map(t => t.trim()).filter(Boolean),
         is_published:  published,
       }
@@ -527,6 +529,15 @@ export function NewsEditor({ actresses, initialData, editSlug }: Props) {
                   value={fanzaLink}
                   onChange={e => setFanzaLink(e.target.value)}
                   placeholder="https://www.dmm.co.jp/..."
+                  className={INPUT_BASE}
+                />
+              </Field>
+              <Field label="アフィリエイト URL" hint="FastReviewSection のボタンに使用。空の場合は FANZA リンクにフォールバック">
+                <input
+                  type="url"
+                  value={affiliateUrl}
+                  onChange={e => setAffiliateUrl(e.target.value)}
+                  placeholder="https://al.dmm.co.jp/?lurl=...&af_id=..."
                   className={INPUT_BASE}
                 />
               </Field>

@@ -8,11 +8,6 @@ export const metadata: Metadata = {
   description: 'タイアップ企画・広告出稿・取材依頼はこちらからご連絡ください。',
 }
 
-// Formspree endpoint — set CONTACT_FORM_ENDPOINT in your deployment env.
-// 1. Create a form at https://formspree.io/ configured to forward to info.mizutamari48@gmail.com
-// 2. Copy the form endpoint (https://formspree.io/f/XXXXXXXX) and set it as CONTACT_FORM_ENDPOINT
-const FORM_ENDPOINT = process.env.NEXT_PUBLIC_CONTACT_FORM_ENDPOINT ?? 'https://formspree.io/f/YOUR_ID'
-
 export default function ContactPage() {
   return (
     <div className="mx-auto max-w-3xl px-4 py-16 space-y-14">
@@ -40,7 +35,7 @@ export default function ContactPage() {
         </p>
 
         {/* Interactive cards + form (client component) */}
-        <ContactForm formEndpoint={FORM_ENDPOINT} />
+        <ContactForm />
       </div>
 
       {/* ── ご意見箱 ─────────────────────────────────────────────────────── */}

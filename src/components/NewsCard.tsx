@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Calendar, Tag } from 'lucide-react'
 import type { SnNewsWithActress } from '@/lib/types'
+
 function proxyUrl(url: string) {
   return `/verity/api/proxy/image?url=${encodeURIComponent(url)}`
 }
@@ -12,10 +13,16 @@ function formatDate(iso: string | null): string {
   })
 }
 
+function isNew(published_at: string | null): boolean {
+  if (!published_at) return false
+  return Date.now() - new Date(published_at).getTime() < 24 * 60 * 60 * 1000
+}
+
 type Props = { news: SnNewsWithActress }
 
 export function NewsCard({ news }: Props) {
-  const href = `/news/${news.slug}`
+  const href     = `/news/${news.slug}`
+  const showNew  = isNew(news.published_at)
 
   return (
     <article className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden transition-all duration-200 hover:border-[var(--magenta)]/60 hover:shadow-[0_0_28px_rgba(226,0,116,0.18)] hover:-translate-y-0.5">
@@ -40,6 +47,15 @@ export function NewsCard({ news }: Props) {
         {news.category && (
           <span className="absolute left-3 top-3 rounded-full bg-[var(--magenta)] px-2.5 py-0.5 text-[10px] font-bold tracking-wider text-white shadow-[0_0_10px_rgba(226,0,116,0.5)]">
             {news.category}
+          </span>
+        )}
+
+        {/* NEW バッジ（24時間以内に公開） */}
+        {showNew && (
+          <span className="absolute right-2.5 top-2.5 inline-flex items-center gap-1 rounded px-1.5 py-0.5 text-[10px] font-black tracking-widest text-white shadow-[0_0_12px_rgba(226,0,116,0.7)]"
+            style={{ background: 'linear-gradient(135deg, #E20074, #ff2d55)' }}>
+            <span className="h-1.5 w-1.5 rounded-full bg-white/90 animate-pulse" />
+            NEW
           </span>
         )}
       </Link>
