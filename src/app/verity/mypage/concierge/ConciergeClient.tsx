@@ -7,7 +7,8 @@ import type { ChatMessage } from './page'
 
 // ── 定数 ────────────────────────────────────────────────────────────────────
 
-const DAILY_LIMIT = 5
+const DAILY_LIMIT      = 15   // 1日の最大会話回数
+const UNLOCK_THRESHOLD = 300  // 特別モード解放に必要な通算会話数
 
 const GREETING = 'おかえりなさいませ、ご主人様♡ 今日はどんな作品をお探しですか？'
 
@@ -184,7 +185,7 @@ export function ConciergeClient({
             )}
           </div>
 
-          {/* 100回アンロック: モード切替ボタン */}
+          {/* 300回アンロック: モード切替ボタン */}
           {unlocked && (
             <div className="flex gap-2">
               <button
@@ -235,7 +236,7 @@ export function ConciergeClient({
             <p className="text-[9px] text-[var(--text-muted)]">通算 {totalCount} 回</p>
             {!unlocked && (
               <p className="text-[9px] text-[var(--text-muted)] leading-relaxed">
-                あと {Math.max(0, 100 - totalCount)} 回で<br />
+                あと {Math.max(0, UNLOCK_THRESHOLD - totalCount)} 回で<br />
                 <span className="text-[var(--magenta)]">特別モード解放♡</span>
               </p>
             )}

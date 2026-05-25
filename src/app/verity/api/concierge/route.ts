@@ -5,7 +5,8 @@ const GEMINI_KEY   = process.env.GEMINI_API_KEY!
 const GEMINI_MODEL = 'gemini-2.5-flash'
 const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`
 
-const DAILY_LIMIT = 5
+const DAILY_LIMIT       = 15   // 1日の最大会話回数（JST 0時リセット）
+const UNLOCK_THRESHOLD  = 300  // 特別モード（akari_03）解放に必要な通算会話数
 
 // 安全フィルタ全解除（成人向けコンテンツサイト用）
 const SAFETY_SETTINGS = [
@@ -14,6 +15,81 @@ const SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
   { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
 ]
+
+// ── 動的 RAG 検索 ────────────────────────────────────────────────────────────
+// ユーザー入力からキーワードを抽出し、title ilike / tags overlaps で優先検索する。
+// ヒットがない場合は前後1ヶ月の最新作にフォールバック。
+
+type ArticleRow = {
+  title:        string
+  slug:         string
+  tags:         unknown
+  published_at: string | null
+}
+
+function extractKeywords(text: string): string[] {
+  return [...new Set(
+    text
+      .split(/[\s　、。！？「」【】（）・,，\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length >= 2),
+  )].slice(0, 5)
+}
+
+// Supabase ilike / or クエリ用に危険文字をエスケープ
+function escapeIlike(s: string): string {
+  return s.replace(/[%_,]/g, c => (c === '%' ? '\\%' : c === '_' ? '\\_' : ''))
+}
+
+async function fetchRelevantWorks(
+  supabase:    Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>,
+  userInput:   string,
+  monthAgo:    Date,
+  monthLater:  Date,
+): Promise<ArticleRow[]> {
+  const keywords = extractKeywords(userInput)
+
+  if (keywords.length > 0) {
+    // ilike: title に各キーワードを OR 検索
+    const ilikeParts = keywords
+      .map(k => `title.ilike.%${escapeIlike(k)}%`)
+      .join(',')
+
+    const [{ data: titleHits }, { data: tagHits }] = await Promise.all([
+      supabase
+        .from('articles')
+        .select('title, slug, tags, published_at')
+        .eq('is_active', true)
+        .or(ilikeParts)
+        .order('published_at', { ascending: false })
+        .limit(15),
+      supabase
+        .from('articles')
+        .select('title, slug, tags, published_at')
+        .eq('is_active', true)
+        .overlaps('tags', keywords)        // 女優名など tags 配列との一致
+        .order('published_at', { ascending: false })
+        .limit(15),
+    ])
+
+    // 両結果をマージして slug でユニーク化
+    const merged  = [...(titleHits ?? []), ...(tagHits ?? [])] as ArticleRow[]
+    const unique  = [...new Map(merged.map(a => [a.slug, a])).values()]
+    if (unique.length > 0) return unique.slice(0, 15)
+  }
+
+  // フォールバック: 前後1ヶ月の最新作
+  const { data } = await supabase
+    .from('articles')
+    .select('title, slug, tags, published_at')
+    .eq('is_active', true)
+    .gte('published_at', monthAgo.toISOString())
+    .lte('published_at', monthLater.toISOString())
+    .order('published_at', { ascending: false })
+    .limit(10)
+
+  return (data ?? []) as ArticleRow[]
+}
 
 // JST 今日 00:00:00 を UTC で返す
 function todayJstStart(): string {
@@ -60,7 +136,7 @@ export async function GET() {
     messages:       messages      ?? [],
     dailyCount:     dailyCount    ?? 0,
     totalUserCount: totalCount    ?? 0,
-    unlocked:       (totalCount ?? 0) >= 100,
+    unlocked:       (totalCount ?? 0) >= UNLOCK_THRESHOLD,
   })
 }
 
@@ -103,30 +179,23 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'db_error' }, { status: 500 })
   }
 
-  // 最新作 + 最新の会話履歴を並列取得（user 保存後なので履歴に今回の発言が含まれる）
-  const now = new Date()
+  // 会話履歴取得 + 動的 RAG 検索を並列実行
+  const now        = new Date()
   const monthAgo   = new Date(now); monthAgo.setMonth(now.getMonth() - 1)
   const monthLater = new Date(now); monthLater.setMonth(now.getMonth() + 1)
 
-  const [{ data: historyRows }, { data: recentWorks }] = await Promise.all([
+  const [{ data: historyRows }, recentWorks] = await Promise.all([
     supabase
       .from('sn_concierge_chats')
       .select('role, content')
       .eq('user_id', user.id)
       .order('created_at', { ascending: true })
-      .limit(21),                              // 最大 20 往復 + 今回の user
-    supabase
-      .from('articles')
-      .select('title, slug, tags, published_at')
-      .eq('is_active', true)
-      .gte('published_at', monthAgo.toISOString())
-      .lte('published_at', monthLater.toISOString())
-      .order('published_at', { ascending: false })
-      .limit(10),                              // 軽量化: 30 → 10 件
+      .limit(21),
+    fetchRelevantWorks(supabase, content, monthAgo, monthLater),
   ])
 
   // 最新作コンテキスト（タイトル・女優・slug のみ、簡潔に）
-  const worksContext = (recentWorks ?? [])
+  const worksContext = recentWorks
     .map(a => {
       const actresses = ((a.tags as string[] | null) ?? []).slice(0, 2).join('・')
       const date = a.published_at
