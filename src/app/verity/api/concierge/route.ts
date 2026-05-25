@@ -59,7 +59,8 @@ async function fetchRelevantWorks(
     const keyword = userInput.trim().slice(0, 50)
     console.log('[RAG DEBUG] keyword:', JSON.stringify(keyword), 'len:', keyword.length)
 
-    if (keyword.length >= 2) {
+    // 4文字以下は挨拶や短い語の誤爆を防ぐためRAGスキップ（女優名は5文字以上が多い）
+    if (keyword.length >= 5) {
       const pattern = `%${escapeIlike(keyword)}%`
 
       const [titleRes, tagRes] = await Promise.all([
@@ -111,6 +112,39 @@ async function fetchRelevantWorks(
     console.error('[concierge] fetchRelevantWorks threw:', e)
     return { articles: [], hitBySearch: false }
   }
+}
+
+// ── Gemini multi-turn 履歴クリーン化 ─────────────────────────────────────
+// Gemini の仕様: user/model が必ず交互・空コンテンツ禁止・先頭は user
+type GeminiContent = { role: 'user' | 'model'; parts: { text: string }[] }
+
+function buildCleanContents(rows: { role: string; content: string }[]): GeminiContent[] {
+  // 1. 空コンテンツを除外
+  const valid = rows.filter(r => r.content.trim().length > 0)
+
+  // 2. Gemini 形式に変換
+  const all: GeminiContent[] = valid.map(r => ({
+    role:  r.role === 'user' ? 'user' : 'model',
+    parts: [{ text: r.content }],
+  }))
+
+  // 3. 同一 role が連続している場合は後のメッセージを採用（前を破棄）
+  const deduped: GeminiContent[] = []
+  for (const msg of all) {
+    if (deduped.length > 0 && deduped[deduped.length - 1].role === msg.role) {
+      deduped[deduped.length - 1] = msg
+    } else {
+      deduped.push(msg)
+    }
+  }
+
+  // 4. 先頭が user になるまでトリム
+  while (deduped.length > 0 && deduped[0].role !== 'user') deduped.shift()
+
+  // 5. 末尾が user になるまでトリム（Gemini は末尾 user に対して model を返す）
+  while (deduped.length > 0 && deduped[deduped.length - 1].role !== 'user') deduped.pop()
+
+  return deduped
 }
 
 // JST 今日 00:00:00 を UTC で返す
@@ -266,10 +300,9 @@ ${worksContext || '（現在データなし）'}
 作品リンクの提示は不要です。自然なキャラクターとして会話してください。
 もし作品を探している雰囲気があれば「どんな女優さんや作品がお好みですか？♡」と確認してください。`
 
-  const contents = historyRows.map(m => ({
-    role:  m.role === 'user' ? 'user' : 'model',
-    parts: [{ text: m.content }],
-  }))
+  const contents = buildCleanContents(historyRows)
+  console.log('[GEMINI MULTI-TURN DEBUG] contents len:', contents.length,
+    JSON.stringify(contents.map(c => ({ role: c.role, len: c.parts[0].text.length }))))
 
   // ── Gemini 呼び出し ────────────────────────────────────────────────────
   let reply = ''
