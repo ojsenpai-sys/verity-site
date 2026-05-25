@@ -307,6 +307,11 @@ export function ConciergeClient({
               </button>
             </div>
           )}
+
+          {/* 注意書き */}
+          <p className="mt-2 text-[10px] text-[var(--text-muted)] leading-relaxed opacity-60 text-center">
+            ※ あかりとの会話において、過度に性的な表現や公序良俗に反する言葉の入力はご遠慮ください。アカウント制限の対象となる場合があります。
+          </p>
         </div>
       </div>
 

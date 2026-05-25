@@ -16,16 +16,32 @@ const SAFETY_SETTINGS = [
   { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
 ]
 
+// ── 作品検索の意図を検出 ───────────────────────────────────────────────────
+// 女優名・ジャンル名はRAGヒットで検出するため、ここは汎用的な作品関連キーワードのみ。
+const WORK_INTENT_KEYWORDS = [
+  '作品', '動画', 'おすすめ', 'お勧め', 'おすすめ', '女優', '出演',
+  '見たい', '探して', 'AV', '最新作', 'ランキング', 'デビュー', 'ジャンル',
+  'メーカー', '配信', 'サンプル', '主演', '単体', '企画',
+]
+
+function detectWorkIntent(text: string): boolean {
+  return WORK_INTENT_KEYWORDS.some(kw => text.includes(kw))
+}
+
 // ── 動的 RAG 検索 ────────────────────────────────────────────────────────────
-// ユーザー入力をそのままキーワードとして .ilike() / .contains() で検索する。
-// ※ .or("title.ilike.%...%") は Supabase JS 内部で % が URL エンコードされない
-//    不具合があるため、.ilike() メソッドを直接呼び出す方式に統一する。
+// hitBySearch: キーワード検索でヒット=true / フォールバック=false
+// isWorkMode は hitBySearch || detectWorkIntent で判定する。
 
 type ArticleRow = {
   title:        string
   slug:         string
   tags:         unknown
   published_at: string | null
+}
+
+type WorksResult = {
+  articles:    ArticleRow[]
+  hitBySearch: boolean
 }
 
 // ilike パターン用エスケープ（% と _ のみ）
@@ -38,18 +54,14 @@ async function fetchRelevantWorks(
   userInput:  string,
   monthAgo:   Date,
   monthLater: Date,
-): Promise<ArticleRow[]> {
+): Promise<WorksResult> {
   try {
-    // ユーザー入力をそのままキーワードとして使用（分割せず50文字上限）
     const keyword = userInput.trim().slice(0, 50)
     console.log('[RAG DEBUG] keyword:', JSON.stringify(keyword), 'len:', keyword.length)
 
     if (keyword.length >= 2) {
       const pattern = `%${escapeIlike(keyword)}%`
 
-      // タイトル ilike + タグ contains を並列実行
-      // .ilike() は Supabase JS が % を正しく URL エンコードするため確実に動作する
-      // .contains('tags', [keyword]) は tags text[] に対して @> 演算子で検索
       const [titleRes, tagRes] = await Promise.all([
         supabase
           .from('articles')
@@ -78,7 +90,7 @@ async function fetchRelevantWorks(
       const unique = [...new Map(merged.map(a => [a.slug, a])).values()]
       console.log('[RAG DEBUG] merged unique hits:', unique.length)
 
-      if (unique.length > 0) return unique.slice(0, 15)
+      if (unique.length > 0) return { articles: unique.slice(0, 15), hitBySearch: true }
     }
 
     // フォールバック: 前後1ヶ月の最新作
@@ -93,11 +105,11 @@ async function fetchRelevantWorks(
 
     if (error) console.error('[concierge] fallback works error:', error.message)
     console.log('[RAG DEBUG] fallback hits:', data?.length ?? 0)
-    return (data ?? []) as ArticleRow[]
+    return { articles: (data ?? []) as ArticleRow[], hitBySearch: false }
 
   } catch (e) {
     console.error('[concierge] fetchRelevantWorks threw:', e)
-    return []
+    return { articles: [], hitBySearch: false }
   }
 }
 
@@ -193,11 +205,11 @@ export async function POST(req: NextRequest) {
   const monthLater = new Date(now); monthLater.setMonth(now.getMonth() + 1)
 
   type RawRow = { role: string; content: string }
-  let historyRows: RawRow[]     = []
-  let recentWorks: ArticleRow[] = []
+  let historyRows: RawRow[]  = []
+  let worksResult: WorksResult = { articles: [], hitBySearch: false }
 
   try {
-    const [{ data: hRows }, works] = await Promise.all([
+    const [{ data: hRows }, wResult] = await Promise.all([
       supabase
         .from('sn_concierge_chats')
         .select('role, content')
@@ -206,13 +218,22 @@ export async function POST(req: NextRequest) {
         .limit(21),
       fetchRelevantWorks(supabase, content, monthAgo, monthLater),
     ])
-    historyRows = (hRows ?? []) as RawRow[]
-    recentWorks = works
+    historyRows  = (hRows ?? []) as RawRow[]
+    worksResult  = wResult
   } catch (e) {
     console.error('[concierge] history/works fetch error:', e)
   }
 
-  // 最新作コンテキスト（タイトル・女優・slug のみ）
+  const recentWorks = worksResult.articles
+
+  // ── モード判定 ─────────────────────────────────────────────────────────
+  // 作品モード: RAGキーワード検索がヒット、またはユーザー入力に作品関連語が含まれる
+  // 雑談モード: それ以外（挨拶・雑談など）→ 作品リンク強制なし、自由に会話
+  const isWorkMode = worksResult.hitBySearch || detectWorkIntent(content)
+  console.log('[concierge] isWorkMode:', isWorkMode,
+    '(hitBySearch:', worksResult.hitBySearch, 'detectWorkIntent:', detectWorkIntent(content), ')')
+
+  // 最新作コンテキスト（作品モード時のみ使用）
   const worksContext = recentWorks
     .map(a => {
       const tags      = Array.isArray(a.tags) ? (a.tags as string[]) : []
@@ -224,8 +245,9 @@ export async function POST(req: NextRequest) {
     })
     .join('\n')
 
-  // システム指示
-  const systemInstruction = `あなたは「あかり」という名前の、動画作品専門のコンシェルジュです。
+  // ── システム指示（モード別） ───────────────────────────────────────────
+  const systemInstruction = isWorkMode
+    ? `あなたは「あかり」という名前の、動画作品専門のコンシェルジュです。
 ユーザーを「ご主人様」と呼び、丁寧で少し甘えた口調（文末に♡）で接してください。
 VERITY というキュレーションサイトで、会員の好みに合った作品を提案する役割を担っています。
 
@@ -238,6 +260,11 @@ ${worksContext || '（現在データなし）'}
 3. 一度に2〜3作品まで
 4. 出演者名・ジャンル指定があれば最優先でフィルタリング
 5. 知らない場合は「調べてみますね♡」と正直に伝える`
+    : `あなたは「あかり」という名前の、VERITYのコンシェルジュです。
+ユーザーを「ご主人様」と呼び、丁寧で少し甘えた口調（文末に♡）で、温かく自然に会話してください。
+挨拶・雑談・日常の話題など、どんな会話にも明るく応じてください。
+作品リンクの提示は不要です。自然なキャラクターとして会話してください。
+もし作品を探している雰囲気があれば「どんな女優さんや作品がお好みですか？♡」と確認してください。`
 
   const contents = historyRows.map(m => ({
     role:  m.role === 'user' ? 'user' : 'model',
@@ -255,7 +282,7 @@ ${worksContext || '（現在データなし）'}
         contents,
         safetySettings: SAFETY_SETTINGS,
         generationConfig: {
-          temperature:     0.85,
+          temperature:     isWorkMode ? 0.85 : 1.0,
           maxOutputTokens: 900,
         },
       }),
@@ -294,15 +321,17 @@ ${worksContext || '（現在データなし）'}
     console.error('[concierge] fetch error:', e)
   }
 
-  // ── Gemini が応答できなかった場合、RAGデータからテンプレート応答を生成 ──
+  // ── Gemini が応答できなかった場合のフォールバック ─────────────────────
   if (!reply) {
-    if (recentWorks.length > 0) {
+    if (isWorkMode && recentWorks.length > 0) {
+      // 作品モード: RAGデータから直接テンプレート応答
       const picks = recentWorks.slice(0, 3)
       reply = `ご主人様♡ こんな作品はいかがでしょう？\n\n` +
         picks.map(a => `👉 [${a.title}](/verity/articles/${a.slug})`).join('\n') +
         '\n\nほかにも気になる女優さんや条件があればお気軽にどうぞ♡'
     } else {
-      reply = 'ちょっと考え中です♡ もう一度話しかけてみてください。'
+      // 雑談モード or 作品なし: シンプルなリトライ促し
+      reply = '少しぼーっとしていました♡ もう一度お話しかけてください！'
     }
   }
 
