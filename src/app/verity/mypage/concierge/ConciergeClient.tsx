@@ -221,7 +221,7 @@ export function ConciergeClient({
           {/* デイリーカウンター */}
           <div className="text-center space-y-2">
             <p className="text-[10px] text-[var(--text-muted)] tracking-wider">今日の残り会話</p>
-            <div className="flex gap-1.5 justify-center">
+            <div className="grid grid-cols-5 gap-1.5 justify-items-center">
               {Array.from({ length: DAILY_LIMIT }).map((_, i) => (
                 <div
                   key={i}
