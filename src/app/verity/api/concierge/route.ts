@@ -8,12 +8,12 @@ const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/${
 const DAILY_LIMIT      = 15   // 1日の最大会話回数（JST 0時リセット）
 const UNLOCK_THRESHOLD = 300  // 特別モード（akari_03）解放に必要な通算会話数
 
-// 安全フィルタ全解除（成人向けコンテンツサイト用）
+// BLOCK_NONE は一部の API ティアで 400 エラーを引き起こすため BLOCK_LOW_AND_ABOVE に統一
 const SAFETY_SETTINGS = [
-  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_NONE' },
-  { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_NONE' },
-  { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_NONE' },
-  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_NONE' },
+  { category: 'HARM_CATEGORY_SEXUALLY_EXPLICIT', threshold: 'BLOCK_LOW_AND_ABOVE' },
+  { category: 'HARM_CATEGORY_HATE_SPEECH',       threshold: 'BLOCK_LOW_AND_ABOVE' },
+  { category: 'HARM_CATEGORY_HARASSMENT',        threshold: 'BLOCK_LOW_AND_ABOVE' },
+  { category: 'HARM_CATEGORY_DANGEROUS_CONTENT', threshold: 'BLOCK_LOW_AND_ABOVE' },
 ]
 
 // ── 作品検索の意図を検出 ───────────────────────────────────────────────────
@@ -274,26 +274,34 @@ ${worksContext || '（現在データなし）'}
   // ── Gemini 呼び出し ────────────────────────────────────────────────────
   let reply = ''
   try {
-    const geminiRes = await fetch(GEMINI_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        system_instruction: { parts: [{ text: systemInstruction }] },
-        contents,
-        safetySettings: SAFETY_SETTINGS,
-        generationConfig: {
-          temperature:     isWorkMode ? 0.85 : 1.0,
-          maxOutputTokens: 900,
-        },
-      }),
-    })
+    const requestBody = {
+      system_instruction: { parts: [{ text: systemInstruction }] },
+      contents,
+      safetySettings: SAFETY_SETTINGS,
+      generationConfig: {
+        temperature:     isWorkMode ? 0.85 : 1.0,
+        maxOutputTokens: 900,
+      },
+    }
+
+    let geminiRes: Response
+    try {
+      geminiRes = await fetch(GEMINI_URL, {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify(requestBody),
+      })
+    } catch (fetchErr) {
+      console.error('[GEMINI API ERROR] fetch threw:', fetchErr)
+      throw fetchErr
+    }
 
     const rawText = await geminiRes.text()
 
     if (!geminiRes.ok) {
-      console.error(`[concierge] Gemini HTTP ${geminiRes.status}:`, rawText.slice(0, 600))
+      console.error(`[GEMINI API ERROR] HTTP ${geminiRes.status} isWorkMode=${isWorkMode}:`, rawText.slice(0, 800))
     } else {
-      const data = JSON.parse(rawText) as {
+      let data: {
         candidates?: {
           content?:       { parts: { text: string }[] }
           finishReason?:  string
@@ -301,24 +309,31 @@ ${worksContext || '（現在データなし）'}
         }[]
         promptFeedback?: { blockReason?: string }
       }
+      try {
+        data = JSON.parse(rawText) as typeof data
+      } catch (parseErr) {
+        console.error('[GEMINI API ERROR] JSON parse failed:', parseErr, '| raw:', rawText.slice(0, 400))
+        throw parseErr
+      }
 
       const blockReason = data.promptFeedback?.blockReason
       const candidate   = data.candidates?.[0]
       const text        = candidate?.content?.parts?.[0]?.text
 
       if (blockReason) {
-        console.error('[concierge] Gemini prompt blocked:', blockReason)
+        console.error('[GEMINI API ERROR] prompt blocked:', blockReason, '| isWorkMode:', isWorkMode)
       } else if (candidate?.finishReason && candidate.finishReason !== 'STOP') {
-        console.error('[concierge] Gemini finish reason:', candidate.finishReason,
-          '| raw:', rawText.slice(0, 600))
+        console.error('[GEMINI API ERROR] finishReason:', candidate.finishReason,
+          '| isWorkMode:', isWorkMode, '| raw:', rawText.slice(0, 800))
       } else if (!text) {
-        console.error('[concierge] Gemini empty response, raw:', rawText.slice(0, 600))
+        console.error('[GEMINI API ERROR] empty text | isWorkMode:', isWorkMode,
+          '| raw:', rawText.slice(0, 800))
       }
 
       if (text) reply = text
     }
   } catch (e) {
-    console.error('[concierge] fetch error:', e)
+    console.error('[GEMINI API ERROR] unhandled:', e)
   }
 
   // ── Gemini が応答できなかった場合のフォールバック ─────────────────────
