@@ -280,7 +280,7 @@ ${worksContext || '（現在データなし）'}
       safetySettings: SAFETY_SETTINGS,
       generationConfig: {
         temperature:     isWorkMode ? 0.85 : 1.0,
-        maxOutputTokens: 900,
+        maxOutputTokens: 2000,
       },
     }
 
@@ -346,7 +346,7 @@ ${worksContext || '（現在データなし）'}
         '\n\nほかにも気になる女優さんや条件があればお気軽にどうぞ♡'
     } else {
       // 雑談モード or 作品なし: シンプルなリトライ促し
-      reply = '少しぼーっとしていました♡ もう一度お話しかけてください！'
+      reply = 'ご主人様、ちょっと電波（お耳）の調子が悪くて聞き取れませんでしたっ♡ もう一度おっしゃっていただけますか？♪'
     }
   }
 
