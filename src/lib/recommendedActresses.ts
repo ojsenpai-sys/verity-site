@@ -32,6 +32,8 @@ export const RECOMMENDED_ACTRESS_NAMES = [
   // ── 現状維持 ─────────────────────────────────────────────────
   '瀬戸環奈',
   'ひなの花音',
+  // ── 大型新人追加 ─────────────────────────────────────────────
+  '蜜このは',     // snos00257
 ] as const
 
 export type RecommendedActressName = (typeof RECOMMENDED_ACTRESS_NAMES)[number]
