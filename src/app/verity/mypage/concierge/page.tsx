@@ -25,7 +25,12 @@ function todayJstStart(): string {
   return new Date(jst.getTime() - 9 * 60 * 60 * 1000).toISOString()
 }
 
+// 機能一時停止フラグ — true のとき画面を封鎖しマイページへリダイレクト
+const CONCIERGE_DISABLED = true
+
 export default async function ConciergePageRoute() {
+  if (CONCIERGE_DISABLED) redirect('/verity/profile')
+
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 

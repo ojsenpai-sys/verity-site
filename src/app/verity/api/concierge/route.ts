@@ -198,7 +198,14 @@ export async function GET() {
 
 // ── POST: メッセージ送信 + Gemini 応答 ─────────────────────────────────────
 
+// 機能一時停止フラグ — true のとき全リクエストを即座に503で返す
+const CONCIERGE_DISABLED = true
+
 export async function POST(req: NextRequest) {
+  if (CONCIERGE_DISABLED) {
+    return NextResponse.json({ error: 'Service temporarily unavailable' }, { status: 503 })
+  }
+
   const supabase = await createClient()
   const { data: { user }, error } = await supabase.auth.getUser()
   if (error || !user) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })

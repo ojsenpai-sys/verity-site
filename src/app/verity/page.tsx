@@ -13,7 +13,6 @@ import { SocialFeedSection } from '@/components/SocialFeedSection'
 import { PopularActressRankingSection } from '@/components/PopularActressRankingSection'
 import type { Article, Actress, FilterParams } from '@/lib/types'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
-import { AkariGuestBanner } from '@/components/AkariGuestBanner'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -429,9 +428,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <FilterBar categories={categories} sources={sources} tags={tags} />
         </Suspense>
       </div>
-
-      {/* ── 1.5. ゲスト向けあかりコンシェルジュ入会促進バナー ────────────── */}
-      <AkariGuestBanner />
 
       {/* ── 2. THE MUST ONE ───────────────────────────────────────────────── */}
       <section id="the-must-one">
