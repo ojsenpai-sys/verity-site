@@ -5,8 +5,8 @@ const GEMINI_KEY   = process.env.GEMINI_API_KEY!
 const GEMINI_MODEL = 'gemini-2.5-flash'
 const GEMINI_URL   = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent?key=${GEMINI_KEY}`
 
-const DAILY_LIMIT       = 15   // 1日の最大会話回数（JST 0時リセット）
-const UNLOCK_THRESHOLD  = 300  // 特別モード（akari_03）解放に必要な通算会話数
+const DAILY_LIMIT      = 15   // 1日の最大会話回数（JST 0時リセット）
+const UNLOCK_THRESHOLD = 300  // 特別モード（akari_03）解放に必要な通算会話数
 
 // 安全フィルタ全解除（成人向けコンテンツサイト用）
 const SAFETY_SETTINGS = [
@@ -17,8 +17,9 @@ const SAFETY_SETTINGS = [
 ]
 
 // ── 動的 RAG 検索 ────────────────────────────────────────────────────────────
-// ユーザー入力からキーワードを抽出し、title ilike / tags overlaps で優先検索する。
-// ヒットがない場合は前後1ヶ月の最新作にフォールバック。
+// ユーザー入力をそのままキーワードとして .ilike() / .contains() で検索する。
+// ※ .or("title.ilike.%...%") は Supabase JS 内部で % が URL エンコードされない
+//    不具合があるため、.ilike() メソッドを直接呼び出す方式に統一する。
 
 type ArticleRow = {
   title:        string
@@ -27,58 +28,56 @@ type ArticleRow = {
   published_at: string | null
 }
 
-function extractKeywords(text: string): string[] {
-  return [...new Set(
-    text
-      .split(/[\s　、。！？「」【】（）・,，\n]+/)
-      .map(s => s.trim())
-      .filter(s => s.length >= 2),
-  )].slice(0, 5)
-}
-
-// Supabase ilike / or クエリ用に危険文字をエスケープ
+// ilike パターン用エスケープ（% と _ のみ）
 function escapeIlike(s: string): string {
   return s.replace(/[%_]/g, c => (c === '%' ? '\\%' : '\\_'))
 }
 
 async function fetchRelevantWorks(
-  supabase:    Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>,
-  userInput:   string,
-  monthAgo:    Date,
-  monthLater:  Date,
+  supabase:   Awaited<ReturnType<typeof import('@/lib/supabase/server').createClient>>,
+  userInput:  string,
+  monthAgo:   Date,
+  monthLater: Date,
 ): Promise<ArticleRow[]> {
   try {
-    const keywords = extractKeywords(userInput)
+    // ユーザー入力をそのままキーワードとして使用（分割せず50文字上限）
+    const keyword = userInput.trim().slice(0, 50)
+    console.log('[RAG DEBUG] keyword:', JSON.stringify(keyword), 'len:', keyword.length)
 
-    if (keywords.length > 0) {
-      // ilike: title に各キーワードを OR 検索
-      const ilikeParts = keywords
-        .map(k => `title.ilike.%${escapeIlike(k)}%`)
-        .join(',')
+    if (keyword.length >= 2) {
+      const pattern = `%${escapeIlike(keyword)}%`
 
+      // タイトル ilike + タグ contains を並列実行
+      // .ilike() は Supabase JS が % を正しく URL エンコードするため確実に動作する
+      // .contains('tags', [keyword]) は tags text[] に対して @> 演算子で検索
       const [titleRes, tagRes] = await Promise.all([
         supabase
           .from('articles')
           .select('title, slug, tags, published_at')
           .eq('is_active', true)
-          .or(ilikeParts)
+          .ilike('title', pattern)
           .order('published_at', { ascending: false })
           .limit(15),
         supabase
           .from('articles')
           .select('title, slug, tags, published_at')
           .eq('is_active', true)
-          .overlaps('tags', keywords)
+          .contains('tags', [keyword])
           .order('published_at', { ascending: false })
           .limit(15),
       ])
 
-      if (titleRes.error) console.error('[concierge] ilike error:', titleRes.error.message)
-      if (tagRes.error)   console.error('[concierge] overlaps error:', tagRes.error.message)
+      if (titleRes.error) console.error('[RAG DEBUG] title ilike error:', titleRes.error.message)
+      if (tagRes.error)   console.error('[RAG DEBUG] tag contains error:', tagRes.error.message)
 
-      // 両結果をマージして slug でユニーク化
+      console.log('[RAG DEBUG] keyword:', JSON.stringify(keyword),
+        'title hits:', titleRes.data?.length ?? 0,
+        'tag hits:',   tagRes.data?.length   ?? 0)
+
       const merged = [...(titleRes.data ?? []), ...(tagRes.data ?? [])] as ArticleRow[]
       const unique = [...new Map(merged.map(a => [a.slug, a])).values()]
+      console.log('[RAG DEBUG] merged unique hits:', unique.length)
+
       if (unique.length > 0) return unique.slice(0, 15)
     }
 
@@ -93,7 +92,9 @@ async function fetchRelevantWorks(
       .limit(10)
 
     if (error) console.error('[concierge] fallback works error:', error.message)
+    console.log('[RAG DEBUG] fallback hits:', data?.length ?? 0)
     return (data ?? []) as ArticleRow[]
+
   } catch (e) {
     console.error('[concierge] fetchRelevantWorks threw:', e)
     return []
@@ -176,7 +177,7 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // ── [Fix] ユーザーメッセージを先に INSERT（ordering バグ対策）────────────
+  // ── ユーザーメッセージを先に INSERT（ordering バグ対策）────────────────
   const { error: insertUserErr } = await supabase
     .from('sn_concierge_chats')
     .insert({ user_id: user.id, role: 'user', content })
@@ -186,13 +187,13 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'db_error' }, { status: 500 })
   }
 
-  // 会話履歴取得 + 動的 RAG 検索を並列実行（エラーは握り潰して空配列で継続）
+  // 会話履歴取得 + 動的 RAG 検索を並列実行
   const now        = new Date()
   const monthAgo   = new Date(now); monthAgo.setMonth(now.getMonth() - 1)
   const monthLater = new Date(now); monthLater.setMonth(now.getMonth() + 1)
 
   type RawRow = { role: string; content: string }
-  let historyRows: RawRow[]    = []
+  let historyRows: RawRow[]     = []
   let recentWorks: ArticleRow[] = []
 
   try {
@@ -205,13 +206,13 @@ export async function POST(req: NextRequest) {
         .limit(21),
       fetchRelevantWorks(supabase, content, monthAgo, monthLater),
     ])
-    historyRows  = (hRows ?? []) as RawRow[]
-    recentWorks  = works
+    historyRows = (hRows ?? []) as RawRow[]
+    recentWorks = works
   } catch (e) {
     console.error('[concierge] history/works fetch error:', e)
   }
 
-  // 最新作コンテキスト（タイトル・女優・slug のみ、簡潔に）
+  // 最新作コンテキスト（タイトル・女優・slug のみ）
   const worksContext = recentWorks
     .map(a => {
       const tags      = Array.isArray(a.tags) ? (a.tags as string[]) : []
@@ -294,7 +295,6 @@ ${worksContext || '（現在データなし）'}
   }
 
   // ── Gemini が応答できなかった場合、RAGデータからテンプレート応答を生成 ──
-  // コンテンツポリシー等でGeminiが空応答を返しても、RAGヒット結果を直接返す
   if (!reply) {
     if (recentWorks.length > 0) {
       const picks = recentWorks.slice(0, 3)
@@ -306,7 +306,7 @@ ${worksContext || '（現在データなし）'}
     }
   }
 
-  // model メッセージを保存（user より後の created_at になる）
+  // model メッセージを保存
   await supabase
     .from('sn_concierge_chats')
     .insert({ user_id: user.id, role: 'model', content: reply })
