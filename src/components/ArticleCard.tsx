@@ -83,69 +83,81 @@ export function ArticleCard({ article }: ArticleCardProps) {
       : null
 
   const affiliateUrl = withAffiliate(rawAffiliateUrl)
+  const upcoming = isUpcoming(article.published_at)
+
+  // Precompute badge flags to avoid repeated IIFE closures
+  const metaUrl = typeof article.metadata?.url === 'string' ? (article.metadata.url as string) : null
+  const isDoujin = metaUrl !== null && metaUrl.includes('/dc/doujin/')
+  const floor = typeof article.metadata?.floor === 'string' ? article.metadata.floor : null
+  const isDvd = !isDoujin && (floor === 'dvd' || (metaUrl !== null && metaUrl.includes('/mono/dvd/')))
+  const isDigital = !isDoujin && !isDvd && (floor === 'videoa' || (metaUrl !== null && metaUrl.includes('/digital/')))
+
+  const imgUrl = effectiveImageUrl(article)
+
+  const imageContent = imgUrl ? (
+    <>
+      <ProxiedImage
+        src={proxyUrl(imgUrl)}
+        alt={article.title}
+        className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-200 group-hover:scale-105"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
+    </>
+  ) : (
+    <NowPrinting />
+  )
+
+  const imageBadges = (
+    <>
+      {upcoming && (
+        <span className="absolute left-0 top-3 rounded-r-full bg-sky-600 px-3 py-0.5 text-[10px] font-bold tracking-wider text-white shadow-[0_0_10px_rgba(2,132,199,0.5)]">
+          予約
+        </span>
+      )}
+      {isNew(article.published_at) && (
+        <span className="absolute left-0 top-3 rounded-r-full bg-[var(--magenta)] px-3 py-0.5 text-[10px] font-bold tracking-wider text-white shadow-[0_0_10px_rgba(226,0,116,0.5)]">
+          NEW
+        </span>
+      )}
+      {isDoujin && (
+        <span className="absolute left-2 top-2 rounded-full bg-emerald-500/90 px-2.5 py-0.5 text-[9px] font-bold tracking-wide text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]">
+          同人コミック
+        </span>
+      )}
+      {(isDvd || isDigital) && (
+        <span className={[
+          'absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-wide',
+          isDvd
+            ? 'bg-orange-500/90 text-white shadow-[0_0_8px_rgba(249,115,22,0.5)]'
+            : 'bg-sky-500/90 text-white shadow-[0_0_8px_rgba(14,165,233,0.5)]',
+        ].join(' ')}>
+          {isDvd ? 'DVD' : '動画配信'}
+        </span>
+      )}
+    </>
+  )
+
+  const imageWrapperClass = "relative w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]"
 
   return (
     <article className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden transition-all duration-200 hover:border-[var(--magenta)]/60 hover:shadow-[0_0_28px_rgba(226,0,116,0.18)] hover:-translate-y-0.5">
-      {/* Image — proxy serves pl.jpg first; object-right crops to front-cover (right half) */}
-      <div className="relative w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]">
-        {(() => {
-          const imgUrl = effectiveImageUrl(article)
-          return imgUrl ? (
-            <>
-              <ProxiedImage
-                src={proxyUrl(imgUrl)}
-                alt={article.title}
-                className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover:scale-105"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
-            </>
-          ) : (
-            <NowPrinting />
-          )
-        })()}
-
-        {isUpcoming(article.published_at) && (
-          <span className="absolute left-0 top-3 rounded-r-full bg-sky-600 px-3 py-0.5 text-[10px] font-bold tracking-wider text-white shadow-[0_0_10px_rgba(2,132,199,0.5)]">
-            予約
-          </span>
-        )}
-        {isNew(article.published_at) && (
-          <span className="absolute left-0 top-3 rounded-r-full bg-[var(--magenta)] px-3 py-0.5 text-[10px] font-bold tracking-wider text-white shadow-[0_0_10px_rgba(226,0,116,0.5)]">
-            NEW
-          </span>
-        )}
-        {/* 同人コミック バッジ（左上）— metadata.url で /dc/doujin/ を検知 */}
-        {(() => {
-          const metaUrl = typeof article.metadata?.url === 'string' ? (article.metadata.url as string) : null
-          if (!metaUrl?.includes('/dc/doujin/')) return null
-          return (
-            <span className="absolute left-2 top-2 rounded-full bg-emerald-500/90 px-2.5 py-0.5 text-[9px] font-bold tracking-wide text-white shadow-[0_0_8px_rgba(16,185,129,0.5)]">
-              同人コミック
-            </span>
-          )
-        })()}
-        {/* 媒体種別バッジ（右上）— 同人コミックは左上バッジで表示するため除外 */}
-        {(() => {
-          const floor      = typeof article.metadata?.floor === 'string' ? article.metadata.floor : null
-          // metadata.url（生 DMM URL）で DVD・同人を確実に判定する
-          // affiliate_url は al.fanza.co.jp/?lurl=エンコード形式の場合があるため使わない
-          const metaUrl    = typeof article.metadata?.url === 'string' ? (article.metadata.url as string) : null
-          const isDoujin   = metaUrl !== null && metaUrl.includes('/dc/doujin/')
-          const isDvd      = !isDoujin && (floor === 'dvd' || (metaUrl !== null && metaUrl.includes('/mono/dvd/')))
-          const isDigital  = !isDoujin && !isDvd && (floor === 'videoa' || (metaUrl !== null && metaUrl.includes('/digital/')))
-          if (!isDvd && !isDigital) return null
-          return (
-            <span className={[
-              'absolute right-2 top-2 rounded-full px-2 py-0.5 text-[9px] font-bold tracking-wide',
-              isDvd
-                ? 'bg-orange-500/90 text-white shadow-[0_0_8px_rgba(249,115,22,0.5)]'
-                : 'bg-sky-500/90 text-white shadow-[0_0_8px_rgba(14,165,233,0.5)]',
-            ].join(' ')}>
-              {isDvd ? 'DVD' : '動画配信'}
-            </span>
-          )
-        })()}
-      </div>
+      {/* Image — clicking goes directly to FANZA affiliate */}
+      {affiliateUrl ? (
+        <a
+          href={affiliateUrl}
+          target="_blank"
+          rel="noopener noreferrer sponsored"
+          className={imageWrapperClass}
+        >
+          {imageContent}
+          {imageBadges}
+        </a>
+      ) : (
+        <div className={imageWrapperClass}>
+          {imageContent}
+          {imageBadges}
+        </div>
+      )}
 
       <div className="flex flex-1 flex-col gap-2.5 p-4">
         {/* Actress chips — link to actress page */}
@@ -208,28 +220,24 @@ export function ArticleCard({ article }: ArticleCardProps) {
           </div>
         )}
 
-        {/* Footer */}
-        <div className="mt-auto flex items-center justify-between border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
-          <span className="flex items-center gap-1">
-            <Clock size={11} />
-            {timeAgo(article.published_at)}
-          </span>
-          <div className="flex items-center gap-3">
-            {affiliateUrl && (
-              <span className="flex items-center gap-1">
-                <a
-                  href={affiliateUrl}
-                  target="_blank"
-                  rel="noopener noreferrer sponsored"
-                  className="flex items-center gap-1 text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
-                >
-                  FANZA <ExternalLink size={11} />
-                </a>
-                <span className="rounded px-1 py-px text-[11px] font-bold tracking-widest bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">
-                  PR
-                </span>
-              </span>
-            )}
+        {/* CTA + Footer */}
+        <div className="mt-auto space-y-3">
+          {affiliateUrl && (
+            <a
+              href={affiliateUrl}
+              target="_blank"
+              rel="noopener noreferrer sponsored"
+              className="flex items-center justify-center gap-2 rounded-md bg-gradient-to-r from-pink-600 to-rose-600 px-4 py-2 text-sm font-bold text-white transition-all duration-200 hover:from-pink-500 hover:to-rose-500 hover:shadow-[0_0_16px_rgba(225,29,72,0.45)] active:scale-[0.97]"
+            >
+              {upcoming ? 'DMMで今すぐ予約（特典付き）' : 'DMMでサンプル動画を試聴'}
+              <ExternalLink size={13} />
+            </a>
+          )}
+          <div className="flex items-center justify-between border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
+            <span className="flex items-center gap-1">
+              <Clock size={11} />
+              {timeAgo(article.published_at)}
+            </span>
             <Link
               href={`/articles/${article.slug}`}
               className="flex items-center gap-1 text-[var(--magenta)] hover:underline"
