@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { toHighResPackageUrl } from '@/lib/cidUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,7 +81,7 @@ export async function GET(request: Request) {
         return tags.includes('単体作品') || count === 1
       })
       const best = solo ?? pool[0]
-      if (best?.image_url) imageUrl = best.image_url as string
+      if (best?.image_url) imageUrl = toHighResPackageUrl(best.image_url as string) ?? imageUrl
     }
 
     cacheRows.push({
