@@ -7,7 +7,7 @@ import { LoginButton } from './LoginButton'
 import { withAffiliate } from '@/lib/affiliate'
 
 const DMM_RANKING_URL = 'https://www.dmm.co.jp/digital/videoa/-/ranking/'
-const DMM_SALE_URL = 'https://www.dmm.co.jp/digital/-/sale/'
+const DMM_SALE_URL = 'https://video.dmm.co.jp/'
 
 const NAV_LINKS = [
   { href: '/',             label: 'Dashboard',      icon: LayoutDashboard },
