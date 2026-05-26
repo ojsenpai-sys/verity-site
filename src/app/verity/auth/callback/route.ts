@@ -75,12 +75,15 @@ export async function GET(request: NextRequest) {
 
     if (!existing) {
       const now = new Date().toISOString()
-      await supabase.from('profiles').insert({
+      const { error: insertErr } = await supabase.from('profiles').insert({
         user_id:     user.id,
         brand_id:    BRAND_ID,
         title:       'newcomer',
         titles_data: [{ id: 'newcomer', unlocked_at: now }],
       })
+      if (insertErr) {
+        console.error('[auth/callback] profile INSERT failed:', insertErr.message, '| code:', insertErr.code ?? '(none)')
+      }
     } else {
       const currentUnlocked = (existing.titles_data as { id: string; unlocked_at: string }[]).map(t => t.id)
       const newTitleIds = computeUnlocks({

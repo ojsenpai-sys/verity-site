@@ -85,7 +85,7 @@ export default async function ProfilePage() {
   let resolvedProfile = profile
   if (!resolvedProfile) {
     const now = new Date().toISOString()
-    const { data: inserted } = await supabase
+    const insertResult = await supabase
       .from('profiles')
       .insert({
         user_id:     user.id,
@@ -94,8 +94,11 @@ export default async function ProfilePage() {
         titles_data: [{ id: 'newcomer', unlocked_at: now }],
       })
       .select('*')
-      .single() as { data: Profile | null }
-    resolvedProfile = inserted
+      .single()
+    if (insertResult.error) {
+      console.error('[profile] profile INSERT failed:', insertResult.error.message, '| code:', insertResult.error.code ?? '(none)')
+    }
+    resolvedProfile = (insertResult.data as Profile | null)
   }
 
   // ── 全データを並列取得 ──────────────────────────────────────────────────────

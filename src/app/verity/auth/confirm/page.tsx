@@ -27,12 +27,16 @@ async function ensureProfile(supabase: ReturnType<typeof createImplicitClient>, 
     .maybeSingle()
   if (!existing) {
     const now = new Date().toISOString()
-    await supabase.from('profiles').insert({
+    const { error: insertErr } = await supabase.from('profiles').insert({
       user_id:     userId,
       brand_id:    BRAND_ID,
       title:       'newcomer',
       titles_data: [{ id: 'newcomer', unlocked_at: now }],
     })
+    if (insertErr) {
+      console.error('[auth/confirm] profile INSERT failed:', insertErr.message, '| code:', insertErr.code ?? '(none)')
+      throw insertErr
+    }
   }
 }
 

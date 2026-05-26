@@ -17,7 +17,7 @@ type RankedActress = {
 async function getRanking(): Promise<RankedActress[]> {
   const supabase = await createClient()
 
-  // 最新スナップショット日付を取得
+  // ── キャッシュ優先: 最新スナップショット日付を取得 ────────────────────────────
   const { data: latest } = await supabase
     .from('actress_ranking_cache')
     .select('snapshot_date')
@@ -26,41 +26,69 @@ async function getRanking(): Promise<RankedActress[]> {
     .limit(1)
     .maybeSingle()
 
-  if (!latest) return []
+  if (latest) {
+    const { data: cache, error: cacheErr } = await supabase
+      .from('actress_ranking_cache')
+      .select('rank, points, actress_id, image_url')
+      .eq('brand_id', BRAND_ID)
+      .eq('snapshot_date', latest.snapshot_date)
+      .order('rank', { ascending: true })
+      .limit(10)
 
-  // その日付のキャッシュを取得
-  const { data: cache, error: cacheErr } = await supabase
-    .from('actress_ranking_cache')
-    .select('rank, points, actress_id, image_url')
-    .eq('brand_id', BRAND_ID)
-    .eq('snapshot_date', latest.snapshot_date)
-    .order('rank', { ascending: true })
-    .limit(10)
+    if (!cacheErr && cache && cache.length > 0) {
+      const actressIds = cache.map(c => c.actress_id as string)
 
-  if (cacheErr || !cache || cache.length === 0) return []
+      const { data: actresses } = await supabase
+        .from('actresses')
+        .select('id, external_id, name, ruby, image_url, metadata, is_active')
+        .in('id', actressIds)
+        .eq('is_active', true)
 
-  const actressIds = cache.map(c => c.actress_id as string)
+      const actressMap = new Map(
+        ((actresses ?? []) as Actress[]).map(a => [a.id, a])
+      )
+
+      const cached = cache
+        .map(c => {
+          const actress = actressMap.get(c.actress_id as string)
+          if (!actress) return null
+          // キャッシュの最新単体作品画像を優先、なければ actresses.image_url
+          const merged: Actress = {
+            ...actress,
+            image_url: (c.image_url as string | null) ?? actress.image_url,
+          }
+          return { rank: c.rank as number, points: Number(c.points), actress: merged }
+        })
+        .filter((r): r is RankedActress => r !== null)
+
+      if (cached.length > 0) return cached
+    }
+  }
+
+  // ── フォールバック: キャッシュ未生成 or 空ならリアルタイム RPC ──────────────────
+  const { data: rankRows } = await supabase
+    .rpc('get_actress_ranking', { p_brand_id: BRAND_ID, p_limit: 10 })
+
+  if (!rankRows || (rankRows as unknown[]).length === 0) return []
+
+  const rows = rankRows as { actress_external_id: string; points: number }[]
+  const externalIds = rows.map(r => r.actress_external_id)
 
   const { data: actresses } = await supabase
     .from('actresses')
     .select('id, external_id, name, ruby, image_url, metadata, is_active')
-    .in('id', actressIds)
+    .in('external_id', externalIds)
     .eq('is_active', true)
 
   const actressMap = new Map(
-    ((actresses ?? []) as Actress[]).map(a => [a.id, a])
+    ((actresses ?? []) as Actress[]).map(a => [a.external_id, a])
   )
 
-  return cache
-    .map(c => {
-      const actress = actressMap.get(c.actress_id as string)
+  return rows
+    .map((r, i) => {
+      const actress = actressMap.get(r.actress_external_id)
       if (!actress) return null
-      // キャッシュの最新単体作品画像を優先、なければ actresses.image_url
-      const merged: Actress = {
-        ...actress,
-        image_url: (c.image_url as string | null) ?? actress.image_url,
-      }
-      return { rank: c.rank as number, points: Number(c.points), actress: merged }
+      return { rank: i + 1, points: Number(r.points), actress }
     })
     .filter((r): r is RankedActress => r !== null)
 }
