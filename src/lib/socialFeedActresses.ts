@@ -100,7 +100,7 @@ export const SOCIAL_FEED_ACTRESSES: SocialActress[] = [
   { name: '森日向子',       screenName: 'morihinako_'          },
   { name: '橘いおり',       screenName: 'tachibana_iorin'      },
   { name: '永瀬みゆう',     screenName: 'Miyuu_sflirt'         },
-  { name: '河北彩伽',       screenName: 'saika_kawakita'       },
+  { name: '河北彩花',       screenName: 'saika_kawakita'       },
   { name: '河合あすな',     screenName: 'kawai_asuna'          },
   { name: '青坂あおい',     screenName: 'aoi_aosaka'           },
   { name: '今田光',         screenName: 'imada_hikari'         },
