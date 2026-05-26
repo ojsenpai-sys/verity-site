@@ -229,7 +229,7 @@ export function ArticleCard({ article }: ArticleCardProps) {
               rel="noopener noreferrer sponsored"
               className="flex items-center justify-center gap-2 rounded-md bg-gradient-to-r from-pink-600 to-rose-600 px-4 py-2 text-sm font-bold text-white transition-all duration-200 hover:from-pink-500 hover:to-rose-500 hover:shadow-[0_0_16px_rgba(225,29,72,0.45)] active:scale-[0.97]"
             >
-              {upcoming ? 'DMMで今すぐ予約（特典付き）' : 'DMMでサンプル動画を試聴'}
+              {upcoming ? 'FANZAで今すぐ予約する' : 'FANZAでサンプル動画を試聴'}
               <ExternalLink size={13} />
             </a>
           )}

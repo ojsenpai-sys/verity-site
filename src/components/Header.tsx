@@ -7,7 +7,7 @@ import { LoginButton } from './LoginButton'
 import { withAffiliate } from '@/lib/affiliate'
 
 const DMM_RANKING_URL = 'https://www.dmm.co.jp/digital/videoa/-/ranking/'
-const DMM_COUPON_URL = 'https://www.dmm.co.jp/my/-/coupon/'
+const DMM_SALE_URL = 'https://www.dmm.co.jp/digital/-/sale/'
 
 const NAV_LINKS = [
   { href: '/',             label: 'Dashboard',      icon: LayoutDashboard },
@@ -69,15 +69,15 @@ export function Header() {
               rel="noopener noreferrer sponsored"
               className="flex items-center gap-1 rounded-full bg-gradient-to-r from-pink-600 to-rose-600 px-3 py-1 text-xs font-bold text-white transition-all hover:from-pink-500 hover:to-rose-500 hover:shadow-[0_0_12px_rgba(225,29,72,0.4)]"
             >
-              🔥 売れ筋ランキング
+              🔥 FANZA売れ筋ランキング
             </a>
             <a
-              href={withAffiliate(DMM_COUPON_URL) ?? DMM_COUPON_URL}
+              href={withAffiliate(DMM_SALE_URL) ?? DMM_SALE_URL}
               target="_blank"
               rel="noopener noreferrer sponsored"
               className="flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-400 transition-all hover:bg-amber-400/20"
             >
-              🎫 限定クーポン
+              🎫 FANZA公式セール会場
             </a>
             <LoginButton />
           </nav>
@@ -150,7 +150,7 @@ export function Header() {
                 </Link>
               )
             })}
-            {/* DMM affiliate shortcuts */}
+            {/* FANZA affiliate shortcuts */}
             <a
               href={withAffiliate(DMM_RANKING_URL) ?? DMM_RANKING_URL}
               target="_blank"
@@ -159,17 +159,17 @@ export function Header() {
               className="flex items-center gap-3 rounded-xl border border-pink-500/30 bg-gradient-to-r from-pink-600/15 to-rose-600/15 px-4 py-3.5 text-sm font-bold text-pink-400 transition-all hover:from-pink-600/25 hover:to-rose-600/25"
             >
               <span className="text-base leading-none">🔥</span>
-              DMM 本日のAV売れ筋ランキング（公式）
+              FANZA売れ筋ランキング（公式）
             </a>
             <a
-              href={withAffiliate(DMM_COUPON_URL) ?? DMM_COUPON_URL}
+              href={withAffiliate(DMM_SALE_URL) ?? DMM_SALE_URL}
               target="_blank"
               rel="noopener noreferrer sponsored"
               onClick={() => setIsOpen(false)}
               className="flex items-center gap-3 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3.5 text-sm font-bold text-amber-400 transition-all hover:bg-amber-400/20"
             >
               <span className="text-base leading-none">🎫</span>
-              DMM 本日限定割引クーポン会場はこちら
+              FANZA公式セール会場はこちら
             </a>
           </nav>
 
