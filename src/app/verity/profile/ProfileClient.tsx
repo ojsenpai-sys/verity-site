@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { LogOut, Edit2, Check, X, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown } from 'lucide-react'
+import { LogOut, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown } from 'lucide-react'
 import { FavoriteActressSelector } from '@/components/FavoriteActressSelector'
 import { MyGalleryGrid } from '@/components/MyGalleryGrid'
 // import { StatusCard } from '@/components/StatusCard'  // TODO: デザイン再検討中のため一時非表示
@@ -179,7 +179,6 @@ export function ProfileClient({
     activeTab, setActiveTab,
     hasNewGallery,
     displayName, setDisplayName,
-    editingName, setEditingName,
     currentTitle,
     favActresses, setFavActresses,
     isPending,
@@ -216,6 +215,13 @@ export function ProfileClient({
     <>
       {showBonus && <BonusToast bonus={bonusResult.bonus!} isWeek={!!bonusResult.is_week} />}
       {newEpithetToast && <EpithetToast epithet={newEpithetToast} />}
+
+      {/* ── 新規ユーザー向けウェルカムバナー ── */}
+      {!profile?.display_name && (
+        <div className="rounded-xl border border-rose-800 bg-rose-950/30 px-4 py-3 text-sm text-rose-200 leading-relaxed">
+          🎉 VERITYへようこそ！ まずはサイト内で表示されるあなたの【お名前（ニックネーム）】を入力し、最下部のボタンから保存を完了させてください。
+        </div>
+      )}
 
       {/* ── タブ ── */}
       <div className="flex gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-1">
@@ -262,27 +268,16 @@ export function ProfileClient({
               </div>
               <div>
                 <p className="text-xs text-[var(--text-muted)] mb-1">表示名</p>
-                {editingName ? (
-                  <div className="flex items-center gap-2">
-                    <input
-                      value={displayName}
-                      onChange={e => setDisplayName(e.target.value)}
-                      maxLength={30}
-                      autoFocus
-                      className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--magenta)] focus:outline-none"
-                    />
-                    <button onClick={saveName} className="text-[var(--magenta)]"><Check size={16} /></button>
-                    <button onClick={() => setEditingName(false)} className="text-[var(--text-muted)]"><X size={16} /></button>
-                  </div>
-                ) : (
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="text-base font-semibold text-[var(--text)]">{displayName || '（未設定）'}</span>
-                    {equippedEpithet && <EpithetTag epithetId={equippedEpithet} />}
-                    <button onClick={() => setEditingName(true)} className="text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors">
-                      <Edit2 size={13} />
-                    </button>
-                  </div>
-                )}
+                <div className="flex items-center gap-2">
+                  <input
+                    value={displayName}
+                    onChange={e => setDisplayName(e.target.value)}
+                    maxLength={30}
+                    placeholder="ニックネームを入力"
+                    className="flex-1 rounded-lg border border-[var(--border)] bg-[var(--bg)] px-3 py-1.5 text-sm text-[var(--text)] focus:border-[var(--magenta)] focus:outline-none"
+                  />
+                  {equippedEpithet && <EpithetTag epithetId={equippedEpithet} />}
+                </div>
               </div>
               <div>
                 <p className="text-xs text-[var(--text-muted)] mb-0.5">メールアドレス</p>
@@ -297,7 +292,16 @@ export function ProfileClient({
               ログアウト
             </button>
           </div>
-          {saveMsg && <p className="mt-3 text-xs text-emerald-400">{saveMsg}</p>}
+          <div className="mt-4 space-y-2">
+            <button
+              onClick={saveName}
+              disabled={isPending}
+              className="w-full rounded-md bg-gradient-to-r from-pink-600 to-rose-600 py-2.5 text-sm font-bold text-white transition-all hover:from-pink-500 hover:to-rose-500 hover:shadow-[0_0_16px_rgba(225,29,72,0.4)] disabled:opacity-50 disabled:cursor-not-allowed active:scale-[0.98]"
+            >
+              {isPending ? '保存中…' : 'この内容で変更を保存する'}
+            </button>
+            {saveMsg && <p className="text-center text-xs text-emerald-400">{saveMsg}</p>}
+          </div>
         </section>
 
         {/* ── 行動傾向 ── */}
