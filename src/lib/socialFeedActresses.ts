@@ -197,4 +197,5 @@ export const SOCIAL_FEED_ACTRESSES: SocialActress[] = [
   { name: '二宮りり',       screenName: 'ninolili_'            },
   { name: 'ひなたなつ',     screenName: 'natsu_hinata_tp'      },
   { name: '姫森あむ',       screenName: 'himemori_amu'         },
+  { name: '堀北桃愛',       screenName: 'horikita_moa'         },
 ]
