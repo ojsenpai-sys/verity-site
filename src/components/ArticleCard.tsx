@@ -189,11 +189,17 @@ export function ArticleCard({ article }: ArticleCardProps) {
         </div>
 
         {/* Title */}
-        <Link href={`/articles/${article.slug}`} className="group/title">
-          <h2 className="font-semibold leading-snug text-[var(--text)] group-hover/title:text-[var(--magenta)] transition-colors line-clamp-2">
+        {article.slug ? (
+          <Link href={`/articles/${article.slug}`} className="group/title">
+            <h2 className="font-semibold leading-snug text-[var(--text)] group-hover/title:text-[var(--magenta)] transition-colors line-clamp-2">
+              {article.title}
+            </h2>
+          </Link>
+        ) : (
+          <h2 className="font-semibold leading-snug text-[var(--text)] line-clamp-2">
             {article.title}
           </h2>
-        </Link>
+        )}
 
         {/* Summary */}
         {article.summary && (
@@ -238,12 +244,14 @@ export function ArticleCard({ article }: ArticleCardProps) {
               <Clock size={11} />
               {timeAgo(article.published_at)}
             </span>
-            <Link
-              href={`/articles/${article.slug}`}
-              className="flex items-center gap-1 text-[var(--magenta)] hover:underline"
-            >
-              詳細 <ExternalLink size={11} />
-            </Link>
+            {article.slug && (
+              <Link
+                href={`/articles/${article.slug}`}
+                className="flex items-center gap-1 text-[var(--magenta)] hover:underline"
+              >
+                詳細 <ExternalLink size={11} />
+              </Link>
+            )}
           </div>
         </div>
       </div>

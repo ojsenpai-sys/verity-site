@@ -64,7 +64,8 @@ export async function FeaturedSection() {
     await Promise.allSettled(
       missingCids.map(async cid => {
         const article = await fetchCidLive(cid)
-        if (article) articleMap.set(cid, article)
+        // Clear slug so ArticleCard skips the /articles/[slug] link (no DB record exists yet)
+        if (article) articleMap.set(cid, { ...article, slug: '' })
       })
     )
   }
