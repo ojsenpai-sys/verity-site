@@ -33,6 +33,7 @@ export const FEATURED_CIDS = [
   '1fns00210', // 浜辺やよい
   'snos00257', // 蜜このは（大型新人デビュー作）
   'snos00275', // 河北彩花
+  'ipzz00874', // 堀北桃愛
 ] as const
 
 /**
