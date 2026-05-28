@@ -71,4 +71,6 @@ export const PINNED_ACTRESS_LATEST_CIDS: Record<string, string> = {
   '北岡果林': 'hmn00845',
   '花守夏歩': '1namh00064',
   '佐々木さき': 'mimk00283',
+  // mono/dvd 版 dass990 が latest_cid に混入するのを防ぐため明示ピン留め
+  '宍戸里帆': 'dass00990',
 }

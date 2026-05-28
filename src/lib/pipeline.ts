@@ -314,23 +314,46 @@ export async function syncTopActresses(): Promise<PipelineResult> {
     ? await fetchActressImages(rankedActresses.map(a => a.id))
     : new Map<number, string>()
 
-  // ── 4. 女優レコード組み立て（月間ランク順位・導出方法を metadata に記録）───
-  const actressRecords = rankedActresses.map((a, idx) => ({
-    external_id: `dmm-actress-${a.id}`,
-    name:        a.name,
-    ruby:        a.ruby ?? null,
-    image_url:   imageMap.get(a.id) ?? null,
-    is_active:   true,
-    metadata: {
-      dmm_id:         a.id,
-      monthly_rank:   idx + 1,
-      rank_method:    'itemlist_sort_rank',   // 導出方法を明示
-      rank_synced_at: new Date().toISOString(),
-    },
-  }))
-
-  // ── 5. actresses 上書き upsert ────────────────────────────────────────────
+  // ── 4. 既存女優データを一括取得（latest_cid / hero_rank 等を保護するため）───
+  // syncTopActresses の upsert は metadata を丸ごと上書きするため、事前に既存値を
+  // フェッチしてマージすることで latest_cid 等の重要フィールドを保護する。
   const supabase = getServiceClient()
+  const externalIds = rankedActresses.map(a => `dmm-actress-${a.id}`)
+  const { data: existingActressData } = await supabase
+    .from('actresses')
+    .select('external_id, image_url, metadata')
+    .in('external_id', externalIds)
+
+  type ExistingActress = { external_id: string; image_url: string | null; metadata: Record<string, unknown> | null }
+  const existingActressMap = new Map(
+    ((existingActressData ?? []) as ExistingActress[]).map(a => [a.external_id, a])
+  )
+
+  // ── 5. 女優レコード組み立て（ランクメタデータは既存フィールドへマージ、image_url は保護）───
+  const actressRecords = rankedActresses.map((a, idx) => {
+    const extId    = `dmm-actress-${a.id}`
+    const existing = existingActressMap.get(extId)
+    const prevMeta = ((existing?.metadata ?? {}) as Record<string, unknown>)
+    const newImage = imageMap.get(a.id) ?? null
+    return {
+      external_id: extId,
+      name:        a.name,
+      ruby:        a.ruby ?? null,
+      // 既存の image_url が有効なら保持し、null/壊れている場合のみ新規 URL で上書き
+      image_url:   (existing && !isBadImageUrl(existing.image_url)) ? existing.image_url : newImage,
+      is_active:   true,
+      // metadata: latest_cid / hero_rank / hero_synced_at など既存フィールドを保護してマージ
+      metadata: {
+        ...prevMeta,
+        dmm_id:         a.id,
+        monthly_rank:   idx + 1,
+        rank_method:    'itemlist_sort_rank',
+        rank_synced_at: new Date().toISOString(),
+      },
+    }
+  })
+
+  // ── 6. actresses マージ upsert ────────────────────────────────────────────
   if (actressRecords.length > 0) {
     const { error: actErr } = await supabase
       .from('actresses')
@@ -348,7 +371,7 @@ export async function syncTopActresses(): Promise<PipelineResult> {
     console.log('[pipeline:actress-rank] rank fetch なし — actresses upsert スキップ')
   }
 
-  // ── 6. 全方位取得: digital/videoa + mono/dvd を 7 クエリ並列で取得 ──────────
+  // ── 7. 全方位取得: digital/videoa + mono/dvd を 7 クエリ並列で取得 ──────────
   // status=reserve は DMM API が対応していれば予約作を絞り込み、非対応なら無視される。
   // Promise.allSettled で個別失敗を吸収し、取得できた分だけマージする。
   const topActressNames = new Set(rankedActresses.map(a => a.name))
