@@ -58,6 +58,7 @@ const SELECT = `
 export async function fetchNewsList(
   limit = NEWS_LIMIT,
   offset = 0,
+  sortBy: 'created_at' | 'published_at' = 'created_at',
 ): Promise<{ items: SnNewsWithActress[]; hasMore: boolean }> {
   const supabase = await createClient()
 
@@ -66,7 +67,7 @@ export async function fetchNewsList(
     .select(SELECT)
     .eq('site_key', SITE_KEY)
     .eq('is_published', true)
-    .order('published_at', { ascending: false })
+    .order(sortBy, { ascending: false })
     .range(offset, offset + limit)   // limit+1 rows → detect hasMore
 
   if (error) {

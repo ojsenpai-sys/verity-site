@@ -11,6 +11,8 @@ import { MustOneSection } from '@/components/MustOneSection'
 import { FastReviewSection } from '@/components/FastReviewSection'
 import { SocialFeedSection } from '@/components/SocialFeedSection'
 import { PopularActressRankingSection } from '@/components/PopularActressRankingSection'
+import { NewsCard } from '@/components/NewsCard'
+import { fetchNewsList } from '@/app/verity/actions/news'
 import type { Article, Actress, FilterParams } from '@/lib/types'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
 
@@ -390,6 +392,41 @@ async function TimelineSection() {
   )
 }
 
+// ── Latest News Cards (top 6) ─────────────────────────────────────────────────
+
+async function LatestNewsSection() {
+  const { items } = await fetchNewsList(6, 0, 'created_at')
+  if (!items.length) return null
+
+  return (
+    <section id="latest-news-cards" className="space-y-5">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="h-7 w-1 rounded-full bg-gradient-to-b from-[var(--magenta)] to-[var(--magenta)]/10" />
+          <Newspaper size={17} className="text-[var(--magenta)]" />
+          <h2 className="text-lg font-bold tracking-widest uppercase text-[var(--text)]">
+            新着ニュース
+          </h2>
+          <span className="rounded-full bg-[var(--magenta)]/15 px-2.5 py-0.5 text-[10px] font-bold text-[var(--magenta)] border border-[var(--magenta)]/30">
+            Latest News
+          </span>
+        </div>
+        <Link
+          href={`/${SITE_KEY}/news`}
+          className="text-[11px] tracking-widest text-[var(--text-muted)] uppercase hover:text-[var(--magenta)] transition-colors"
+        >
+          すべて見る →
+        </Link>
+      </div>
+      <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+        {items.map(news => (
+          <NewsCard key={news.id} news={news} />
+        ))}
+      </div>
+    </section>
+  )
+}
+
 // ── Page ───────────────────────────────────────────────────────────────────────
 
 export default async function DashboardPage({ searchParams }: PageProps) {
@@ -466,6 +503,29 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           </div>
         }>
           <TimelineSection />
+        </Suspense>
+      </section>
+
+      {/* ── 5.5. 新着ニュース（最大6件カード） ──────────────────────────── */}
+      <section id="latest-news-cards">
+        <Suspense fallback={
+          <div className="space-y-5">
+            <div className="h-7 w-44 animate-pulse rounded bg-[var(--surface)]" />
+            <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-3">
+              {Array.from({ length: 6 }).map((_, i) => (
+                <div key={i} className="rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden animate-pulse">
+                  <div className="aspect-[3/2] bg-[var(--surface-2)]" />
+                  <div className="p-4 space-y-3">
+                    <div className="h-3 w-1/3 rounded bg-[var(--surface-2)]" />
+                    <div className="h-4 w-full rounded bg-[var(--surface-2)]" />
+                    <div className="h-4 w-2/3 rounded bg-[var(--surface-2)]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        }>
+          <LatestNewsSection />
         </Suspense>
       </section>
 

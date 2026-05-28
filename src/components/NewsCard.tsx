@@ -13,16 +13,15 @@ function formatDate(iso: string | null): string {
   })
 }
 
-function isNew(published_at: string | null): boolean {
-  if (!published_at) return false
-  return Date.now() - new Date(published_at).getTime() < 24 * 60 * 60 * 1000
+function isNew(created_at: string): boolean {
+  return Date.now() - new Date(created_at).getTime() < 24 * 60 * 60 * 1000
 }
 
 type Props = { news: SnNewsWithActress }
 
 export function NewsCard({ news }: Props) {
   const href     = `/news/${news.slug}`
-  const showNew  = isNew(news.published_at)
+  const showNew  = isNew(news.created_at)
 
   return (
     <article className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden transition-all duration-200 hover:border-[var(--magenta)]/60 hover:shadow-[0_0_28px_rgba(226,0,116,0.18)] hover:-translate-y-0.5">
