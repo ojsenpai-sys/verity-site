@@ -6,6 +6,7 @@ import { MegaFooter } from '@/components/MegaFooter'
 import { ScrollToTop } from '@/components/ScrollToTop'
 import { AgeGate } from '@/components/AgeGate'
 import { AuthProvider } from '@/components/AuthProvider'
+import { FavoritePopup } from '@/components/FavoritePopup'
 import { createClient } from '@/lib/supabase/server'
 import './globals.css'
 
@@ -60,6 +61,7 @@ export default async function VerityLayout({ children }: { children: React.React
         <main className="flex-1">{children}</main>
         <MegaFooter />
         <ScrollToTop />
+        <FavoritePopup />
       </div>
     </AuthProvider>
   )

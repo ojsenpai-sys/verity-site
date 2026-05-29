@@ -8,6 +8,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ArticleCard } from '@/components/ArticleCard'
 import { LogView } from '@/components/LogView'
 import { ShareButton } from '@/components/ShareButton'
+import { FavoriteButton } from '@/components/FavoriteButton'
 import { withAffiliate } from '@/lib/affiliate'
 import { PurchaseLink } from '@/components/PurchaseLink'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
@@ -133,7 +134,10 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
       {/* Actress header */}
       <div className="flex items-start justify-between flex-wrap gap-3">
         <div className="space-y-1">
-          <h1 className="text-3xl font-bold text-[var(--text)]">{actress.name}</h1>
+          <div className="flex items-center gap-3">
+            <h1 className="text-3xl font-bold text-[var(--text)]">{actress.name}</h1>
+            <FavoriteButton type="actress" id={actress.external_id} size="md" />
+          </div>
           {actress.ruby && (
             <p className="text-sm text-[var(--text-muted)]">{actress.ruby}</p>
           )}

@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Calendar, Tag } from 'lucide-react'
 import type { SnNewsWithActress } from '@/lib/types'
+import { FavoriteButton } from '@/components/FavoriteButton'
 
 function proxyUrl(url: string) {
   return `/verity/api/proxy/image?url=${encodeURIComponent(url)}`
@@ -41,6 +42,11 @@ export function NewsCard({ news }: Props) {
           </div>
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/70 via-transparent to-transparent" />
+
+        {/* お気に入りボタン */}
+        <div className="absolute bottom-2 right-2 z-10">
+          <FavoriteButton type="article" id={news.slug} />
+        </div>
 
         {/* カテゴリバッジ */}
         {news.category && (

@@ -2,6 +2,7 @@
 
 import Link from 'next/link'
 import { useState } from 'react'
+import { FavoriteButton } from '@/components/FavoriteButton'
 
 type Props = {
   externalId: string
@@ -45,6 +46,9 @@ export function ActressCard({ externalId, name, ruby, thumbUrl }: Props) {
         ) : (
           <VerityPlaceholder initial={initial} />
         )}
+        <div className="absolute bottom-2 right-2">
+          <FavoriteButton type="actress" id={externalId} />
+        </div>
       </div>
       <div className="w-full text-center">
         <p className="text-xs font-medium text-[var(--text)] leading-tight line-clamp-2">{name}</p>

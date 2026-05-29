@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { Mail, CheckCircle, AlertCircle, RefreshCw } from 'lucide-react'
+import { Mail, CheckCircle, AlertCircle, RefreshCw, Heart } from 'lucide-react'
 import { createClient, createImplicitClient } from '@/lib/supabase/client'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
@@ -214,6 +214,20 @@ export function LoginForm({ error, next }: Props) {
           会員限定コンテンツ・特別レビューへアクセス
         </p>
       </div>
+
+      {next === '/verity/profile' && (
+        <div className="rounded-xl border border-[var(--magenta)]/35 px-4 py-3 space-y-1"
+          style={{ background: 'linear-gradient(135deg, rgba(226,0,116,0.08), rgba(255,45,85,0.05))' }}>
+          <div className="flex items-center gap-2">
+            <Heart size={13} style={{ fill: '#E20074', color: '#E20074' }} />
+            <p className="text-xs font-bold text-[var(--magenta)]">お気に入り保存中です</p>
+          </div>
+          <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
+            ログインすれば、お気に入りをデバイス間で同期・永久保存できます。
+            <br />Login to sync favorites across devices.
+          </p>
+        </div>
+      )}
 
       <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-8 space-y-3">
         {error && !isRetryError && (

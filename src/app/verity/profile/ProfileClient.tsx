@@ -14,6 +14,7 @@ import type { UnlockedEntry } from './hooks/useProfileLogic'
 import type { LoginBonusResult } from './page'
 import { GentlemanAnalysis } from '@/components/GentlemanAnalysis'
 import type { AxisScore, RecommendedProduct } from '@/components/GentlemanAnalysis'
+import { LocalFavArticles } from '@/components/LocalFavArticles'
 
 type Props = {
   user:                  { id: string; email: string }
@@ -477,6 +478,9 @@ export function ProfileClient({
             onLpTransfer={handleLpTransfer}
           />
         </section>
+
+        {/* ── ローカル保存済み記事 ── */}
+        <LocalFavArticles />
 
         {/* ── ステータスカード（TODO: デザイン再検討中のため一時非表示） ──
         <section className="space-y-3">
