@@ -1,6 +1,6 @@
 'use client'
 
-import { useCallback, useSyncExternalStore } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 
 export type FavType = 'actress' | 'article'
 
@@ -9,7 +9,6 @@ const LS_KEYS: Record<FavType, string> = {
   article: 'verity_fav_articles',
 }
 
-// Custom event fired on every add/remove so all useFavorite instances re-render
 const FAV_CHANGED = 'verity:fav-changed'
 
 function safeRead(key: string): string[] {
@@ -21,29 +20,31 @@ function safeWrite(key: string, val: string[]) {
   window.dispatchEvent(new Event(FAV_CHANGED))
 }
 
-function subscribeLS(cb: () => void) {
-  window.addEventListener(FAV_CHANGED, cb)
-  window.addEventListener('storage', cb) // cross-tab sync
-  return () => {
-    window.removeEventListener(FAV_CHANGED, cb)
-    window.removeEventListener('storage', cb)
-  }
-}
-
 export function useFavorite(type: FavType) {
   const key = LS_KEYS[type]
 
-  const ids = useSyncExternalStore(
-    subscribeLS,
-    () => safeRead(key),
-    () => [],
-  )
+  // Start with [] so SSR and hydration both render the same empty state.
+  // After mount, sync to localStorage and subscribe to cross-component changes.
+  const [ids, setIds] = useState<string[]>([])
+
+  useEffect(() => {
+    setIds(safeRead(key))
+
+    function sync() { setIds(safeRead(key)) }
+    window.addEventListener(FAV_CHANGED, sync)
+    window.addEventListener('storage', sync)
+    return () => {
+      window.removeEventListener(FAV_CHANGED, sync)
+      window.removeEventListener('storage', sync)
+    }
+  }, [key])
 
   const toggle = useCallback((id: string) => {
     const current = safeRead(key)
     const isAdding = !current.includes(id)
     const next = isAdding ? [...current, id] : current.filter(x => x !== id)
     safeWrite(key, next)
+    setIds(next)
     if (isAdding) {
       window.dispatchEvent(new CustomEvent('verity:fav-added', { detail: { type, id } }))
     }
