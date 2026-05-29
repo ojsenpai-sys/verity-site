@@ -4,16 +4,17 @@ import { useCallback } from 'react'
 import { Heart } from 'lucide-react'
 import { useFavorite } from '@/hooks/useFavorite'
 import { useAuth } from '@/components/AuthProvider'
-import type { FavType } from '@/hooks/useFavorite'
+import type { FavType, FavMeta } from '@/hooks/useFavorite'
 
 type Props = {
-  type:      FavType
-  id:        string        // externalId for actress, slug for article
+  type:       FavType
+  id:         string      // externalId for actress, slug/id for article
+  meta?:      FavMeta     // { title, href } stored in localStorage for display
   className?: string
-  size?:     'sm' | 'md'
+  size?:      'sm' | 'md'
 }
 
-export function FavoriteButton({ type, id, className, size = 'sm' }: Props) {
+export function FavoriteButton({ type, id, meta, className, size = 'sm' }: Props) {
   const { isFavorited, toggle } = useFavorite(type)
   const { user }                = useAuth()
   const faved                   = isFavorited(id)
@@ -23,7 +24,7 @@ export function FavoriteButton({ type, id, className, size = 'sm' }: Props) {
   const handleClick = useCallback(async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
-    toggle(id)
+    toggle(id, meta)
 
     // Best-effort Supabase sync for logged-in users (actresses only)
     if (user && type === 'actress') {
@@ -33,26 +34,26 @@ export function FavoriteButton({ type, id, className, size = 'sm' }: Props) {
         body:    JSON.stringify({ external_id: id, action: faved ? 'remove' : 'add' }),
       }).catch(() => {})
     }
-  }, [toggle, id, user, type, faved])
+  }, [toggle, id, meta, user, type, faved])
 
   return (
     <button
       onClick={handleClick}
       aria-label={faved ? 'お気に入りを解除' : 'お気に入りに追加'}
       style={{
-        width:       dim,
-        height:      dim,
+        width:        dim,
+        height:       dim,
         borderRadius: '50%',
-        display:     'flex',
-        alignItems:  'center',
+        display:      'flex',
+        alignItems:   'center',
         justifyContent: 'center',
-        flexShrink:  0,
-        transition:  'all 0.2s ease',
-        background:  faved ? 'rgba(226,0,116,0.18)' : 'rgba(0,0,0,0.45)',
-        border:      faved ? '1px solid rgba(226,0,116,0.55)' : '1px solid rgba(255,255,255,0.12)',
-        boxShadow:   faved ? '0 0 14px rgba(226,0,116,0.55), 0 0 28px rgba(226,0,116,0.2)' : 'none',
-        color:       faved ? '#E20074' : 'rgba(255,255,255,0.55)',
-        cursor:      'pointer',
+        flexShrink:   0,
+        transition:   'all 0.2s ease',
+        background:   faved ? 'rgba(226,0,116,0.18)' : 'rgba(0,0,0,0.45)',
+        border:       faved ? '1px solid rgba(226,0,116,0.55)' : '1px solid rgba(255,255,255,0.12)',
+        boxShadow:    faved ? '0 0 14px rgba(226,0,116,0.55), 0 0 28px rgba(226,0,116,0.2)' : 'none',
+        color:        faved ? '#E20074' : 'rgba(255,255,255,0.55)',
+        cursor:       'pointer',
         backdropFilter: 'blur(4px)',
         WebkitBackdropFilter: 'blur(4px)',
       }}

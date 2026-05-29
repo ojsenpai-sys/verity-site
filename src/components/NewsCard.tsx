@@ -43,9 +43,13 @@ export function NewsCard({ news }: Props) {
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/70 via-transparent to-transparent" />
 
-        {/* お気に入りボタン */}
+        {/* お気に入りボタン — metaにタイトルとhrefを渡してLocalFavArticlesで正しく表示 */}
         <div className="absolute bottom-2 right-2 z-10">
-          <FavoriteButton type="article" id={news.slug} />
+          <FavoriteButton
+            type="article"
+            id={news.slug}
+            meta={{ title: news.title, href: `/news/${news.slug}` }}
+          />
         </div>
 
         {/* カテゴリバッジ */}

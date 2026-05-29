@@ -110,9 +110,16 @@ export function ArticleCard({ article }: ArticleCardProps) {
 
   const imageBadges = (
     <>
-      {/* お気に入りボタン（スラッグがない作品はIDで代替） */}
+      {/* お気に入りボタン — metaにタイトルとhrefを渡してLocalFavArticlesで正しく表示 */}
       <div className="absolute bottom-2 right-2 z-10">
-        <FavoriteButton type="article" id={article.slug || article.external_id} />
+        <FavoriteButton
+          type="article"
+          id={article.slug || article.external_id}
+          meta={{
+            title: article.title,
+            href:  article.slug ? `/articles/${article.slug}` : '',
+          }}
+        />
       </div>
       {upcoming && (
         <span className="absolute left-0 top-3 rounded-r-full bg-sky-600 px-3 py-0.5 text-[10px] font-bold tracking-wider text-white shadow-[0_0_10px_rgba(2,132,199,0.5)]">
