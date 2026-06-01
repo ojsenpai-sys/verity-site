@@ -1,6 +1,7 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Article, Actress, PipelineResult, Source } from './types'
 import { FEATURED_CIDS, MARQUEE_SYNC_CIDS, FORCE_DIGITAL_CIDS, PINNED_ACTRESS_LATEST_CIDS } from './featuredCids'
+import { MONITORED_MAKER_IDS } from './makers'
 import { cidToCdnUrl, isBadImageUrl, toHighResPackageUrl } from './cidUtils'
 import { RECOMMENDED_ACTRESS_NAMES } from './recommendedActresses'
 import { MOCK_ACTRESSES, MOCK_ARTICLES } from './mockData'
@@ -1484,13 +1485,7 @@ async function restorePinnedActressLatestCids(): Promise<void> {
 }
 
 // ─── Maker Upcoming Sync ──────────────────────────────────────────────────────
-
-/**
- * 監視メーカー一覧（メーカー ID）。毎日 0:00 JST (15:00 UTC) に巡回。
- * S1, Prestige, SOD Create, V&R, MagicBanana, MOODYZ, 本中,
- * E-BODY, Ksommelier, ALICE JAPAN, GIGA, PREMIUM, OPPAI
- */
-const MONITORED_MAKER_IDS = [3152, 1509, 1219, 6329, 40488, 4641, 6304, 2661, 45276, 5032, 4469, 3890, 5238]
+// MONITORED_MAKER_IDS は src/lib/makers.ts で管理 — そちらが source of truth
 
 /**
  * 監視メーカーの新作・予約作を DB に取り込み、未登録女優・SNS 未設定女優を報告する。

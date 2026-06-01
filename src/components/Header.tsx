@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Menu, X, Map, Newspaper, Users, LayoutDashboard } from 'lucide-react'
+import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Building2 } from 'lucide-react'
 import { LoginButton } from './LoginButton'
 import { withAffiliate } from '@/lib/affiliate'
 
@@ -19,10 +19,11 @@ function XLogo({ size = 14 }: { size?: number }) {
 }
 
 const NAV_LINKS = [
-  { href: '/',             label: 'Dashboard',      icon: LayoutDashboard },
-  { href: '/verity/news',  label: '最新スケジュール', icon: Newspaper },
-  { href: '/actresses',    label: 'Actresses',       icon: Users },
-  { href: '/verity/guide', label: 'VERITYの遊び方',  icon: Map },
+  { href: '/',               label: 'Dashboard',      icon: LayoutDashboard },
+  { href: '/verity/news',    label: '最新スケジュール', icon: Newspaper },
+  { href: '/actresses',      label: 'Actresses',       icon: Users },
+  { href: '/verity/makers',  label: 'メーカー',         icon: Building2 },
+  { href: '/verity/guide',   label: 'VERITYの遊び方',  icon: Map },
 ]
 
 export function Header() {
@@ -64,6 +65,9 @@ export function Header() {
             </Link>
             <Link href="/actresses" className="hover:text-[var(--magenta)] transition-colors">
               Actresses
+            </Link>
+            <Link href="/verity/makers" className="hover:text-[var(--magenta)] transition-colors">
+              メーカー
             </Link>
             <Link
               href="/verity/guide"
