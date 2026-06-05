@@ -7,6 +7,7 @@ import {
   CROWN_CLICK_THRESHOLD, CROWN_LP_THRESHOLD,
 } from '@/lib/titles'
 import type { Profile, Actress, UnlockedTitle } from '@/lib/types'
+import { computeMaxFavorites } from '@/lib/slotUtils'
 import type { GenreStats, TitleDef } from '@/lib/titles'
 import { isBadImageUrl, cidToCdnUrl } from '@/lib/cidUtils'
 import type { AxisScore, RecommendedProduct } from '@/components/GentlemanAnalysis'
@@ -96,9 +97,22 @@ export default async function ProfilePage() {
       .select('*')
       .single()
     if (insertResult.error) {
-      console.error('[profile] profile INSERT failed:', insertResult.error.message, '| code:', insertResult.error.code ?? '(none)')
+      if (insertResult.error.code === '23505') {
+        // 競合状態（モバイル2重タップ等）: 既存行を再取得
+        console.warn('[profile] duplicate INSERT detected (race), re-fetching existing profile...')
+        const { data: refetched } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('user_id', user.id)
+          .eq('brand_id', BRAND_ID)
+          .maybeSingle()
+        resolvedProfile = refetched as Profile | null
+      } else {
+        console.error('[profile] profile INSERT failed:', insertResult.error.message, '| code:', insertResult.error.code ?? '(none)')
+      }
+    } else {
+      resolvedProfile = insertResult.data as Profile | null
     }
-    resolvedProfile = (insertResult.data as Profile | null)
   }
 
   // ── 全データを並列取得 ──────────────────────────────────────────────────────
@@ -379,7 +393,12 @@ export default async function ProfilePage() {
   const dbStars         = resolvedProfile?.stars_count ?? 0
   const crownBasedStars = crownCount >= 9 ? 9 : crownCount >= 6 ? 6 : crownCount >= 3 ? 3 : 0
   const starsCount      = Math.max(dbStars, crownBasedStars)
-  const maxFavorites    = starsCount >= 6 ? 9 : starsCount >= 3 ? 6 : 3
+  const maxFavorites    = computeMaxFavorites(
+    starsCount,
+    resolvedProfile?.is_subscribed          ?? false,
+    resolvedProfile?.subscription_expires_at ?? null,
+    resolvedProfile?.purchased_slots         ?? 0,
+  )
   const isLegend        = starsCount >= 9
 
   if (crownBasedStars > dbStars) {

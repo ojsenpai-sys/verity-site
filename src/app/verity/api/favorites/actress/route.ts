@@ -1,5 +1,6 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
+import { computeMaxFavorites } from '@/lib/slotUtils'
 
 const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
 
@@ -25,15 +26,19 @@ export async function POST(request: NextRequest) {
 
   const { data: profile } = await supabase
     .from('profiles')
-    .select('favorite_actress_ids, stars_count')
+    .select('favorite_actress_ids, stars_count, is_subscribed, subscription_expires_at, purchased_slots')
     .eq('user_id', user.id)
     .eq('brand_id', BRAND_ID)
     .maybeSingle()
   if (!profile) return NextResponse.json({ error: 'Profile not found' }, { status: 404 })
 
   const current = (profile.favorite_actress_ids ?? []) as string[]
-  const stars   = (profile.stars_count ?? 0) as number
-  const maxFavs = stars >= 6 ? 9 : stars >= 3 ? 6 : 3
+  const maxFavs = computeMaxFavorites(
+    (profile.stars_count        ?? 0)    as number,
+    (profile.is_subscribed      ?? false) as boolean,
+    (profile.subscription_expires_at ?? null) as string | null,
+    (profile.purchased_slots    ?? 0)    as number,
+  )
 
   let next: string[]
   if (action === 'add') {

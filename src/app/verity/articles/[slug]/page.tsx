@@ -399,10 +399,10 @@ export default async function ArticlePage({ params }: { params: Promise<Params> 
             {genreTags.map((tag) => (
               <Link
                 key={tag}
-                href={`/?tag=${encodeURIComponent(tag)}`}
-                className="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-xs text-[var(--text-muted)] hover:border-[var(--magenta)] hover:text-[var(--magenta)] transition-colors"
+                href={`/verity/genres/${encodeURIComponent(tag)}`}
+                className="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-xs text-[var(--text-muted)] transition-colors hover:border-[var(--magenta)]/40 hover:text-[var(--magenta)]"
               >
-                #{tag}
+                {tag}
               </Link>
             ))}
           </MetaRow>

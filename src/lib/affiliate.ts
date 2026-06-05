@@ -16,6 +16,48 @@ function affiliateId(): string {
   )
 }
 
+/**
+ * DMM Japan（dmm.co.jp / fanza.co.jp）の URL を国際版 fanza.com に変換。
+ * al.* アフィリエイトリダイレクト URL 内の lurl パラメータも変換対象。
+ */
+function toGlobalUrl(url: string): string {
+  try {
+    const u = new URL(url)
+    if (u.hostname === 'al.dmm.co.jp' || u.hostname === 'al.fanza.co.jp') {
+      const lurl = u.searchParams.get('lurl')
+      if (lurl) {
+        try {
+          const inner = new URL(decodeURIComponent(lurl))
+          if (inner.hostname.endsWith('.dmm.co.jp') || inner.hostname.endsWith('.fanza.co.jp')) {
+            inner.hostname = 'www.fanza.com'
+            u.searchParams.set('lurl', inner.toString())
+          }
+        } catch { /* inner URL が解析不能な場合はそのまま */ }
+      }
+      return u.toString()
+    }
+    if (u.hostname.endsWith('.dmm.co.jp') || u.hostname.endsWith('.fanza.co.jp')) {
+      u.hostname = 'www.fanza.com'
+      return u.toString()
+    }
+    return url
+  } catch {
+    return url
+  }
+}
+
+/**
+ * 国内ユーザーは通常の DMM/FANZA アフィリエイトリンクを、
+ * 海外ユーザーは fanza.com（グローバル版）に変換した上でアフィリエイトリンクを返す。
+ */
+export function withAffiliateForRegion(
+  url: string | null | undefined,
+  isOverseas: boolean,
+): string | null {
+  if (!url) return null
+  return withAffiliate(isOverseas ? toGlobalUrl(url) : url)
+}
+
 export function withAffiliate(url: string | null | undefined): string | null {
   if (!url) return null
   const af = affiliateId()

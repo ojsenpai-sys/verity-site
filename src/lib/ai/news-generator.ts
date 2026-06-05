@@ -104,11 +104,12 @@ async function callGemini(prompt: string): Promise<string> {
       cache: 'no-store',
     })
 
-    // 429 レート制限: 指数バックオフで最大 MAX_RETRIES 回リトライ
-    if (res.status === 429 && attempt < MAX_RETRIES - 1) {
+    // 429 / 503 / 5xx: 指数バックオフで最大 MAX_RETRIES 回リトライ
+    const isRetryable = (res.status === 429 || res.status >= 500) && attempt < MAX_RETRIES - 1
+    if (isRetryable) {
       const retryAfter = res.headers.get('Retry-After')
-      const delay = retryAfter ? Number(retryAfter) * 1000 : 2000 * Math.pow(2, attempt)
-      console.warn(`[ai] Gemini 429 — ${delay}ms 後にリトライ (${attempt + 1}/${MAX_RETRIES - 1})`)
+      const delay = retryAfter ? Number(retryAfter) * 1000 : 3000 * Math.pow(2, attempt)
+      console.warn(`[ai] Gemini ${res.status} — ${delay}ms 後にリトライ (${attempt + 1}/${MAX_RETRIES - 1})`)
       await new Promise(r => setTimeout(r, delay))
       continue
     }
@@ -135,7 +136,7 @@ async function callGemini(prompt: string): Promise<string> {
     return text
   }
 
-  throw new Error('[ai] Gemini API: レート制限により最大リトライ回数を超えました')
+  throw new Error('[ai] Gemini API: 最大リトライ回数を超えました (429/5xx)')
 }
 
 // ── スラッグ生成 ─────────────────────────────────────────────────────────────

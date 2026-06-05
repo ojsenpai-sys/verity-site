@@ -1501,8 +1501,8 @@ export async function syncMakerUpcoming(): Promise<{
   let inserted = 0, errors = 0
 
   // content_id → { item, floor } — digital/videoa を先に巡回するので digital が優先で残る
-  const allItems     = new Map<string, { item: DmmItem; floor: string }>()
-  const actressNames = new Map<number, string>()
+  const allItems    = new Map<string, { item: DmmItem; floor: string }>()
+  const actressData = new Map<number, { name: string; ruby?: string }>()
 
   // ── Step 1: 全メーカー × 両フロアを取得（重複は content_id で排除、digital 優先）────────
   for (const makerId of MONITORED_MAKER_IDS) {
@@ -1519,7 +1519,7 @@ export async function syncMakerUpcoming(): Promise<{
         for (const item of items) {
           if (!allItems.has(item.content_id)) allItems.set(item.content_id, { item, floor })
           for (const a of item.iteminfo?.actress ?? []) {
-            if (!actressNames.has(a.id)) actressNames.set(a.id, a.name)
+            if (!actressData.has(a.id)) actressData.set(a.id, { name: a.name, ruby: a.ruby })
           }
         }
         console.log(`[maker-sync] maker=${makerId} ${service}/${floor}: ${items.length}件`)
@@ -1549,7 +1549,7 @@ export async function syncMakerUpcoming(): Promise<{
   }
 
   // ── Step 3: 女優の登録状況を確認 ─────────────────────────────────────────
-  const externalIds = [...actressNames.keys()].map(id => `dmm-actress-${id}`)
+  const externalIds = [...actressData.keys()].map(id => `dmm-actress-${id}`)
   const { data: existingRows } = await supabase
     .from('actresses')
     .select('external_id, twitter_screen_name')
@@ -1563,15 +1563,44 @@ export async function syncMakerUpcoming(): Promise<{
     )
   }
 
-  const newActresses:   string[] = []
+  const newActressEntries: Array<{ id: number; name: string; ruby?: string }> = []
   const noSnsActresses: string[] = []
 
-  for (const [id, name] of actressNames) {
+  for (const [id, data] of actressData) {
     const extId = `dmm-actress-${id}`
     if (!existingMap.has(extId)) {
-      newActresses.push(name)
+      newActressEntries.push({ id, ...data })
     } else if (!existingMap.get(extId)) {
-      noSnsActresses.push(name)
+      noSnsActresses.push(data.name)
+    }
+  }
+
+  const newActresses = newActressEntries.map(a => a.name)
+
+  // ── Step 4: 未登録女優を自動登録（is_active: true）────────────────────────
+  if (newActressEntries.length > 0) {
+    const imageIds  = newActressEntries.slice(0, 50).map(a => a.id)
+    const imageMap  = await fetchActressImages(imageIds)
+
+    const newRecords = newActressEntries.map(a => ({
+      external_id: `dmm-actress-${a.id}`,
+      name:        a.name,
+      ruby:        a.ruby ?? null,
+      image_url:   imageMap.get(a.id) ?? null,
+      is_active:   true,
+      metadata:    { dmm_id: a.id },
+    }))
+
+    // ignoreDuplicates: true — 既存レコードの latest_cid 等を破壊しない
+    const { error: regErr } = await supabase
+      .from('actresses')
+      .upsert(newRecords, { onConflict: 'external_id', ignoreDuplicates: true })
+
+    if (!regErr) {
+      console.log(`[maker-sync] 新規女優自動登録: ${newRecords.length}名 — ${newActresses.join(', ')}`)
+    } else {
+      console.error('[maker-sync] 新規女優登録 upsert 失敗:', regErr.message)
+      errors++
     }
   }
 
@@ -1582,6 +1611,220 @@ export async function syncMakerUpcoming(): Promise<{
   console.log(`[maker-sync] SNS未設定女優 (${noSnsActresses.length}名):`, noSnsActresses)
 
   return { inserted, errors, newActresses, noSnsActresses }
+}
+
+// ─── Debut Actress Sync ───────────────────────────────────────────────────────
+
+/**
+ * articles テーブルの「デビュー作品」ジャンルタグを持つ記事を走査し、
+ * 出演女優が actresses テーブルに未登録の場合は is_active: true で自動登録する。
+ *
+ * 対象期間: 2026-03-01 ～ 実行時 + 6ヶ月（予約作を含む）
+ *
+ * upsert 戦略:
+ *   - 完全新規 → ignoreDuplicates: true で安全挿入
+ *   - is_active: false の下書き → UPDATE で公開化（metadata は手を触れない）
+ */
+export async function syncDebutActresses(): Promise<{
+  articlesScanned: number
+  debutWorks:      number
+  newRegistered:   number
+  activated:       number
+  errors:          number
+  names:           string[]
+}> {
+  const supabase = getServiceClient()
+  const result = {
+    articlesScanned: 0, debutWorks: 0, newRegistered: 0, activated: 0, errors: 0, names: [] as string[],
+  }
+
+  const startDate   = '2026-03-01T00:00:00+09:00'
+  const futureEdge  = new Date(Date.now() + 180 * 86400_000).toISOString()
+
+  const { data: articles, error: fetchErr } = await supabase
+    .from('articles')
+    .select('tags, metadata')
+    .eq('is_active', true)
+    .gte('published_at', startDate)
+    .lte('published_at', futureEdge)
+    .order('published_at', { ascending: false })
+    .limit(1000)
+
+  if (fetchErr) {
+    console.error('[debut-sync] articles 取得失敗:', fetchErr.message)
+    result.errors++
+    return result
+  }
+
+  result.articlesScanned = articles?.length ?? 0
+
+  type ActressMeta = { id: number; name: string; ruby?: string }
+  const candidateMap = new Map<number, { name: string; ruby?: string }>()
+
+  for (const art of articles ?? []) {
+    const tags     = art.tags as string[] | null
+    const hasDebut = tags?.some(t => t.includes('デビュー')) ?? false
+    if (!hasDebut) continue
+
+    result.debutWorks++
+    const meta = art.metadata as Record<string, unknown> | null
+    for (const a of (meta?.actress as ActressMeta[] | undefined) ?? []) {
+      if (!candidateMap.has(a.id)) {
+        candidateMap.set(a.id, { name: a.name, ruby: a.ruby })
+      }
+    }
+  }
+
+  if (candidateMap.size === 0) {
+    console.log(`[debut-sync] デビュー作品の女優候補なし (scanned:${result.articlesScanned})`)
+    return result
+  }
+
+  console.log(`[debut-sync] デビュー作品:${result.debutWorks}件 / 出演女優候補:${candidateMap.size}名`)
+
+  // 既存登録状況を確認
+  const externalIds = [...candidateMap.keys()].map(id => `dmm-actress-${id}`)
+  const { data: existing } = await supabase
+    .from('actresses')
+    .select('external_id, is_active')
+    .in('external_id', externalIds)
+
+  const existingMap = new Map<string, boolean>()   // external_id → is_active
+  for (const row of existing ?? []) {
+    existingMap.set(row.external_id as string, row.is_active as boolean)
+  }
+
+  const toRegister = [...candidateMap.entries()].filter(([id]) => !existingMap.has(`dmm-actress-${id}`))
+  const toActivate = [...candidateMap.entries()].filter(
+    ([id]) => existingMap.get(`dmm-actress-${id}`) === false,
+  )
+
+  // ── 新規登録 ─────────────────────────────────────────────────────────────
+  if (toRegister.length > 0) {
+    const imageIds = toRegister.slice(0, 100).map(([id]) => id)
+    const imageMap = await fetchActressImages(imageIds)
+
+    const records = toRegister.map(([id, data]) => ({
+      external_id: `dmm-actress-${id}`,
+      name:        data.name,
+      ruby:        data.ruby ?? null,
+      image_url:   imageMap.get(id) ?? null,
+      is_active:   true,
+      metadata:    { dmm_id: id },
+    }))
+
+    const { error: upsertErr } = await supabase
+      .from('actresses')
+      .upsert(records, { onConflict: 'external_id', ignoreDuplicates: true })
+
+    if (upsertErr) {
+      console.error('[debut-sync] 新規登録 upsert 失敗:', upsertErr.message)
+      result.errors++
+    } else {
+      result.newRegistered = records.length
+      const names = records.map(r => r.name)
+      result.names.push(...names)
+      console.log(`[debut-sync] 新規登録完了: ${records.length}名 — ${names.join(', ')}`)
+    }
+  }
+
+  // ── 下書き公開化（is_active: false → true、metadata は保持）────────────
+  if (toActivate.length > 0) {
+    const activateIds = toActivate.map(([id]) => `dmm-actress-${id}`)
+    const { error: actErr } = await supabase
+      .from('actresses')
+      .update({ is_active: true })
+      .in('external_id', activateIds)
+
+    if (actErr) {
+      console.error('[debut-sync] 下書き公開化 失敗:', actErr.message)
+      result.errors++
+    } else {
+      result.activated = toActivate.length
+      const names = toActivate.map(([, d]) => d.name)
+      result.names.push(...names)
+      console.log(`[debut-sync] 下書き公開化: ${toActivate.length}名 — ${names.join(', ')}`)
+    }
+  }
+
+  console.log(
+    `[debut-sync] 完了 — scanned:${result.articlesScanned} debutWorks:${result.debutWorks}` +
+    ` newRegistered:${result.newRegistered} activated:${result.activated} errors:${result.errors}`,
+  )
+  return result
+}
+
+// ─── Today's Pick Sync ───────────────────────────────────────────────────────
+
+/**
+ * DBにある直近14日間の作品を独自スコアリングで評価し、「今日の一本」を1件選定する。
+ * 選ばれた作品の metadata.todays_pick_date を JST 今日の日付（YYYY-MM-DD）で更新する。
+ *
+ * スコア = freshScore × soloBonus
+ *   freshScore  = max(0, 1 - ageDays / 14)  ← 新着ほど高い (0〜1)
+ *   soloBonus   = 単体:2.0 / デュオ:1.5 / 複数:1.0 / 女優情報なし:0.8
+ */
+export async function syncTodaysPick(): Promise<{
+  cid: string; title: string; score: number
+} | null> {
+  const supabase = getServiceClient()
+  const todayJst = new Date().toLocaleDateString('sv', { timeZone: 'Asia/Tokyo' })
+
+  const nowIso  = new Date().toISOString()
+  const cutoff  = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
+  const { data, error } = await supabase
+    .from('articles')
+    .select('external_id, title, published_at, metadata')
+    .eq('is_active', true)
+    .gte('published_at', cutoff)
+    .lte('published_at', nowIso)   // 未来日付（予約作品）を除外
+    .not('image_url', 'is', null)
+    .order('published_at', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    console.error('[todays-pick] query error:', error.message)
+    return null
+  }
+  if (!data?.length) {
+    console.log('[todays-pick] 候補なし')
+    return null
+  }
+
+  type Row = { external_id: string; title: string; published_at: string | null; metadata: Record<string, unknown> | null }
+  const candidates = (data as Row[]).filter(a => {
+    const url = a.metadata?.url as string | undefined
+    return !url?.includes('/dc/doujin/')
+  })
+
+  const now = Date.now()
+  const scored = candidates.map(a => {
+    const pubMs = a.published_at ? new Date(a.published_at).getTime() : 0
+    const ageDays = (now - pubMs) / (1000 * 60 * 60 * 24)
+    const freshScore = Math.max(0, 1 - ageDays / 14)
+    const actressList = a.metadata?.actress
+    const actressCount = Array.isArray(actressList) ? actressList.length : 0
+    const soloBonus = actressCount === 1 ? 2.0 : actressCount === 2 ? 1.5 : actressCount === 0 ? 0.8 : 1.0
+    return { cid: a.external_id, title: a.title, score: freshScore * soloBonus }
+  }).sort((a, b) => b.score - a.score)
+
+  const best = scored[0]
+  if (!best) return null
+
+  const { data: winnerRow } = await supabase
+    .from('articles')
+    .select('metadata')
+    .eq('external_id', best.cid)
+    .single()
+
+  const prevMeta = ((winnerRow as { metadata: Record<string, unknown> } | null)?.metadata) ?? {}
+  await supabase
+    .from('articles')
+    .update({ metadata: { ...prevMeta, todays_pick_date: todayJst } })
+    .eq('external_id', best.cid)
+
+  console.log(`[todays-pick] 選定: ${best.cid} | score=${best.score.toFixed(3)} | ${best.title.slice(0, 50)}`)
+  return best
 }
 
 export async function syncAllSources(): Promise<PipelineResult[]> {
@@ -1599,6 +1842,10 @@ export async function syncAllSources(): Promise<PipelineResult[]> {
     await syncActressHeroImages()
     // マーキー固定女優の latest_cid を確実に保護（syncActressHeroImages の上書き後に実行）
     await restorePinnedActressLatestCids()
+    // デビュー作品タグを持つ未登録女優を自動登録・下書き公開化
+    await syncDebutActresses()
+    // 今日のピックを選定（全同期完了後に実行）
+    await syncTodaysPick()
     return [main]
   }
 

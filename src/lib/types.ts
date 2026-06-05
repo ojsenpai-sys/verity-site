@@ -81,6 +81,10 @@ export type Profile = {
   lp_transfer_count:        number
   favorite_change_count:    number
   equipped_epithet:         string | null
+  // VERITY BLACK サブスク・従量課金枠
+  is_subscribed:            boolean
+  subscription_expires_at:  string | null
+  purchased_slots:          number
   created_at:               string
   updated_at:               string
 }

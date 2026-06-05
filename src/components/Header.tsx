@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Building2 } from 'lucide-react'
+import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Building2, LayoutGrid } from 'lucide-react'
 import { LoginButton } from './LoginButton'
 import { withAffiliate } from '@/lib/affiliate'
 
@@ -20,9 +20,10 @@ function XLogo({ size = 14 }: { size?: number }) {
 
 const NAV_LINKS = [
   { href: '/',               label: 'Dashboard',      icon: LayoutDashboard },
-  { href: '/verity/news',    label: '最新スケジュール', icon: Newspaper },
+  { href: '/verity/news',    label: 'NEWS',             icon: Newspaper },
   { href: '/actresses',      label: 'Actresses',       icon: Users },
-  { href: '/verity/makers',  label: 'メーカー',         icon: Building2 },
+  { href: '/verity/makers',  label: 'MAKERS',           icon: Building2 },
+  { href: '/verity/genres',  label: 'GENRES',           icon: LayoutGrid },
   { href: '/verity/guide',   label: 'VERITYの遊び方',  icon: Map },
 ]
 
@@ -55,59 +56,9 @@ export function Header() {
             />
           </Link>
 
-          {/* PC nav */}
-          <nav className="hidden md:flex items-center gap-3 text-sm text-[var(--text-muted)]">
-            <Link href="/" className="hover:text-[var(--magenta)] transition-colors">
-              Dashboard
-            </Link>
-            <Link href="/verity/news" className="hover:text-[var(--magenta)] transition-colors">
-              News
-            </Link>
-            <Link href="/actresses" className="hover:text-[var(--magenta)] transition-colors">
-              Actresses
-            </Link>
-            <Link href="/verity/makers" className="hover:text-[var(--magenta)] transition-colors">
-              メーカー
-            </Link>
-            <Link
-              href="/verity/guide"
-              className="flex items-center gap-1.5 rounded-full border border-[var(--magenta)]/40 px-3 py-1 text-xs font-semibold text-[var(--magenta)] transition-all hover:bg-[var(--magenta)]/10"
-            >
-              <Map size={12} />
-              VERITYの遊び方
-            </Link>
-            <a
-              href={withAffiliate(DMM_RANKING_URL) ?? DMM_RANKING_URL}
-              target="_blank"
-              rel="noopener noreferrer sponsored"
-              className="flex items-center gap-1 rounded-full bg-gradient-to-r from-pink-600 to-rose-600 px-3 py-1 text-xs font-bold text-white transition-all hover:from-pink-500 hover:to-rose-500 hover:shadow-[0_0_12px_rgba(225,29,72,0.4)]"
-            >
-              🔥 FANZA売れ筋ランキング
-            </a>
-            <a
-              href={withAffiliate(DMM_SALE_URL) ?? DMM_SALE_URL}
-              target="_blank"
-              rel="noopener noreferrer sponsored"
-              className="flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-400/10 px-3 py-1 text-xs font-bold text-amber-400 transition-all hover:bg-amber-400/20"
-            >
-              🎫 FANZA公式セール会場
-            </a>
-            <a
-              href={OFFICIAL_X_URL}
-              target="_blank"
-              rel="noopener noreferrer"
-              aria-label="公式X（@veritymedia0505）"
-              className="flex items-center gap-1.5 rounded-full border border-white/20 bg-white/[0.04] px-3 py-1 text-xs font-semibold text-white/55 transition-all duration-200 hover:border-white/50 hover:bg-white/[0.09] hover:text-white hover:shadow-[0_0_14px_rgba(255,255,255,0.18)]"
-            >
-              <XLogo size={12} />
-              公式X
-            </a>
-            <LoginButton />
-          </nav>
-
-          {/* Mobile: hamburger button */}
+          {/* Hamburger button */}
           <button
-            className="md:hidden flex items-center justify-center rounded-lg p-2 text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
+            className="flex items-center justify-center rounded-lg p-2 text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
             onClick={() => setIsOpen(v => !v)}
             aria-label={isOpen ? 'メニューを閉じる' : 'メニューを開く'}
             aria-expanded={isOpen}
@@ -119,7 +70,7 @@ export function Header() {
 
       {/* Overlay */}
       <div
-        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm md:hidden transition-opacity duration-300 ${
+        className={`fixed inset-0 z-40 bg-black/60 backdrop-blur-sm transition-opacity duration-300 ${
           isOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'
         }`}
         onClick={() => setIsOpen(false)}
@@ -128,7 +79,7 @@ export function Header() {
 
       {/* Drawer */}
       <div
-        className={`fixed top-0 right-0 z-50 h-full w-72 bg-[var(--bg)] border-l border-[var(--border)] shadow-2xl md:hidden transition-transform duration-300 ease-in-out ${
+        className={`fixed top-0 right-0 z-50 h-full w-80 bg-[var(--bg)]/95 backdrop-blur-md border-l border-[var(--magenta)]/20 shadow-[0_0_60px_rgba(0,0,0,0.6)] transition-transform duration-300 ease-in-out ${
           isOpen ? 'translate-x-0' : 'translate-x-full'
         }`}
         aria-modal="true"
@@ -209,10 +160,8 @@ export function Header() {
           </nav>
 
           {/* Login / Mypage at bottom */}
-          <div className="p-5 border-t border-[var(--border)]">
-            <div onClick={() => setIsOpen(false)} className="w-full">
-              <LoginButton />
-            </div>
+          <div className="p-4 border-t border-[var(--border)]">
+            <LoginButton variant="drawer" onClick={() => setIsOpen(false)} />
           </div>
         </div>
       </div>

@@ -1,126 +1,89 @@
 import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Building2, ChevronRight } from 'lucide-react'
+import { ChevronRight } from 'lucide-react'
 import { MAKERS } from '@/lib/makers'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 export const metadata: Metadata = {
-  title: 'メーカー一覧',
-  description: 'VERITYが厳選した主要AVメーカー13社の最新作・予約作品カタログ。S1、MOODYZ、Prestige、PREMIUM など人気スタジオの新作スケジュールをいち早くチェック。',
+  title: 'MAKERS — メーカー一覧',
+  description: `VERITYが収録する主要AVメーカー${MAKERS.length}社の最新作・予約作品カタログ。S1、MOODYZ、Prestige、PREMIUM など人気スタジオの新作スケジュールをいち早くチェック。`,
   alternates: { canonical: `${process.env.NEXT_PUBLIC_SITE_URL ?? ''}/verity/makers` },
 }
 
-// 各メーカーに個性を出すための決定論的カラー
-const CARD_ACCENTS = [
-  'from-pink-600/20 to-rose-600/20 border-pink-500/30',
-  'from-violet-600/20 to-purple-600/20 border-violet-500/30',
-  'from-sky-600/20 to-blue-600/20 border-sky-500/30',
-  'from-amber-600/20 to-orange-600/20 border-amber-500/30',
-  'from-emerald-600/20 to-teal-600/20 border-emerald-500/30',
-  'from-red-600/20 to-pink-600/20 border-red-500/30',
-  'from-indigo-600/20 to-blue-600/20 border-indigo-500/30',
-  'from-fuchsia-600/20 to-pink-600/20 border-fuchsia-500/30',
-  'from-cyan-600/20 to-sky-600/20 border-cyan-500/30',
-  'from-lime-600/20 to-green-600/20 border-lime-500/30',
-  'from-orange-600/20 to-red-600/20 border-orange-500/30',
-  'from-teal-600/20 to-cyan-600/20 border-teal-500/30',
-  'from-rose-600/20 to-fuchsia-600/20 border-rose-500/30',
-]
-
-const INITIAL_COLORS = [
-  'bg-pink-600/30 text-pink-300',
-  'bg-violet-600/30 text-violet-300',
-  'bg-sky-600/30 text-sky-300',
-  'bg-amber-600/30 text-amber-300',
-  'bg-emerald-600/30 text-emerald-300',
-  'bg-red-600/30 text-red-300',
-  'bg-indigo-600/30 text-indigo-300',
-  'bg-fuchsia-600/30 text-fuchsia-300',
-  'bg-cyan-600/30 text-cyan-300',
-  'bg-lime-600/30 text-lime-300',
-  'bg-orange-600/30 text-orange-300',
-  'bg-teal-600/30 text-teal-300',
-  'bg-rose-600/30 text-rose-300',
+// Deterministic neon accent per card (cycles through palette)
+const NEON_ACCENTS = [
+  { border: 'border-[var(--magenta)]/25', glow: 'hover:border-[var(--magenta)]/60 hover:shadow-[0_0_24px_rgba(226,0,116,0.18)]', tag: 'text-[var(--magenta)]/70' },
+  { border: 'border-violet-500/25',       glow: 'hover:border-violet-400/55 hover:shadow-[0_0_24px_rgba(139,92,246,0.18)]',       tag: 'text-violet-400/70' },
+  { border: 'border-sky-500/25',          glow: 'hover:border-sky-400/55 hover:shadow-[0_0_24px_rgba(56,189,248,0.18)]',          tag: 'text-sky-400/70' },
+  { border: 'border-amber-500/25',        glow: 'hover:border-amber-400/55 hover:shadow-[0_0_24px_rgba(251,191,36,0.18)]',        tag: 'text-amber-400/70' },
+  { border: 'border-emerald-500/25',      glow: 'hover:border-emerald-400/55 hover:shadow-[0_0_24px_rgba(52,211,153,0.18)]',      tag: 'text-emerald-400/70' },
+  { border: 'border-rose-500/25',         glow: 'hover:border-rose-400/55 hover:shadow-[0_0_24px_rgba(251,113,133,0.18)]',        tag: 'text-rose-400/70' },
 ]
 
 export default function MakersPage() {
   return (
     <div className="mx-auto max-w-7xl px-4 py-10 space-y-8">
 
-      {/* ヘッダー */}
-      <div className="space-y-1">
-        <div className="flex items-center gap-2 text-xs text-[var(--text-muted)] mb-3">
-          <Link href="/" className="hover:text-[var(--magenta)] transition-colors">Dashboard</Link>
-          <ChevronRight size={12} />
-          <span className="text-[var(--text)]">メーカー</span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--magenta)]/15 border border-[var(--magenta)]/30">
-            <Building2 size={20} className="text-[var(--magenta)]" />
-          </div>
-          <div>
-            <h1 className="text-2xl font-bold text-[var(--text)]">メーカー</h1>
-            <p className="text-sm text-[var(--text-muted)]">
-              {MAKERS.length}社のメーカーカタログ — 新作・予約情報を毎日自動巡回
-            </p>
-          </div>
-        </div>
-      </div>
+      {/* パンくず */}
+      <nav className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+        <Link href="/" className="hover:text-[var(--magenta)] transition-colors">Dashboard</Link>
+        <ChevronRight size={12} />
+        <span className="text-[var(--text)]">MAKERS</span>
+      </nav>
 
-      {/* 説明バナー */}
-      <div className="rounded-xl border border-[var(--magenta)]/20 bg-[var(--magenta)]/5 px-5 py-4">
-        <p className="text-sm text-[var(--text-muted)] leading-relaxed">
-          VERITYが厳選した主要メーカーの新作・予約作品を毎日自動で巡回。
-          同一作品は必ず1ページに集約（1作品1記事ルール）されるため、
-          動画配信・DVD・限定盤が同一ページで確認できます。
+      {/* ヘッダー */}
+      <div className="space-y-3">
+        <h1 className="text-3xl font-black tracking-tight text-[var(--text)]">
+          MAKERS
+        </h1>
+        <p className="text-sm text-[var(--text-muted)] leading-relaxed max-w-2xl">
+          {MAKERS.length}社のメーカー最新作・予約作品を毎日 0:00 JST に自動巡回。
+          同一作品は1ページに集約されます（1作品1記事ルール）。
         </p>
       </div>
 
       {/* メーカーグリッド */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-        {MAKERS.map((maker, idx) => (
-          <Link
-            key={maker.id}
-            href={`/verity/makers/${maker.id}`}
-            className={`group relative flex items-start gap-4 rounded-xl border bg-gradient-to-br p-5 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-[0_8px_30px_rgba(0,0,0,0.4)] ${CARD_ACCENTS[idx % CARD_ACCENTS.length]}`}
-          >
-            {/* 頭文字アイコン */}
-            <div className={`flex h-12 w-12 shrink-0 items-center justify-center rounded-xl text-lg font-black tracking-tight ${INITIAL_COLORS[idx % INITIAL_COLORS.length]}`}>
-              {(maker.nameEn ?? maker.name).charAt(0).toUpperCase()}
-            </div>
-
-            <div className="flex-1 min-w-0">
-              <div className="flex items-start justify-between gap-2">
-                <div>
-                  <h2 className="font-bold text-[var(--text)] group-hover:text-[var(--magenta)] transition-colors leading-tight">
-                    {maker.name}
-                  </h2>
-                  {maker.nameEn && maker.nameEn !== maker.name && (
-                    <p className="text-[11px] text-[var(--text-muted)] mt-0.5">{maker.nameEn}</p>
-                  )}
-                </div>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5">
+        {MAKERS.map((maker, idx) => {
+          const accent = NEON_ACCENTS[idx % NEON_ACCENTS.length]
+          return (
+            <Link
+              key={maker.id}
+              href={`/verity/makers/${maker.id}`}
+              className={`group relative flex flex-col gap-2 rounded-xl border bg-white/[0.03] backdrop-blur-sm px-4 py-4 transition-all duration-200 hover:-translate-y-px hover:bg-white/[0.06] ${accent.border} ${accent.glow}`}
+            >
+              {/* メーカー名 */}
+              <div className="flex items-start justify-between gap-1">
+                <p className="text-sm font-bold leading-snug text-[var(--text)] group-hover:text-white transition-colors line-clamp-2">
+                  {maker.name}
+                </p>
                 <ChevronRight
-                  size={16}
-                  className="shrink-0 text-[var(--text-muted)] group-hover:text-[var(--magenta)] transition-all group-hover:translate-x-0.5"
+                  size={13}
+                  className="mt-0.5 shrink-0 text-[var(--text-muted)] group-hover:text-[var(--magenta)] transition-all group-hover:translate-x-0.5"
                 />
               </div>
-              <p className="mt-2 text-xs text-[var(--text-muted)] leading-relaxed line-clamp-2">
+
+              {/* 英字名 */}
+              {maker.nameEn && maker.nameEn !== maker.name && (
+                <p className={`text-[10px] font-semibold uppercase tracking-wider ${accent.tag}`}>
+                  {maker.nameEn}
+                </p>
+              )}
+
+              {/* 説明 */}
+              <p className="text-[11px] text-[var(--text-muted)] leading-relaxed line-clamp-2 mt-auto">
                 {maker.description}
               </p>
-              <span className="mt-3 inline-flex items-center gap-1 text-[11px] font-semibold text-[var(--magenta)] group-hover:underline underline-offset-2">
-                最新作カタログを見る
-                <ChevronRight size={10} />
-              </span>
-            </div>
-          </Link>
-        ))}
+            </Link>
+          )
+        })}
       </div>
 
-      {/* フッター注記 */}
+      {/* フッター */}
       <p className="text-center text-[11px] text-[var(--text-muted)]">
-        作品情報はFANZA Affiliate API v3 より取得。毎日 0:00 JST に自動更新。
+        作品情報は FANZA Affiliate API v3 より取得。毎日 0:00 JST に自動更新。
       </p>
     </div>
   )

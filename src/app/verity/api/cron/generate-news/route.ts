@@ -111,6 +111,7 @@ async function fetchCandidates(
   toDate:   string,
   processedCids:     ReadonlySet<string>,
   processedBaseCids: ReadonlySet<string>,
+  newestFirst = false,  // Tier B（過去作補填）は最新優先で取得（古い作品が1000件制限でカットされないように）
 ): Promise<ArticleRow[]> {
   const { data, error } = await db
     .from('articles')
@@ -119,7 +120,7 @@ async function fetchCandidates(
     .gte('published_at', fromDate)
     .lte('published_at', toDate)
     .not('image_url', 'is', null)
-    .order('published_at', { ascending: true })   // 発売日昇順（直近のものを優先）
+    .order('published_at', { ascending: !newestFirst })   // newestFirst=true で最新を先頭に
     .limit(CANDIDATE_POOL_SIZE)
 
   if (error) {
@@ -150,10 +151,12 @@ export async function GET(request: Request) {
   const now = new Date()
 
   // ─ Step 1: 処理済み CID を収集（完全一致 + base CID 両方） ─────────────────
+  // Supabase デフォルト1000件制限を超えて全件取得するため limit を明示
   const { data: existingNews } = await db
     .from('sn_news')
     .select('fanza_link, slug')
     .eq('site_key', SITE_KEY)
+    .limit(50000)
 
   const processedCids     = new Set<string>()
   const processedBaseCids = new Set<string>()   // メディア違い重複排除用
@@ -234,9 +237,10 @@ export async function GET(request: Request) {
     )
 
     // Tier B: まだ足りない場合は過去 BACKUP_PAST_DAYS 日を検索
+    // newestFirst=true: 今日発売の最新作が 1000 件制限の末尾に押しやられないよう新着順で取得
     if (toProcess.length < BATCH_SIZE) {
       const stillNeeded = BATCH_SIZE - toProcess.length
-      const backupPool  = await fetchCandidates(db, backupFrom, nearTermFrom, processedCids, processedBaseCids)
+      const backupPool  = await fetchCandidates(db, backupFrom, nearTermFrom, processedCids, processedBaseCids, true)
       backupPool.sort((a, b) =>
         priority(a, recommendedIds, rankedIds) - priority(b, recommendedIds, rankedIds),
       )
@@ -311,6 +315,48 @@ export async function GET(request: Request) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error(`[cron:generate-news] 生成失敗 ${row.external_id}:`, msg)
       results.push({ cid: row.external_id, slug: buildNewsSlug(row.external_id), prio, status: 'error', error: msg })
+
+      // スタブを挿入するのは「永続的な生成失敗」のみ。
+      // 一時的なエラー（レート制限・ネットワーク断・API停止・fetch例外）はスタブを挿入せず
+      // 次回 Cron で再試行させる。
+      //
+      // 永続的失敗の判定基準:
+      //   - Gemini コンテンツフィルター（SAFETY / ブロック）
+      //   - JSON パース失敗（Gemini が壊れた JSON を返した）
+      //   - 必須フィールド欠損
+      // 上記以外（429, 5xx, ネットワーク例外, タイムアウト等）は一時的とみなす。
+      const isPermanentFailure =
+        msg.includes('有効な JSON ではありません') ||
+        msg.includes('必須フィールド') ||
+        msg.includes('空レスポンス') ||
+        msg.includes('SAFETY') ||
+        msg.includes('finish_reason')
+      if (isPermanentFailure) {
+        const nowIso = new Date().toISOString()
+        const { error: stubErr } = await db
+          .from('sn_news')
+          .upsert(
+            {
+              site_key:     SITE_KEY,
+              slug:         buildNewsSlug(row.external_id),
+              title:        `[AI_SKIP] ${row.external_id}`,
+              category:     'NEWS',
+              content:      '',
+              summary:      '',
+              gallery_urls: JSON.stringify([]),
+              is_published: false,
+              published_at: row.published_at ?? nowIso,
+              updated_at:   nowIso,
+              tags:         ['_ai_content_filter'],
+            },
+            { onConflict: 'slug', ignoreDuplicates: true },
+          )
+        if (stubErr) {
+          console.warn(`[cron:generate-news] スタブ挿入失敗 ${row.external_id}:`, stubErr.message)
+        } else {
+          console.log(`[cron:generate-news] スタブ挿入完了: ${buildNewsSlug(row.external_id)} — 次回以降スキップ対象`)
+        }
+      }
     }
 
     // Gemini レート制限対策

@@ -51,7 +51,10 @@ function resolveSiteKey(request: NextRequest): string | null {
 const SEO_PASSTHROUGH = new Set(['/sitemap.xml', '/robots.txt'])
 
 function isSeoPassthrough(pathname: string): boolean {
-  return SEO_PASSTHROUGH.has(pathname) || pathname.startsWith('/.well-known/')
+  return SEO_PASSTHROUGH.has(pathname)
+    || pathname.startsWith('/.well-known/')
+    // /api/ 直下ルート（Stripe Webhook 等）はブランドプレフィックスなしで直接サーブ
+    || pathname.startsWith('/api/')
 }
 
 function routeRequest(request: NextRequest): NextResponse {

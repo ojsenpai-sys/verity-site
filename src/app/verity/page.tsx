@@ -8,6 +8,7 @@ import { ActressMarquee } from '@/components/ActressMarquee'
 import { FeaturedSection } from '@/components/FeaturedSection'
 import { RecommendedActressSection } from '@/components/RecommendedActressSection'
 import { MustOneSection } from '@/components/MustOneSection'
+import { TodaysPickSection } from '@/components/TodaysPickSection'
 import { FastReviewSection } from '@/components/FastReviewSection'
 import { SocialFeedSection } from '@/components/SocialFeedSection'
 import { PopularActressRankingSection } from '@/components/PopularActressRankingSection'
@@ -469,6 +470,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       {/* ── 2. THE MUST ONE ───────────────────────────────────────────────── */}
       <section id="the-must-one">
         <MustOneSection />
+      </section>
+
+      {/* ── 2.3. TODAY'S PICK（アルゴリズム自動選定・デイリー更新）───────── */}
+      <section id="todays-pick">
+        <Suspense fallback={<div className="h-36 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <TodaysPickSection />
+        </Suspense>
       </section>
 
       {/* ── 2.5. 最新作最速レビュー ──────────────────────────────────────── */}

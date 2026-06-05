@@ -57,3 +57,4 @@ vp_ask2.bat
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+dev-server.log

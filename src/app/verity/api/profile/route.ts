@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { revalidatePath } from 'next/cache'
 import { computeUnlocks, CROWN_CLICK_THRESHOLD, CROWN_LP_THRESHOLD } from '@/lib/titles'
 import type { UnlockedTitle } from '@/lib/types'
+import { computeMaxFavorites } from '@/lib/slotUtils'
 
 const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
 
@@ -55,7 +56,7 @@ export async function PATCH(request: NextRequest) {
   // ── 現在のプロフィールを取得（バリデーション + 二つ名チェック用）──────────────
   const { data: currentProfile } = await supabase
     .from('profiles')
-    .select('titles_data, stars_count, favorite_actress_ids, favorite_change_count, display_name, created_at')
+    .select('titles_data, stars_count, favorite_actress_ids, favorite_change_count, display_name, created_at, is_subscribed, subscription_expires_at, purchased_slots')
     .eq('user_id', user.id)
     .eq('brand_id', BRAND_ID)
     .maybeSingle()
@@ -67,8 +68,12 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: 'favorite_actress_ids must be an array' }, { status: 400 })
     }
 
-    const stars   = (currentProfile?.stars_count ?? 0) as number
-    const maxFavs = stars >= 6 ? 9 : stars >= 3 ? 6 : 3
+    const maxFavs = computeMaxFavorites(
+      (currentProfile?.stars_count            ?? 0)    as number,
+      (currentProfile?.is_subscribed          ?? false) as boolean,
+      (currentProfile?.subscription_expires_at ?? null) as string | null,
+      (currentProfile?.purchased_slots         ?? 0)   as number,
+    )
 
     if (ids.length > maxFavs) {
       return NextResponse.json(

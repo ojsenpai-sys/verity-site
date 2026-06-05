@@ -5,6 +5,7 @@ import Link from 'next/link'
 import {
   Zap, Heart, Brain, ShieldCheck, Sparkles, ArrowRight,
   Clock, Lock, UserCheck, Database, Star, BookOpen,
+  LayoutGrid, Trophy, Building2, BadgeCheck,
 } from 'lucide-react'
 
 type Lang = 'ja' | 'en' | 'th'
@@ -77,24 +78,26 @@ const C = {
     h1b:  'VERITY完全ガイド',
     sub:  'FANZA公式データ直結・ログイン不要のお気に入り・マイページ属性解析——すべて無料で使えます。',
     stats: [
-      { label: '女優データ', value: '1,100名+' },
-      { label: '作品数',     value: '毎日更新' },
-      { label: '利用料金',   value: '完全無料' },
+      { label: '監視メーカー', value: '58社+' },
+      { label: 'ジャンル数',   value: '80種+' },
+      { label: '利用料金',     value: '完全無料' },
     ],
     steps: [
       {
         badge:  'STEP 1 ── ディグる',
         icon:   Zap,
         title:  '24時間バッジで\n今日の新作を狙い撃ち',
-        desc:   'VERITYはFANZAリアルタイムデータと連携し、公開から24時間以内の作品・ニュースに自動で「NEW」バッジを点灯。さらに発売日ソートで今日リリースされた作品だけに絞り込めます。',
+        desc:   'VERITYはS1・アイデアポケット・マドンナ・無垢など58社以上のメーカーを毎日0:00 JSTに自動巡回し、最新作を1作品1記事の厳格ルールでDBに収録。ジャンル別80種+の専用カタログと、アルゴリズムが選ぶ「今夜の一本」で今日の一番を即座に見つけられます。',
         cards: [
-          { accent: 'magenta' as const, icon: Zap,      title: '「NEW」バッジ（24時間時限）', body: '公開から24時間以内に自動点灯するNEONバッジ。ページをリロードするたびに最新状態を反映します。' },
-          { accent: 'sky'     as const, icon: Clock,    title: '発売日ソート',                 body: 'トップページの切り替えスイッチで「新着順」に即時ソート。今日出たばかりの作品が最上位へ。' },
+          { accent: 'magenta' as const, icon: Zap,        title: '「NEW」バッジ（24時間時限）',  body: '公開から24時間以内に自動点灯するNEONバッジ。ページをリロードするたびに最新状態を反映。' },
+          { accent: 'sky'     as const, icon: Clock,      title: '発売日ソート',                  body: 'トップページの切り替えスイッチで「新着順」に即時ソート。今日出たばかりの作品が最上位へ。' },
+          { accent: 'emerald' as const, icon: LayoutGrid, title: 'ジャンル別カタログ（80種+）',   body: 'キャバ嬢・風俗嬢、ヘルス・ソープ、中出し、単体、4K、人妻、熟女……80種以上のジャンルページが毎日自動更新。' },
+          { accent: 'amber'   as const, icon: Trophy,     title: '今夜の一本（TODAY\'S PICK）',   body: '鮮度スコア×単体ボーナスのアルゴリズムが毎日0:00に最旬の1作品を自動選出。今夜の答えはここに。' },
         ],
         timeline: {
-          label: 'VERITYの更新サイクル（例）',
+          label: 'VERITYの更新サイクル',
           items: [
-            { time: '毎日 0:00 JST', label: '最新作・予約作を自動同期' },
+            { time: '毎日 0:00 JST', label: '58社+を自動巡回・1作品1記事ルールでDB収録・TODAY\'S PICK算出' },
             { time: '毎日 6:00 JST', label: '人気女優ランキングを更新' },
             { time: 'リアルタイム',  label: '編集部キュレーションを随時追加' },
           ],
@@ -124,10 +127,14 @@ const C = {
         cta: { href: '/verity/profile', label: 'マイページを見てみる' },
       },
     ],
-    vr: {
-      badge: 'COMING NEXT',
-      title: 'VR・ガジェット連携が近日解禁',
-      desc:  'VRヘッドセットやスマート連携デバイスとの統合機能を開発中。VERITYのお気に入りデータがリアルの体験と繋がります。続報をお待ちください。',
+    dq: {
+      badge: 'データ品質宣言',
+      title: '1作品1記事ルール ── 重複ゼロ保証',
+      desc:  'VERITYでは同一CID（作品ID）に対して複数の記事が生まれることを構造レベルで禁止しています。新作発見時はUPSERTで既存レコードを更新し、初出CIDのみINSERT。これにより検索・ランキング・TODAY\'S PICKのすべての精度が担保されます。',
+      makers: {
+        label: '自動巡回メーカー（抜粋）',
+        items: ['S1 NO.1 STYLE', 'アイデアポケット', 'マドンナ', 'MOODYZ', 'MUTEKI', '無垢', 'million', 'Prestige (global)', '…他50社+'],
+      },
     },
     sec: {
       badge: '安心・安全',
@@ -155,8 +162,8 @@ const C = {
     h1b:  'VERITY',
     sub:  'Real-time FANZA data · No-login favorites · MyPage profile analysis — all completely free.',
     stats: [
-      { label: 'Actresses',    value: '1,100+' },
-      { label: 'New content',  value: 'Daily' },
+      { label: 'Maker Labels', value: '58+' },
+      { label: 'Genres',       value: '80+' },
       { label: 'Price',        value: 'Always free' },
     ],
     steps: [
@@ -164,15 +171,17 @@ const C = {
         badge: 'STEP 1 — DIG',
         icon:  Zap,
         title: 'Spot New Drops\nWith the 24h Badge',
-        desc:  'VERITY connects directly to FANZA\'s live data. Any work or news published within the last 24 hours automatically gets a glowing NEW badge. Switch to release-date sort to see today\'s fresh drops at the top.',
+        desc:  'VERITY auto-crawls 58+ maker labels (S1, Idea Pocket, Madonna, MUKU, million...) every day at 0:00 JST, storing each title under the strict one-title-one-article rule. Browse 80+ genre catalogs or let TODAY\'S PICK\'s algorithm surface the freshest must-watch instantly.',
         cards: [
-          { accent: 'magenta' as const, icon: Zap,   title: '24h NEW Badge',       body: 'Auto-lights on anything published in the last 24 hours. Reloading always shows the freshest state.' },
-          { accent: 'sky'     as const, icon: Clock, title: 'Release-Date Sort',    body: 'Toggle the sort switch on the top page to sort by newest. Today\'s releases jump straight to the top.' },
+          { accent: 'magenta' as const, icon: Zap,        title: '24h NEW Badge',              body: 'Auto-lights on anything published in the last 24 hours. Reloading always shows the freshest state.' },
+          { accent: 'sky'     as const, icon: Clock,      title: 'Release-Date Sort',           body: 'Toggle the sort switch on the top page to sort by newest. Today\'s releases jump straight to the top.' },
+          { accent: 'emerald' as const, icon: LayoutGrid, title: 'Genre Catalogs (80+ types)',  body: 'Cabaret girls, health/soapland, creampie, solo, 4K, married women, mature… 80+ genre pages updated daily.' },
+          { accent: 'amber'   as const, icon: Trophy,     title: 'TODAY\'S PICK',               body: 'Freshness score × solo bonus algorithm auto-selects the day\'s top pick at 0:00 JST every night.' },
         ],
         timeline: {
-          label: 'VERITY Update Schedule (example)',
+          label: 'VERITY Update Schedule',
           items: [
-            { time: 'Daily 0:00 JST', label: 'Latest works & reservations auto-sync' },
+            { time: 'Daily 0:00 JST', label: '58+ makers crawled · one-title-one-article DB sync · TODAY\'S PICK computed' },
             { time: 'Daily 6:00 JST', label: 'Top actress rankings refreshed' },
             { time: 'Real-time',      label: 'Editorial curations added continuously' },
           ],
@@ -202,10 +211,14 @@ const C = {
         cta: { href: '/verity/profile', label: 'View MyPage' },
       },
     ],
-    vr: {
-      badge: 'COMING NEXT',
-      title: 'VR & Device Integration — Coming Soon',
-      desc:  'We\'re building integration with VR headsets and smart connected devices. Your VERITY favorites will link to real-world experiences. Stay tuned.',
+    dq: {
+      badge: 'Data Quality',
+      title: 'One Title, One Article — Zero Duplicates',
+      desc:  'Every work is stored under a unique CID (content ID). When the crawler finds an existing title it UPSERTs the record; only truly new CIDs trigger an INSERT. This keeps search rankings, genre catalogs, and TODAY\'S PICK scoring accurate.',
+      makers: {
+        label: 'Auto-crawled maker labels (sample)',
+        items: ['S1 NO.1 STYLE', 'Idea Pocket', 'Madonna', 'MOODYZ', 'MUTEKI', 'MUKU', 'million', 'Prestige (global)', '…50+ more'],
+      },
     },
     sec: {
       badge: 'Safe & Secure',
@@ -233,24 +246,26 @@ const C = {
     h1b:  'คู่มือ VERITY',
     sub:  'ข้อมูล FANZA แบบเรียลไทม์ · บันทึกรายการโปรดโดยไม่ต้องล็อกอิน · วิเคราะห์โปรไฟล์ใน MyPage — ทั้งหมดฟรี',
     stats: [
-      { label: 'นักแสดง',     value: '1,100+ คน' },
-      { label: 'เนื้อหาใหม่', value: 'ทุกวัน' },
-      { label: 'ราคา',        value: 'ฟรีตลอดไป' },
+      { label: 'ค่ายผู้ผลิต', value: '58+ ราย' },
+      { label: 'ประเภทเนื้อหา', value: '80+ แนว' },
+      { label: 'ราคา',         value: 'ฟรีตลอดไป' },
     ],
     steps: [
       {
         badge: 'STEP 1 — ค้นหา',
         icon:  Zap,
         title: 'ระบุผลงานใหม่\nด้วยแบดจ์ 24 ชั่วโมง',
-        desc:  'VERITY เชื่อมต่อกับข้อมูล FANZA แบบเรียลไทม์ ผลงานหรือข่าวที่เผยแพร่ภายใน 24 ชั่วโมงล่าสุดจะได้รับแบดจ์ NEW โดยอัตโนมัติ สลับการเรียงตามวันวางจำหน่ายเพื่อดูรายการใหม่ล่าสุดที่ด้านบน',
+        desc:  'VERITY ตรวจสอบค่ายผู้ผลิตกว่า 58 รายอัตโนมัติทุกวันเวลา 0:00 JST โดยเก็บผลงานแต่ละชิ้นตามกฎ 1 ผลงาน 1 บทความ ค้นหาตามหมวดหมู่กว่า 80 ประเภท หรือปล่อยให้ TODAY\'S PICK คัดสรรผลงานเด่นประจำวันให้อัตโนมัติ',
         cards: [
-          { accent: 'magenta' as const, icon: Zap,   title: 'แบดจ์ NEW (24 ชั่วโมง)',         body: 'ติดไฟโดยอัตโนมัติสำหรับทุกอย่างที่เผยแพร่ใน 24 ชั่วโมงล่าสุด รีโหลดหน้าเพื่อดูสถานะล่าสุดเสมอ' },
-          { accent: 'sky'     as const, icon: Clock, title: 'เรียงตามวันวางจำหน่าย',           body: 'สลับสวิตช์การเรียงบนหน้าหลักเพื่อให้รายการใหม่ขึ้นมาอยู่ด้านบนทันที' },
+          { accent: 'magenta' as const, icon: Zap,        title: 'แบดจ์ NEW (24 ชั่วโมง)',           body: 'ติดไฟโดยอัตโนมัติสำหรับทุกอย่างที่เผยแพร่ใน 24 ชั่วโมงล่าสุด รีโหลดหน้าเพื่อดูสถานะล่าสุดเสมอ' },
+          { accent: 'sky'     as const, icon: Clock,      title: 'เรียงตามวันวางจำหน่าย',             body: 'สลับสวิตช์การเรียงบนหน้าหลักเพื่อให้รายการใหม่ขึ้นมาอยู่ด้านบนทันที' },
+          { accent: 'emerald' as const, icon: LayoutGrid, title: 'หมวดหมู่ผลงาน (80+ ประเภท)',        body: 'คาบาเร่ต์, สปา, ครีมพาย, เดี่ยว, 4K, แม่บ้าน, สาวแก่... กว่า 80 หน้าหมวดหมู่ อัปเดตทุกวัน' },
+          { accent: 'amber'   as const, icon: Trophy,     title: 'TODAY\'S PICK',                     body: 'อัลกอริทึมคะแนนความสด × โบนัสเดี่ยว คัดเลือกผลงานยอดเยี่ยมประจำวันอัตโนมัติทุกเที่ยงคืน JST' },
         ],
         timeline: {
-          label: 'รอบการอัปเดต VERITY (ตัวอย่าง)',
+          label: 'รอบการอัปเดต VERITY',
           items: [
-            { time: 'ทุกวัน 0:00 JST', label: 'ซิงก์ผลงานใหม่และการจองอัตโนมัติ' },
+            { time: 'ทุกวัน 0:00 JST', label: 'ตรวจ 58+ ค่าย · ซิงก์ DB แบบ 1 ผลงาน 1 บทความ · คำนวณ TODAY\'S PICK' },
             { time: 'ทุกวัน 6:00 JST', label: 'อัปเดตอันดับนักแสดงยอดนิยม' },
             { time: 'เรียลไทม์',       label: 'เพิ่มเนื้อหาคัดสรรโดยบรรณาธิการอย่างต่อเนื่อง' },
           ],
@@ -280,10 +295,14 @@ const C = {
         cta: { href: '/verity/profile', label: 'ดู MyPage' },
       },
     ],
-    vr: {
-      badge: 'เร็วๆ นี้',
-      title: 'การรวม VR และอุปกรณ์ — เร็วๆ นี้',
-      desc:  'เรากำลังสร้างการรวมกับชุดหัว VR และอุปกรณ์อัจฉริยะ รายการโปรด VERITY ของคุณจะเชื่อมต่อกับประสบการณ์จริง คอยติดตาม',
+    dq: {
+      badge: 'คุณภาพข้อมูล',
+      title: '1 ผลงาน 1 บทความ — ไม่มีซ้ำ',
+      desc:  'ทุกผลงานถูกเก็บด้วย CID เฉพาะ เมื่อครอว์เลอร์พบผลงานที่มีอยู่แล้วจะทำการ UPSERT อัปเดตข้อมูล เฉพาะ CID ใหม่เท่านั้นที่จะถูก INSERT นี่คือสิ่งที่ทำให้การจัดอันดับ หมวดหมู่ และ TODAY\'S PICK มีความแม่นยำสูง',
+      makers: {
+        label: 'ค่ายที่ตรวจสอบอัตโนมัติ (ตัวอย่าง)',
+        items: ['S1 NO.1 STYLE', 'Idea Pocket', 'Madonna', 'MOODYZ', 'MUTEKI', '無垢', 'million', 'Prestige (global)', '…อีกกว่า 50 ราย'],
+      },
     },
     sec: {
       badge: 'ความปลอดภัย',
@@ -409,7 +428,7 @@ export function GuideContent() {
 
               {/* Cards */}
               {'cards' in step && step.cards.length > 0 && (
-                <div className={`grid gap-4 ${step.cards.length === 2 ? 'sm:grid-cols-2' : 'sm:grid-cols-3'}`}>
+                <div className={`grid gap-4 ${step.cards.length === 4 ? 'sm:grid-cols-2 lg:grid-cols-4' : 'sm:grid-cols-3'}`}>
                   {step.cards.map((card) => (
                     <NeonCard
                       key={card.title}
@@ -476,17 +495,29 @@ export function GuideContent() {
         )
       })}
 
-      {/* ── VR TEASER ── */}
+      {/* ── DATA QUALITY ── */}
       <section>
-        <div className="relative overflow-hidden rounded-2xl border border-[var(--magenta)]/25 bg-gradient-to-br from-[var(--surface)] to-[var(--surface-2)] p-6 sm:p-8 space-y-4">
-          <div className="absolute right-0 top-0 h-48 w-48 rounded-full bg-[var(--magenta)]/10 blur-3xl pointer-events-none" />
-          <div className="relative">
-            <span className="inline-flex items-center gap-1.5 rounded-full border border-sky-500/40 bg-sky-500/10 px-3 py-1 text-[11px] font-bold tracking-widest uppercase text-sky-400">
-              <Sparkles size={10} />
-              {t.vr.badge}
+        <div className="relative overflow-hidden rounded-2xl border border-emerald-500/25 bg-gradient-to-br from-[var(--surface)] to-emerald-950/20 p-6 sm:p-8 space-y-5">
+          <div className="absolute right-0 top-0 h-48 w-48 rounded-full bg-emerald-500/8 blur-3xl pointer-events-none" />
+          <div className="relative space-y-4">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-emerald-500/40 bg-emerald-500/10 px-3 py-1 text-[11px] font-bold tracking-widest uppercase text-emerald-400">
+              <BadgeCheck size={10} />
+              {t.dq.badge}
             </span>
-            <h3 className="mt-3 text-xl font-black text-[var(--text)]">{t.vr.title}</h3>
-            <p className="mt-2 text-sm text-[var(--text-muted)] leading-relaxed max-w-lg">{t.vr.desc}</p>
+            <div>
+              <h3 className="text-xl font-black text-[var(--text)]">{t.dq.title}</h3>
+              <p className="mt-2 text-sm text-[var(--text-muted)] leading-relaxed max-w-xl">{t.dq.desc}</p>
+            </div>
+            <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-2">
+              <p className="text-[10px] font-bold uppercase tracking-widest text-emerald-400">{t.dq.makers.label}</p>
+              <div className="flex flex-wrap gap-2">
+                {t.dq.makers.items.map((m) => (
+                  <span key={m} className="rounded-full border border-emerald-500/30 bg-emerald-500/10 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
+                    {m}
+                  </span>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>

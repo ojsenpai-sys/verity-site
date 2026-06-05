@@ -3,12 +3,12 @@ import { ExternalLink } from 'lucide-react'
 // ─── Chart math ──────────────────────────────────────────────────────────────
 
 const AXES = [
-  { label: '演技力',    value: 5 },
-  { label: '官能度',    value: 5 },
-  { label: '映像美',    value: 4 },
-  { label: 'フェチ属性', value: 5 },
-  { label: 'ルックス',  value: 5 },
-  { label: '中毒性',    value: 4 },
+  { label: '演技力',    value: 4.0 },
+  { label: '官能度',    value: 4.6 },
+  { label: '映像美',    value: 5.0 },
+  { label: 'フェチ属性', value: 4.6 },
+  { label: 'ルックス',  value: 4.6 },
+  { label: '中毒性',    value: 4.8 },
 ] as const
 
 const MAX = 5
@@ -49,11 +49,8 @@ const GRID_LEVELS  = [1, 2, 3, 4, 5] as const
 
 // ─── Asset ───────────────────────────────────────────────────────────────────
 
-const CID         = 'hmn00849'
-// pl.jpg = canonical URL。proxy は pl.jpg を優先し front-cover 右側を object-right で表示する。
-const PROXY       = `/api/proxy/image?url=${encodeURIComponent(
-  `https://pics.dmm.co.jp/digital/video/${CID}/${CID}pl.jpg`
-)}`
+const CID         = 'mida00664'
+const IMAGE_PATH  = '/assets/verity/mustone/mida00664.jpg'
 const PRODUCT_URL = `https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=${CID}/`
 
 // ─── Component ───────────────────────────────────────────────────────────────
@@ -71,7 +68,7 @@ export function MustOneSection() {
       {/* ── Atmospheric background ────────────────────────────────────────── */}
       <div className="pointer-events-none absolute inset-0" aria-hidden="true">
         {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={PROXY} alt=""
+        <img src={IMAGE_PATH} alt=""
           className="h-full w-full scale-125 object-cover object-right blur-3xl opacity-[0.07]"
         />
         <div className="absolute inset-0 bg-gradient-to-br from-[var(--surface)]/95 via-[var(--surface)]/80 to-[var(--magenta)]/8" />
@@ -109,8 +106,8 @@ export function MustOneSection() {
                           bg-[var(--surface-2)] shadow-[0_8px_28px_rgba(0,0,0,0.7)]">
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={PROXY}
-              alt={`彩月七緒 ${CID}`}
+              src={IMAGE_PATH}
+              alt={`ゆうき希 ${CID}`}
               className="absolute inset-0 h-full w-full object-cover object-right"
             />
           </div>
@@ -123,14 +120,14 @@ export function MustOneSection() {
           <div className="space-y-2.5">
             <div className="space-y-1">
               <p className="text-[9px] tracking-[0.25em] uppercase text-[var(--text-muted)]">
-                {CID}
+                {CID.toUpperCase().replace(/^(\D+)(\d+)$/, '$1-$2')}
               </p>
               <h2 className="text-[13px] font-semibold leading-relaxed text-[var(--text)]">
-                会社で厳しいスパルタ女上司がまさかのニコニコソープ嬢！！いつも鬼コワなのに全肯定でよちよち甘やかし赤ちゃんプレイで爆ヌキ連射中出し20発 彩月七緒
+                新人 料理もエッチも好きな女の子でもいいですか？ SEXが史上最高にエロい三ツ星美少女AVデビュー！！ ゆうき希
               </h2>
             </div>
             <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
-              <span className="text-base tracking-widest text-[var(--magenta)]">★★★★☆</span>
+              <span className="text-base tracking-widest text-[var(--magenta)]">★★★★½</span>
               <span className="text-[10px] font-bold tracking-[0.2em] uppercase text-[var(--text)]">
                 Verity Score
               </span>
@@ -209,14 +206,14 @@ export function MustOneSection() {
               </svg>
             </div>
 
-            {/* Review + CTA */}
+            {/* Catch Copy + CTA */}
             <div className="flex flex-col gap-4">
               <blockquote className="border-l-2 border-[var(--magenta)]/40 pl-4">
                 <p className="text-sm leading-[2.1] tracking-[0.01em] text-[var(--text-muted)]">
-                  ギャップの暴力。スパルタ上司による「甘やかし」という新境地を、彩月七緒が完璧に体現している。ソープものとしての完成度・没入感も極めて高く、連続射精という夢のシチュエーションを存分に堪能できるだろう。彼女から溢れ出る母性も相まって、複数ジャンルの魅力が凝縮された中毒性溢れる一冊（一本）に仕上がっている。
+                  料理もエッチも大好きな三ツ星美少女。清廉なルックスの裏に潜む、本能むき出しのAVデビュー
                 </p>
                 <footer className="mt-2.5 text-[10px] tracking-wider uppercase text-[var(--magenta)]/70">
-                  — Verity Editorial, 2025
+                  — ゆうき希 / Verity Editorial, 2026
                 </footer>
               </blockquote>
 
@@ -239,6 +236,34 @@ export function MustOneSection() {
           </div>
         </div>
       </div>
+
+      {/* ── Full Review ──────────────────────────────────────────────────────── */}
+      <div className="relative border-t border-[var(--border)] px-5 pb-7 pt-5 md:px-7">
+        <h3 className="mb-3 text-[12px] font-bold leading-snug tracking-wide text-[var(--text)]">
+          【VERITY REVIEW】真面目なビジュアルを裏切る、天性のドすけべ性とギャップに溺れる
+        </h3>
+        <div className="space-y-3 text-[12px] leading-[2.0] tracking-[0.01em] text-[var(--text-muted)]">
+          <p>
+            6月の『THE MUST ONE』は、純粋な性欲の解放を求めてこの世界に足を踏み入れた新星・ゆうき希のデビュー作を徹底フィーチャーする。
+          </p>
+          <p>
+            本作最大の核心であり最高の見どころは、その真面目で清廉そうなルックスからは到底想像もつかないほど、彼女がとにかくエッチであるという厳然たる事実だ。ひとたびベッドに足を踏み入れた瞬間、その端麗な第一印象は見事なまでに破壊される。
+          </p>
+          <p>
+            彼女の魅せるパフォーマンスは驚くほど貪欲で一切の迷いがない。キスシーンひとつとっても、溢れ出る衝動を抑えきれないように自ら主源を握り、激しく求めていく姿は観る者の視線を一瞬で釘付けにする。純粋に性欲を満たすためにAVを志望したという言葉に、1ミリの嘘もないことを証明する。
+          </p>
+          <p>
+            特筆すべきは圧倒的な感受性の高さだ。深いアプローチに対して理性を完全に失い、トランス状態で突き上げられながらヨダレを垂らして感じ入るリアルな姿は、現代の4K映像美も相まって息を呑むほどの官能性を生み出している。
+          </p>
+          <p>
+            現役イタリアンシェフという彼女の異色の経歴は、前菜からデザートまでの調理風景が作中の合間に挿入されるなど、あくまで彼女の個性を彩る上質なエッセンスとして機能しているに過ぎない。主役はどこまでも彼女の本能むき出しのセックスだ。
+          </p>
+          <p>
+            シチュエーションに応じた役柄への没入（演技力）は今後の課題だが、このデビュー作で見せた荒削りながらも底知れないポテンシャルは間違いなく大器の片鱗だ。次なる展開への期待を込め、VERITYが今月最も推すべき傑作としてここに認定する。
+          </p>
+        </div>
+      </div>
+
     </section>
   )
 }

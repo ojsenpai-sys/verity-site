@@ -3,7 +3,7 @@ export const revalidate = 0
 
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, ShoppingCart, Bookmark, UserCircle } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ShoppingCart, Bookmark, UserCircle, Tag } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { ArticleCard } from '@/components/ArticleCard'
 import { LogView } from '@/components/LogView'
@@ -66,7 +66,7 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
   const aliases = (actress.metadata?.aliases ?? []) as string[]
   const searchNames = [actress.name, ...aliases]
 
-  const [{ data: upcomingData }, { data: recentData }, { data: lpRankRows }] = await Promise.all([
+  const [{ data: upcomingData }, { data: recentData }, { data: lpRankRows }, { data: tagRows }] = await Promise.all([
     supabase
       .from('articles')
       .select('*')
@@ -88,6 +88,13 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
       p_brand_id:   BRAND_ID,
       p_limit:      10,
     }),
+    supabase
+      .from('articles')
+      .select('tags')
+      .eq('is_active', true)
+      .overlaps('tags', searchNames)
+      .not('metadata->>url', 'like', '%/dc/doujin/%')
+      .limit(300),
   ])
 
   function soloFirst(rows: Article[]): Article[] {
@@ -107,6 +114,21 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
 
   type LpRankRow = { rank: number; display_name: string; lp_points: number }
   const lpRanking = (lpRankRows ?? []) as LpRankRow[]
+
+  // この女優のジャンル別カタログ（女優名・エイリアスを除外した上位12ジャンル）
+  const actressNameSet = new Set(searchNames)
+  const tagCounts = new Map<string, number>()
+  for (const row of tagRows ?? []) {
+    for (const t of (row.tags as string[]) ?? []) {
+      if (t && !actressNameSet.has(t)) {
+        tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)
+      }
+    }
+  }
+  const topGenres = [...tagCounts.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 12)
+    .map(([tag, count]) => ({ tag, count }))
 
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 space-y-10">
@@ -198,6 +220,32 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
             <span className="rounded px-1.5 py-0.5 text-[11px] font-bold tracking-widest bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">
               PR
             </span>
+          </div>
+        </section>
+      )}
+
+      {/* ジャンル別カタログ */}
+      {topGenres.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2.5">
+            <Tag size={16} className="text-[var(--magenta)]" />
+            <h2 className="text-base font-bold text-[var(--text)]">ジャンル別カタログ</h2>
+            <span className="rounded-full bg-[var(--magenta)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--magenta)]">
+              {actress.name} × ジャンル
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {topGenres.map(({ tag, count }) => (
+              <Link
+                key={tag}
+                href={`/verity/actresses/${actress.external_id}/genres/${encodeURIComponent(tag)}`}
+                className="group flex items-center gap-1.5 rounded-full border border-[var(--border)] bg-white/[0.03] px-3 py-1.5 text-sm transition-all hover:border-[var(--magenta)]/50 hover:bg-[var(--magenta)]/8 hover:text-[var(--magenta)]"
+              >
+                <Tag size={11} className="text-[var(--text-muted)] group-hover:text-[var(--magenta)]" />
+                <span className="font-medium text-[var(--text)] group-hover:text-[var(--magenta)]">{tag}</span>
+                <span className="text-[10px] text-[var(--text-muted)] tabular-nums">{count}</span>
+              </Link>
+            ))}
           </div>
         </section>
       )}

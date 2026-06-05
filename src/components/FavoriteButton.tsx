@@ -24,10 +24,17 @@ export function FavoriteButton({ type, id, meta, className, size = 'sm' }: Props
   const handleClick = useCallback(async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
+
+    // 未ログイン時: localStorage には書かずログイン促進モーダルを表示
+    if (!user) {
+      window.dispatchEvent(new Event('verity:auth-required'))
+      return
+    }
+
     toggle(id, meta)
 
-    // Best-effort Supabase sync for logged-in users (actresses only)
-    if (user && type === 'actress') {
+    // Supabase sync（女優のみ）
+    if (type === 'actress') {
       fetch('/verity/api/favorites/actress', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },

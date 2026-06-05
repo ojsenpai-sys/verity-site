@@ -3,7 +3,8 @@ import { Tag, Clock, ExternalLink } from 'lucide-react'
 import { NowPrinting } from './NowPrinting'
 import { ProxiedImage } from './ProxiedImage'
 import { cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
-import { withAffiliate } from '@/lib/affiliate'
+import { withAffiliateForRegion } from '@/lib/affiliate'
+import { getIsOverseasUser } from '@/lib/geoLocale'
 import { FavoriteButton } from '@/components/FavoriteButton'
 import type { Article } from '@/lib/types'
 
@@ -64,7 +65,9 @@ function actressHref(a: MetaActress): string {
   return a.id > 0 ? `/actresses/dmm-actress-${a.id}` : `/?tag=${encodeURIComponent(a.name)}`
 }
 
-export function ArticleCard({ article }: ArticleCardProps) {
+export async function ArticleCard({ article }: ArticleCardProps) {
+  const isOverseas = await getIsOverseasUser()
+
   // Preserve full { id, name } objects for linking to actress pages
   const actressMeta: MetaActress[] = Array.isArray(article.metadata?.actress)
     ? (article.metadata!.actress as MetaActress[])
@@ -83,7 +86,7 @@ export function ArticleCard({ article }: ArticleCardProps) {
       ? (article.metadata.url as string)
       : null
 
-  const affiliateUrl = withAffiliate(rawAffiliateUrl)
+  const affiliateUrl = withAffiliateForRegion(rawAffiliateUrl, isOverseas)
   const upcoming = isUpcoming(article.published_at)
 
   // Precompute badge flags to avoid repeated IIFE closures
@@ -220,20 +223,21 @@ export function ArticleCard({ article }: ArticleCardProps) {
           </p>
         )}
 
-        {/* Genre tags (actress names excluded) */}
+        {/* Genre tags (actress names excluded) — リンク付き、/verity/genres/[tag] に遷移 */}
         {article.tags && article.tags.length > 0 && (
           <div className="flex flex-wrap gap-1">
             {article.tags
               .filter((t) => !actressNameSet.has(t))
               .slice(0, 4)
               .map((tag) => (
-                <span
+                <Link
                   key={tag}
-                  className="flex items-center gap-1 rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--text-muted)]"
+                  href={`/verity/genres/${encodeURIComponent(tag)}`}
+                  className="flex items-center gap-1 rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--text-muted)] transition-colors hover:border-[var(--magenta)]/40 hover:text-[var(--magenta)]"
                 >
                   <Tag size={9} />
                   {tag}
-                </span>
+                </Link>
               ))}
           </div>
         )}
