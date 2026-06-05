@@ -1,50 +1,176 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Flame, ChevronRight, Tag, Lock } from 'lucide-react'
+import { Flame, Lock, ExternalLink, Tag } from 'lucide-react'
 import { useAuth } from '@/components/AuthProvider'
+import { ProxiedImage } from '@/components/ProxiedImage'
 import { withAffiliate } from '@/lib/affiliate'
+import { cidToCdnUrl } from '@/lib/cidUtils'
 
-const SALE_URL = 'https://video.dmm.co.jp/list/?key=100%E5%86%86%E3%82%BB%E3%83%BC%E3%83%AB'
+// ── 20タイトルデータ ────────────────────────────────────────────────────────────
+type SaleItem = {
+  cid:      string
+  actress:  string
+  title:    string
+}
 
+const SALE_ITEMS: SaleItem[] = [
+  // 川越にこ最優先
+  { cid: 'sone00258', actress: '川越にこ',        title: '今いちばん抱きたいカラダ' },
+  { cid: 'mizd00362', actress: '石川澪・宮下玲奈', title: 'MOODYZ 2022年厳選100タイトル' },
+  { cid: 'ebwh00092', actress: '七瀬アリス',       title: '誰もが振り返る高嶺の花が' },
+  { cid: 'juq00682',  actress: '神宮寺ナオ',       title: '合鍵をもらった人妻が' },
+  { cid: 'jur00258',  actress: '紗弥佳',           title: '隠れIカップの元芸能人' },
+  { cid: 'fpre00045', actress: '似鳥日菜',         title: 'オヤジのハメ撮りドキュメント' },
+  { cid: 'miab00157', actress: 'AIKA・鳳カレン',   title: 'ウチらと3Pやろうぜ' },
+  { cid: 'dass00158', actress: '森沢かな',         title: '友達のお母さんと' },
+  { cid: 'hjmo00652', actress: '',                 title: '残酷ミラーゲーム12' },
+  { cid: 'hndb00127', actress: '椎名そら',         title: '初コンプリートBEST 12時間' },
+  // アマチュアシリーズ
+  { cid: 'smus049',   actress: 'ヒマリ',           title: '素人' },
+  { cid: 'peep027',   actress: 'ひとみ',           title: 'のぞき見' },
+  { cid: 'smub032',   actress: '小島ちゃん',       title: '女バス' },
+  { cid: 'smub044',   actress: 'かりんちゃん',     title: '素人' },
+  { cid: 'smjx016',   actress: 'さっちゃん',       title: '素人JX' },
+  { cid: 'smub034',   actress: 'いちかちゃん',     title: 'チア部' },
+  { cid: 'smub037',   actress: 'なぎさちゃん',     title: '素人' },
+  { cid: 'smub046',   actress: 'さらちゃん',       title: '素人' },
+  { cid: 'smub017',   actress: 'りなちゃん',       title: '素人' },
+  { cid: 'smjs102',   actress: 'ゆみさん',         title: '素人JS' },
+]
+
+function dmmUrl(cid: string): string {
+  return `https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=${cid}/`
+}
+
+function proxyUrl(url: string): string {
+  return `/api/proxy/image?url=${encodeURIComponent(url)}`
+}
+
+// ── 多言語テキスト ──────────────────────────────────────────────────────────────
 const TEXTS = {
   ja: {
-    badge:   '期間限定 · 編集部厳選キュレーション',
-    tag:     '100円',
-    title:   'FANZA 100円セール大特集',
-    sub:     'VERITYが独自にキュレーション。大手エンタメプラットフォームで実施中の異例の超低価格セール対象タイトルを徹底解説。',
-    picks:   ['人気女優の話題作が破格値', '動画配信限定タイトル多数', '週替わりラインナップ更新中'],
-    cta:     '対象作品ガイドを見る',
-    lock:    '会員登録で完全リストをチェック',
-    pr:      '※ 本バナーはアフィリエイトリンクを含むプロモーションです',
+    badge: '期間限定セール',
+    tag:   '100円',
+    title: 'FANZA 100円セール大特集',
+    sub:   '大手エンタメプラットフォームで実施中の異例の超低価格セール対象タイトルはこちら！',
+    cta:   '対象作品をすべてチェック →',
+    lock:  '会員登録で完全リストを見る',
+    pr:    '※本バナーはアフィリエイトリンクを含むプロモーションです',
+    viewBtn: 'FANZAで観る',
   },
   en: {
-    badge:   'Limited-time · Editor-curated',
-    tag:     '¥100',
-    title:   'FANZA ¥100 Mega Sale Guide',
-    sub:     "VERITY's curated breakdown of the massive discount event running on Japan's top entertainment platform.",
-    picks:   ['Top actresses at unbeatable prices', 'Streaming-exclusive titles included', 'Weekly lineup updates'],
-    cta:     'View Curated Guide',
-    lock:    'Register free to see the full list',
-    pr:      '* This banner contains affiliate / promotional links.',
+    badge: 'Limited-time Sale',
+    tag:   '¥100',
+    title: 'FANZA ¥100 Mega Sale',
+    sub:   "Check out the titles eligible for this exceptionally low-price sale now running on a major Japanese entertainment platform!",
+    cta:   'View All Eligible Titles →',
+    lock:  'Register free to see the full list',
+    pr:    '* This banner contains affiliate / promotional links.',
+    viewBtn: 'Watch on FANZA',
   },
   th: {
-    badge:   'ช่วงเวลาจำกัด · คัดสรรโดยบรรณาธิการ',
-    tag:     '100 เยน',
-    title:   'FANZA เซลล์ 100 เยน คัดสรรพิเศษ',
-    sub:     'VERITY คัดเลือกผลงานเด่นจากเซลล์ราคาพิเศษที่หาได้ยากบนแพลตฟอร์มบันเทิงชั้นนำของญี่ปุ่น',
-    picks:   ['นักแสดงชั้นนำในราคาพิเศษ', 'ผลงาน Streaming Exclusive', 'อัปเดตทุกสัปดาห์'],
-    cta:     'ดูรายการคัดสรร',
-    lock:    'สมัครสมาชิกฟรีเพื่อดูรายการเต็ม',
-    pr:      '* แบนเนอร์นี้มีลิงก์พันธมิตร (affiliate)',
+    badge: 'เซลล์ช่วงเวลาจำกัด',
+    tag:   '100 เยน',
+    title: 'FANZA เซลล์ 100 เยน',
+    sub:   'ดูผลงานที่ร่วมเซลล์ราคาพิเศษสุดๆ บนแพลตฟอร์มบันเทิงชั้นนำได้เลยที่นี่!',
+    cta:   'ดูผลงานทั้งหมด →',
+    lock:  'สมัครสมาชิกฟรีเพื่อดูรายการเต็ม',
+    pr:    '* แบนเนอร์นี้มีลิงก์พันธมิตร (affiliate)',
+    viewBtn: 'ดูบน FANZA',
   },
 } as const
 
 type Lang = keyof typeof TEXTS
 
+// ── 各タイトルカード ────────────────────────────────────────────────────────────
+type CardProps = {
+  item:      SaleItem
+  isAuthed:  boolean
+  viewLabel: string
+  onLock:    () => void
+}
+
+function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
+  const href = withAffiliate(dmmUrl(item.cid)) ?? dmmUrl(item.cid)
+  const imgSrc = proxyUrl(cidToCdnUrl(item.cid, 'pl'))
+
+  function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    if (!isAuthed) {
+      e.preventDefault()
+      onLock()
+    }
+  }
+
+  return (
+    <article className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden transition-all duration-200 hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(251,191,36,0.12)] hover:-translate-y-0.5">
+      {/* パッケージ画像 */}
+      <a
+        href={href}
+        target={isAuthed ? '_blank' : undefined}
+        rel="noopener noreferrer sponsored"
+        onClick={handleClick}
+        className="relative block w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]"
+      >
+        <ProxiedImage
+          src={imgSrc}
+          alt={item.actress ? `${item.actress}「${item.title}」` : item.title}
+          className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-200 group-hover:scale-105"
+        />
+        <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
+
+        {/* 100円バッジ */}
+        <span
+          className="absolute left-0 top-3 rounded-r-full px-3 py-0.5 text-[10px] font-black text-white shadow-md"
+          style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)' }}
+        >
+          100円
+        </span>
+
+        {/* 鍵アイコン（未ログイン） */}
+        {!isAuthed && (
+          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ background: 'rgba(0,0,0,0.5)' }}>
+            <Lock size={28} className="text-amber-400 drop-shadow-lg" />
+          </div>
+        )}
+      </a>
+
+      {/* テキスト情報 */}
+      <div className="flex flex-1 flex-col gap-1.5 p-3">
+        {item.actress && (
+          <p className="text-[11px] font-semibold text-[var(--magenta)] line-clamp-1">
+            {item.actress}
+          </p>
+        )}
+        <h3 className="text-xs font-medium text-[var(--text)] line-clamp-2 leading-snug">
+          {item.title}
+        </h3>
+
+        {/* CTA */}
+        <a
+          href={href}
+          target={isAuthed ? '_blank' : undefined}
+          rel="noopener noreferrer sponsored"
+          onClick={handleClick}
+          className="mt-auto flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-bold text-white transition-all active:scale-95"
+          style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)' }}
+        >
+          {isAuthed ? (
+            <><ExternalLink size={10} className="shrink-0" />{viewLabel}</>
+          ) : (
+            <><Lock size={10} className="shrink-0" />登録して観る</>
+          )}
+        </a>
+      </div>
+    </article>
+  )
+}
+
+// ── メインバナーコンポーネント ──────────────────────────────────────────────────
 export function Fanza100SaleBanner() {
-  const { user }           = useAuth()
-  const [lang, setLang]   = useState<Lang>('ja')
+  const { user }              = useAuth()
+  const [lang, setLang]       = useState<Lang>('ja')
   const [mounted, setMounted] = useState(false)
 
   useEffect(() => {
@@ -58,24 +184,21 @@ export function Fanza100SaleBanner() {
   if (!mounted) return null
 
   const t        = TEXTS[lang]
-  const saleHref = withAffiliate(SALE_URL) ?? SALE_URL
+  const isAuthed = !!user
 
-  function handleCtaClick(e: React.MouseEvent<HTMLAnchorElement>) {
-    if (!user) {
-      e.preventDefault()
-      window.dispatchEvent(new CustomEvent('verity:auth-required', { detail: { ctx: 'sale100' } }))
-    }
+  function fireLock() {
+    window.dispatchEvent(new CustomEvent('verity:auth-required', { detail: { ctx: 'sale100' } }))
   }
 
   return (
     <section
       id="fanza-100-sale"
       aria-label="FANZA 100円セール特集"
-      className="relative overflow-hidden rounded-2xl"
+      className="relative overflow-hidden rounded-2xl space-y-5"
       style={{
         background: 'linear-gradient(135deg, #1c1000 0%, #201500 40%, #1a0c00 100%)',
         border:     '1px solid rgba(251,191,36,0.35)',
-        boxShadow:  '0 0 40px rgba(251,191,36,0.08)',
+        padding:    '1.25rem 1.25rem 1.5rem',
       }}
     >
       {/* 上グロー */}
@@ -84,86 +207,55 @@ export function Fanza100SaleBanner() {
         style={{ background: 'linear-gradient(90deg, transparent, rgba(251,191,36,0.6), rgba(234,88,12,0.4), transparent)' }}
       />
 
-      <div className="p-5 sm:p-6 space-y-4">
-        {/* ヘッダー行 */}
-        <div className="flex flex-wrap items-center gap-2.5">
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase"
-            style={{ background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24' }}
-          >
-            <Flame size={10} className="shrink-0" />
-            {t.badge}
-          </span>
-          <span
-            className="inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs font-black"
-            style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)', color: '#fff' }}
-          >
-            <Tag size={10} className="shrink-0" />
-            {t.tag}
-          </span>
-          <span className="text-[10px] text-amber-500/60 ml-auto">PR</span>
-        </div>
+      {/* ヘッダー */}
+      <div className="flex flex-wrap items-center gap-2.5">
+        <span
+          className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-[10px] font-bold tracking-wider uppercase"
+          style={{ background: 'rgba(251,191,36,0.15)', border: '1px solid rgba(251,191,36,0.35)', color: '#fbbf24' }}
+        >
+          <Flame size={10} className="shrink-0" />
+          {t.badge}
+        </span>
+        <span
+          className="inline-flex items-center gap-1 rounded-full px-3 py-0.5 text-xs font-black"
+          style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)', color: '#fff' }}
+        >
+          <Tag size={10} className="shrink-0" />
+          {t.tag}
+        </span>
+        <span className="text-[10px] text-amber-500/60 ml-auto">PR</span>
+      </div>
 
-        {/* タイトル ＋ 本文 */}
-        <div className="space-y-2">
-          <h2
-            className="text-xl sm:text-2xl font-black tracking-tight leading-tight"
-            style={{ color: '#fbbf24' }}
-          >
-            {t.title}
-          </h2>
-          <p className="text-xs leading-relaxed" style={{ color: 'rgba(251,191,36,0.7)' }}>
-            {t.sub}
-          </p>
-        </div>
-
-        {/* ピックアップポイント */}
-        <ul className="flex flex-col gap-1.5 sm:flex-row sm:gap-4">
-          {t.picks.map((pick) => (
-            <li
-              key={pick}
-              className="flex items-center gap-1.5 text-[11px]"
-              style={{ color: 'rgba(251,191,36,0.85)' }}
-            >
-              <span className="h-1 w-1 rounded-full bg-amber-400 shrink-0" />
-              {pick}
-            </li>
-          ))}
-        </ul>
-
-        {/* CTA */}
-        <div className="flex flex-col sm:flex-row gap-2 pt-1">
-          <a
-            href={saleHref}
-            target={user ? '_blank' : undefined}
-            rel="noopener noreferrer sponsored"
-            onClick={handleCtaClick}
-            className="inline-flex items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-bold transition-all active:scale-95"
-            style={{
-              background: 'linear-gradient(135deg, #f59e0b, #ea580c)',
-              color:      '#fff',
-              boxShadow:  '0 0 20px rgba(251,191,36,0.3), 0 4px 12px rgba(0,0,0,0.4)',
-            }}
-          >
-            {user ? (
-              <>
-                {t.cta}
-                <ChevronRight size={14} className="shrink-0" />
-              </>
-            ) : (
-              <>
-                <Lock size={13} className="shrink-0" />
-                {t.lock}
-              </>
-            )}
-          </a>
-        </div>
-
-        {/* PR 表示 */}
-        <p className="text-[10px]" style={{ color: 'rgba(251,191,36,0.4)' }}>
-          {t.pr}
+      {/* タイトル ＋ 説明文 */}
+      <div className="space-y-1.5">
+        <h2
+          className="text-xl sm:text-2xl font-black tracking-tight leading-tight"
+          style={{ color: '#fbbf24' }}
+        >
+          {t.title}
+        </h2>
+        <p className="text-sm leading-relaxed" style={{ color: 'rgba(251,191,36,0.8)' }}>
+          {t.sub}
         </p>
       </div>
+
+      {/* 20タイトル カードグリッド */}
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+        {SALE_ITEMS.map((item) => (
+          <SaleCard
+            key={item.cid}
+            item={item}
+            isAuthed={isAuthed}
+            viewLabel={t.viewBtn}
+            onLock={fireLock}
+          />
+        ))}
+      </div>
+
+      {/* PR 表示 */}
+      <p className="text-[10px]" style={{ color: 'rgba(251,191,36,0.4)' }}>
+        {t.pr}
+      </p>
 
       {/* 下グロー */}
       <div
