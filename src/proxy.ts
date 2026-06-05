@@ -53,8 +53,8 @@ const SEO_PASSTHROUGH = new Set(['/sitemap.xml', '/robots.txt'])
 function isSeoPassthrough(pathname: string): boolean {
   return SEO_PASSTHROUGH.has(pathname)
     || pathname.startsWith('/.well-known/')
-    // /api/ 直下ルート（Stripe Webhook 等）はブランドプレフィックスなしで直接サーブ
-    || pathname.startsWith('/api/')
+    // Stripe Webhook のみパススルー（/api/proxy/image 等は /verity/ へリライト必須）
+    || pathname.startsWith('/api/webhooks/')
 }
 
 function routeRequest(request: NextRequest): NextResponse {
