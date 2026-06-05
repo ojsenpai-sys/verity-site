@@ -3,15 +3,17 @@
 import { useEffect, useState } from 'react'
 import { Flame, Lock, ExternalLink, Tag } from 'lucide-react'
 import { useAuth } from '@/components/AuthProvider'
-import { ProxiedImage } from '@/components/ProxiedImage'
+import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliate } from '@/lib/affiliate'
 import { cidToCdnUrl } from '@/lib/cidUtils'
 
 // ── 20タイトルデータ ────────────────────────────────────────────────────────────
 type SaleItem = {
-  cid:      string
-  actress:  string
-  title:    string
+  cid:       string
+  actress:   string
+  title:     string
+  /** true = 個人撮影/素人系。パッケージ画像なし → サンプルスチルを優先使用 */
+  amateur?:  boolean
 }
 
 const SALE_ITEMS: SaleItem[] = [
@@ -26,17 +28,17 @@ const SALE_ITEMS: SaleItem[] = [
   { cid: 'dass00158', actress: '森沢かな',         title: '友達のお母さんと' },
   { cid: 'hjmo00652', actress: '',                 title: '残酷ミラーゲーム12' },
   { cid: 'hndb00127', actress: '椎名そら',         title: '初コンプリートBEST 12時間' },
-  // アマチュアシリーズ
-  { cid: 'smus049',   actress: 'ヒマリ',           title: '素人' },
-  { cid: 'peep027',   actress: 'ひとみ',           title: 'のぞき見' },
-  { cid: 'smub032',   actress: '小島ちゃん',       title: '女バス' },
-  { cid: 'smub044',   actress: 'かりんちゃん',     title: '素人' },
-  { cid: 'smjx016',   actress: 'さっちゃん',       title: '素人JX' },
-  { cid: 'smub034',   actress: 'いちかちゃん',     title: 'チア部' },
-  { cid: 'smub037',   actress: 'なぎさちゃん',     title: '素人' },
-  { cid: 'smub046',   actress: 'さらちゃん',       title: '素人' },
-  { cid: 'smub017',   actress: 'りなちゃん',       title: '素人' },
-  { cid: 'smjs102',   actress: 'ゆみさん',         title: '素人JS' },
+  // 個人撮影・素人系（パッケージ画像なし → サンプルスチル優先）
+  { cid: 'smus049',   actress: 'ヒマリ',      title: '素人',    amateur: true },
+  { cid: 'peep027',   actress: 'ひとみ',      title: 'のぞき見', amateur: true },
+  { cid: 'smub032',   actress: '小島ちゃん',  title: '女バス',   amateur: true },
+  { cid: 'smub044',   actress: 'かりんちゃん', title: '素人',    amateur: true },
+  { cid: 'smjx016',   actress: 'さっちゃん',  title: '素人JX',  amateur: true },
+  { cid: 'smub034',   actress: 'いちかちゃん', title: 'チア部',  amateur: true },
+  { cid: 'smub037',   actress: 'なぎさちゃん', title: '素人',    amateur: true },
+  { cid: 'smub046',   actress: 'さらちゃん',  title: '素人',    amateur: true },
+  { cid: 'smub017',   actress: 'りなちゃん',  title: '素人',    amateur: true },
+  { cid: 'smjs102',   actress: 'ゆみさん',    title: '素人JS',  amateur: true },
 ]
 
 function dmmUrl(cid: string): string {
@@ -91,9 +93,49 @@ type CardProps = {
   onLock:    () => void
 }
 
+/**
+ * SaleCard 専用画像コンポーネント。
+ * 商業作品は pl.jpg → プロキシチェーン（-1.jpg 含む）でフォールバック。
+ * 個人撮影・素人系は pl.jpg / -1.jpg / js-1.jpg を明示的にクライアント側で試みる。
+ * どれも失敗した場合のみ NowPrinting を表示。
+ */
+function SaleImage({ cid, alt, amateur }: { cid: string; alt: string; amateur?: boolean }) {
+  // 試行する URL 候補リスト
+  const candidates = amateur
+    ? [
+        // 素人系: サンプルスチル形式を優先（パッケージ画像がないケースが多い）
+        proxyUrl(`https://pics.dmm.co.jp/digital/video/${cid}/${cid}-1.jpg`),
+        proxyUrl(`https://pics.dmm.co.jp/digital/video/${cid}/${cid}js-1.jpg`),
+        proxyUrl(cidToCdnUrl(cid, 'pl')),
+        proxyUrl(cidToCdnUrl(cid, 'ps')),
+      ]
+    : [
+        // 商業系: パッケージ画像優先 → プロキシ内チェーンで自動フォールバック
+        proxyUrl(cidToCdnUrl(cid, 'pl')),
+      ]
+
+  const [idx, setIdx]       = useState(0)
+  const [failed, setFailed] = useState(false)
+
+  if (failed) return <NowPrinting />
+
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={candidates[idx]}
+      alt={alt}
+      className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-200 group-hover:scale-105"
+      onError={() => {
+        if (idx < candidates.length - 1) setIdx(idx + 1)
+        else setFailed(true)
+      }}
+    />
+  )
+}
+
 function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
   const href = withAffiliate(dmmUrl(item.cid)) ?? dmmUrl(item.cid)
-  const imgSrc = proxyUrl(cidToCdnUrl(item.cid, 'pl'))
+  const alt  = item.actress ? `${item.actress}「${item.title}」` : item.title
 
   function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
     if (!isAuthed) {
@@ -112,11 +154,7 @@ function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
         onClick={handleClick}
         className="relative block w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]"
       >
-        <ProxiedImage
-          src={imgSrc}
-          alt={item.actress ? `${item.actress}「${item.title}」` : item.title}
-          className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-200 group-hover:scale-105"
-        />
+        <SaleImage cid={item.cid} alt={alt} amateur={item.amateur} />
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
 
         {/* 100円バッジ */}

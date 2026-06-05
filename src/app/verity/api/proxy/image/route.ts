@@ -91,10 +91,17 @@ function buildChain(target: URL): string[] {
   // 5: jp fallback (only when not jp-first) — tried after all pl/ps attempts
   for (const c of cids) candidates.push(...v(primaryPath, c, fallbackSize))
   for (const c of cids) candidates.push(...v(oppositePath, c, fallbackSize))
-  // 6: js-1.jpg sample frame — absolute last resort
+  // 6: js-1.jpg sample frame — standard sample still naming
   for (const c of cids) {
     candidates.push(`${host}/${primaryPath}/${c}/${c}js-1.jpg`)
     candidates.push(`${host}/${oppositePath}/${c}/${c}js-1.jpg`)
+  }
+  // 7: -1.jpg sample still — older / amateur / indie naming convention
+  //    Amateur (素人) series like smub/smus/smjx/peep often omit pl/ps/jp package art
+  //    and only have sample stills stored as "{cid}-1.jpg" (no "js" prefix).
+  for (const c of cids) {
+    candidates.push(`${host}/${primaryPath}/${c}/${c}-1.jpg`)
+    candidates.push(`${host}/${oppositePath}/${c}/${c}-1.jpg`)
   }
 
   return [...new Set(candidates)]
