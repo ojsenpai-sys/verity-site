@@ -8,6 +8,7 @@ import { ActressMarquee } from '@/components/ActressMarquee'
 import { FeaturedSection } from '@/components/FeaturedSection'
 import { RecommendedActressSection } from '@/components/RecommendedActressSection'
 import { MustOneSection } from '@/components/MustOneSection'
+import { Fanza100SaleBanner } from '@/components/Fanza100SaleBanner'
 import { TodaysPickSection } from '@/components/TodaysPickSection'
 import { FastReviewSection } from '@/components/FastReviewSection'
 import { SocialFeedSection } from '@/components/SocialFeedSection'
@@ -466,6 +467,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <FilterBar categories={categories} sources={sources} tags={tags} />
         </Suspense>
       </div>
+
+      {/* ── 1.5. FANZA 100円セール特集バナー ────────────────────────────── */}
+      <section id="fanza-100-sale">
+        <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <Fanza100SaleBanner />
+        </Suspense>
+      </section>
 
       {/* ── 2. THE MUST ONE ───────────────────────────────────────────────── */}
       <section id="the-must-one">

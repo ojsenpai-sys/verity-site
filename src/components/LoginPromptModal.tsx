@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { X, Heart, Zap, Star, Crown } from 'lucide-react'
+import { X, Heart, Zap, Star, Crown, Tag } from 'lucide-react'
 import { useAuth } from '@/components/AuthProvider'
 
 const BENEFIT_ICONS = [Heart, Zap, Star, Crown] as const
@@ -57,11 +57,18 @@ const TEXTS = {
 
 type Lang = keyof typeof TEXTS
 
+const SALE_TEXTS = {
+  ja: { label: '100円セール対象作品リストを今すぐチェック！', tag: '100円セール中' },
+  en: { label: 'Unlock the ¥100 Sale full list right now!',  tag: '¥100 Sale' },
+  th: { label: 'ดูรายการเซลล์ 100 เยนได้ทันที!',           tag: 'เซลล์ 100 เยน' },
+} as const
+
 export function LoginPromptModal() {
-  const { user }                  = useAuth()
-  const [visible,    setVisible]  = useState(false)
+  const { user }                    = useAuth()
+  const [visible,    setVisible]    = useState(false)
   const [returnPath, setReturnPath] = useState('/verity/profile')
-  const [lang,       setLang]     = useState<Lang>('ja')
+  const [lang,       setLang]       = useState<Lang>('ja')
+  const [isSaleCtx,  setIsSaleCtx]  = useState(false)
 
   useEffect(() => {
     const bl = navigator.language.toLowerCase()
@@ -71,8 +78,10 @@ export function LoginPromptModal() {
   }, [])
 
   useEffect(() => {
-    function handleAuthRequired() {
+    function handleAuthRequired(e: Event) {
       if (user) return
+      const ctx = (e as CustomEvent<{ ctx?: string }>).detail?.ctx
+      setIsSaleCtx(ctx === 'sale100')
       setReturnPath(window.location.pathname + window.location.search)
       setVisible(true)
     }
@@ -80,11 +89,15 @@ export function LoginPromptModal() {
     return () => window.removeEventListener('verity:auth-required', handleAuthRequired)
   }, [user])
 
-  function dismiss() { setVisible(false) }
+  function dismiss() {
+    setVisible(false)
+    setIsSaleCtx(false)
+  }
 
   if (!visible || user) return null
 
   const t          = TEXTS[lang]
+  const st         = SALE_TEXTS[lang]
   const loginHref  = `/verity/login?next=${encodeURIComponent(returnPath)}`
   const signupHref = `/verity/login?mode=signup&next=${encodeURIComponent(returnPath)}`
 
@@ -171,6 +184,30 @@ export function LoginPromptModal() {
               )
             })}
           </ul>
+
+          {/* 100円セールコンテキスト — バナー経由のみ表示 */}
+          {isSaleCtx && (
+            <div
+              className="rounded-xl px-3.5 py-2.5 flex items-center gap-2"
+              style={{
+                background: 'linear-gradient(135deg, rgba(251,191,36,0.15), rgba(234,88,12,0.1))',
+                border:     '1px solid rgba(251,191,36,0.4)',
+              }}
+            >
+              <Tag size={12} style={{ color: '#fbbf24', flexShrink: 0 }} />
+              <div className="space-y-0.5">
+                <span
+                  className="block text-[9px] font-black tracking-widest uppercase"
+                  style={{ color: '#fbbf24' }}
+                >
+                  {st.tag}
+                </span>
+                <p className="text-[11px] leading-snug font-semibold" style={{ color: 'rgba(251,191,36,0.9)' }}>
+                  {st.label}
+                </p>
+              </div>
+            </div>
+          )}
 
           {/* VERITY BLACK ティーザー */}
           <div
