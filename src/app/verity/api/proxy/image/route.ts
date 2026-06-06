@@ -118,6 +118,13 @@ async function fetchImage(url: string): Promise<{ buffer: ArrayBuffer; type: str
       console.log(`[proxy/image] ${res.status} for ${url}`)
       return null
     }
+    // Detect redirect to DMM's "NOW PRINTING" placeholder regardless of file size.
+    // imgsrc.dmm.com resizes the placeholder on demand — large sizes can exceed the
+    // MIN_IMAGE_BYTES threshold while still being the generic "no image" graphic.
+    if (isDmm && res.url.includes('/now_printing/')) {
+      console.log(`[proxy/image] now_printing redirect — skip: ${url.slice(-55)}`)
+      return null
+    }
     const buffer = await res.arrayBuffer()
     if (isDmm && buffer.byteLength < MIN_IMAGE_BYTES) {
       console.log(`[proxy/image] placeholder (${buffer.byteLength}B) — skip: ${url.slice(-55)}`)

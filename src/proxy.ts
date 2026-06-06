@@ -116,11 +116,12 @@ function ageGateGuard(
   // /verity 配下のコンテンツページのみ対象
   if (!effectivePath.startsWith('/verity/')) return null
 
-  // 対象外: API・認証・管理・/verity ルート（モーダル表示先・無限ループ防止）
+  // 対象外: API・認証・管理・ログイン（ログインページはクライアント側AgeGateで制御）
   if (
     effectivePath.startsWith('/verity/api') ||
     effectivePath.startsWith('/verity/auth') ||
-    effectivePath.startsWith('/verity/admin')
+    effectivePath.startsWith('/verity/admin') ||
+    effectivePath === '/verity/login'
   ) return null
 
   // クローラーはバイパス（SEO インデックスを維持）
@@ -130,9 +131,14 @@ function ageGateGuard(
   // Cookie 確認
   if (request.cookies.get(AGE_GATE_COOKIE)?.value === 'verified') return null
 
-  // 未確認: /verity へリダイレクト（元パスを next パラメータで保持）
+  // 未確認: /verity へリダイレクト
+  // effectivePath (パス) + オリジナルのクエリ文字列を next パラメータで保持
+  const originalSearch = request.nextUrl.search
+  const nextTarget = originalSearch
+    ? `${effectivePath}${originalSearch}`
+    : effectivePath
   const target = new URL('/verity', request.url)
-  target.searchParams.set('next', effectivePath)
+  target.searchParams.set('next', nextTarget)
   return NextResponse.redirect(target)
 }
 

@@ -35,9 +35,9 @@ export function AgeGate() {
     setVerifiedCookie()
     setVisible(false)
 
-    // ミドルウェアが保持した元パスへ戻る
+    // ミドルウェアが保持した元パス（クエリ付き）へ戻る
     const next = searchParams.get('next')
-    if (next && next.startsWith('/verity/')) {
+    if (next && (next.startsWith('/verity/') || next === '/verity')) {
       window.location.replace(next)
     }
   }
