@@ -9,6 +9,7 @@ import { FeaturedSection } from '@/components/FeaturedSection'
 import { RecommendedActressSection } from '@/components/RecommendedActressSection'
 import { MustOneSection } from '@/components/MustOneSection'
 import { Fanza100SaleBanner } from '@/components/Fanza100SaleBanner'
+import { SystemRestorationNotice } from '@/components/SystemRestorationNotice'
 import { TodaysPickSection } from '@/components/TodaysPickSection'
 import { FastReviewSection } from '@/components/FastReviewSection'
 import { SocialFeedSection } from '@/components/SocialFeedSection'
@@ -450,6 +451,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   return (
     <div className="mx-auto max-w-7xl px-4 py-8 space-y-10">
+
+      {/* ── 0. システム復旧通知（登録不具合修正のお知らせ） ──────────────── */}
+      <Suspense>
+        <SystemRestorationNotice />
+      </Suspense>
 
       {/* ── 1. ヒーローエリア ──────────────────────────────────────────────── */}
       <div className="space-y-6">
