@@ -37,36 +37,41 @@ function proxyUrl(url: string): string {
 }
 
 // ── 多言語テキスト ──────────────────────────────────────────────────────────────
+const MORE_SALE_URL = 'https://video.dmm.co.jp/list/?key=100%E5%86%86%E3%82%BB%E3%83%BC%E3%83%AB&sort=suggest&i3_ref=sale_100yen_2026_06-banner&dmmref=detail'
+
 const TEXTS = {
   ja: {
-    badge: '期間限定セール',
-    tag:   '100円',
-    title: 'FANZA 100円セール大特集',
-    sub:   '大手エンタメプラットフォームで実施中の異例の超低価格セール対象タイトルはこちら！',
-    cta:   '対象作品をすべてチェック →',
-    lock:  '会員登録で完全リストを見る',
-    pr:    '※本バナーはアフィリエイトリンクを含むプロモーションです',
+    badge:   '期間限定セール',
+    tag:     '100円',
+    title:   'FANZA 100円セール大特集',
+    sub:     '大手エンタメプラットフォームで実施中の異例の超低価格セール対象タイトルはこちら！',
+    cta:     '対象作品をすべてチェック →',
+    lock:    '会員登録で完全リストを見る',
+    pr:      '※本バナーはアフィリエイトリンクを含むプロモーションです',
     viewBtn: 'FANZAで観る',
+    moreBtn: 'その他の100円セール対象作品はこちらから（FANZA公式へ）',
   },
   en: {
-    badge: 'Limited-time Sale',
-    tag:   '¥100',
-    title: 'FANZA ¥100 Mega Sale',
-    sub:   "Check out the titles eligible for this exceptionally low-price sale now running on a major Japanese entertainment platform!",
-    cta:   'View All Eligible Titles →',
-    lock:  'Register free to see the full list',
-    pr:    '* This banner contains affiliate / promotional links.',
+    badge:   'Limited-time Sale',
+    tag:     '¥100',
+    title:   'FANZA ¥100 Mega Sale',
+    sub:     "Check out the titles eligible for this exceptionally low-price sale now running on a major Japanese entertainment platform!",
+    cta:     'View All Eligible Titles →',
+    lock:    'Register free to see the full list',
+    pr:      '* This banner contains affiliate / promotional links.',
     viewBtn: 'Watch on FANZA',
+    moreBtn: 'Browse all ¥100 sale titles on FANZA',
   },
   th: {
-    badge: 'เซลล์ช่วงเวลาจำกัด',
-    tag:   '100 เยน',
-    title: 'FANZA เซลล์ 100 เยน',
-    sub:   'ดูผลงานที่ร่วมเซลล์ราคาพิเศษสุดๆ บนแพลตฟอร์มบันเทิงชั้นนำได้เลยที่นี่!',
-    cta:   'ดูผลงานทั้งหมด →',
-    lock:  'สมัครสมาชิกฟรีเพื่อดูรายการเต็ม',
-    pr:    '* แบนเนอร์นี้มีลิงก์พันธมิตร (affiliate)',
+    badge:   'เซลล์ช่วงเวลาจำกัด',
+    tag:     '100 เยน',
+    title:   'FANZA เซลล์ 100 เยน',
+    sub:     'ดูผลงานที่ร่วมเซลล์ราคาพิเศษสุดๆ บนแพลตฟอร์มบันเทิงชั้นนำได้เลยที่นี่!',
+    cta:     'ดูผลงานทั้งหมด →',
+    lock:    'สมัครสมาชิกฟรีเพื่อดูรายการเต็ม',
+    pr:      '* แบนเนอร์นี้มีลิงก์พันธมิตร (affiliate)',
     viewBtn: 'ดูบน FANZA',
+    moreBtn: 'ดูผลงานเซลล์ 100 เยนทั้งหมดบน FANZA',
   },
 } as const
 
@@ -192,8 +197,9 @@ export function Fanza100SaleBanner() {
 
   if (!mounted) return null
 
-  const t        = TEXTS[lang]
-  const isAuthed = !!user
+  const t            = TEXTS[lang]
+  const isAuthed     = !!user
+  const moreSaleHref = withAffiliate(MORE_SALE_URL) ?? MORE_SALE_URL
 
   function fireLock() {
     window.dispatchEvent(new CustomEvent('verity:auth-required', { detail: { ctx: 'sale100' } }))
@@ -259,6 +265,34 @@ export function Fanza100SaleBanner() {
             onLock={fireLock}
           />
         ))}
+      </div>
+
+      {/* その他の作品リンク */}
+      <div className="flex justify-center">
+        <a
+          href={moreSaleHref}
+          target="_blank"
+          rel="noopener noreferrer sponsored"
+          className="group relative inline-flex items-center gap-2.5 overflow-hidden rounded-full
+                     px-6 py-3 text-sm font-black text-white transition-all duration-200
+                     hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,191,36,0.45)]
+                     active:scale-95"
+          style={{
+            background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 60%, #d97706 100%)',
+            border:     '1px solid rgba(251,191,36,0.5)',
+          }}
+        >
+          <span className="relative z-10 tracking-wide">{t.moreBtn}</span>
+          <ExternalLink
+            size={15}
+            className="relative z-10 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
+          />
+          {/* ホバー時インナーグロー */}
+          <span
+            className="absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
+            style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%)' }}
+          />
+        </a>
       </div>
 
       {/* PR 表示 */}
