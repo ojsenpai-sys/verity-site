@@ -19,6 +19,14 @@ type Props = {
   fanzaHref:   string
 }
 
+function logSnsClick(sn: string, action: 'fanza_click' | 'x_click') {
+  fetch('/verity/api/logs', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ target_type: 'sns', target_id: sn, action_type: 'click' }),
+  }).catch(() => {})
+}
+
 export function SocialFeedCell({ imageUrl, actressName, screenName, postUrl, fanzaHref }: Props) {
   const [menuOpen, setMenuOpen] = useState(false)
 
@@ -55,6 +63,7 @@ export function SocialFeedCell({ imageUrl, actressName, screenName, postUrl, fan
           href={fanzaHref}
           target="_blank"
           rel="noopener noreferrer sponsored"
+          onClick={() => logSnsClick(screenName, 'fanza_click')}
           className="rounded-full bg-[var(--magenta)] px-3.5 py-1.5 text-[11px] font-bold
                      text-white shadow-[0_0_16px_rgba(226,0,116,0.45)]
                      hover:brightness-110 transition-all whitespace-nowrap"
@@ -65,6 +74,7 @@ export function SocialFeedCell({ imageUrl, actressName, screenName, postUrl, fan
           href={postUrl}
           target="_blank"
           rel="noopener noreferrer"
+          onClick={() => logSnsClick(screenName, 'x_click')}
           className="flex items-center gap-1 text-white/60 hover:text-white/90 transition-colors"
         >
           <XLogo size={11} />
@@ -94,7 +104,7 @@ export function SocialFeedCell({ imageUrl, actressName, screenName, postUrl, fan
             href={fanzaHref}
             target="_blank"
             rel="noopener noreferrer sponsored"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); logSnsClick(screenName, 'fanza_click') }}
             className="w-full rounded-full bg-[var(--magenta)] py-2.5 text-center
                        text-xs font-bold text-white shadow-[0_0_16px_rgba(226,0,116,0.45)]"
           >
@@ -105,7 +115,7 @@ export function SocialFeedCell({ imageUrl, actressName, screenName, postUrl, fan
             href={postUrl}
             target="_blank"
             rel="noopener noreferrer"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => { e.stopPropagation(); logSnsClick(screenName, 'x_click') }}
             className="flex w-full items-center justify-center gap-2 rounded-full
                        border border-white/20 py-2.5 text-xs font-medium text-white/80"
           >
