@@ -22,6 +22,11 @@ function proxyUrl(src: string) {
   return `/api/proxy/image?url=${encodeURIComponent(src)}`
 }
 
+// pl.jpg / ps.jpg → jp.jpg: プロキシに縦向き正面表紙スキャン(jp)を優先させる
+function actressProxyUrl(src: string): string {
+  return `/api/proxy/image?url=${encodeURIComponent(src.replace(/(?:pl|ps)\.jpg$/, 'jp.jpg'))}`
+}
+
 function isDigitalWork(article: Article): boolean {
   const url = (article.metadata?.url as string) ?? ''
   return url.includes('video.dmm.co.jp') || url.includes('/digital/')
@@ -168,7 +173,32 @@ export async function ActressDiscoveryBlock({
   const sectionC = digitalFirst((makerResult.data as Article[] | null) ?? []).slice(0, 4)
 
   // ④ Related actresses — frequency-sorted co-stars
-  const sectionD = (coStarResult.data as SlimActress[] | null) ?? []
+  // image_url が null の女優に対して最新作品の画像を一括フォールバック
+  let sectionD = (coStarResult.data as SlimActress[] | null) ?? []
+  const nullImageNames = sectionD.filter(a => !a.image_url).map(a => a.name)
+  if (nullImageNames.length > 0) {
+    const { data: fallbackArts } = await supabase
+      .from('articles')
+      .select('tags, image_url')
+      .overlaps('tags', nullImageNames)
+      .eq('is_active', true)
+      .not('image_url', 'is', null)
+      .order('published_at', { ascending: false })
+      .limit(nullImageNames.length * 4)
+
+    const fallbackMap = new Map<string, string>()
+    for (const art of (fallbackArts ?? []) as { tags: string[] | null; image_url: string | null }[]) {
+      for (const tag of art.tags ?? []) {
+        if (nullImageNames.includes(tag) && !fallbackMap.has(tag) && art.image_url) {
+          fallbackMap.set(tag, art.image_url)
+        }
+      }
+    }
+    sectionD = sectionD.map(a => ({
+      ...a,
+      image_url: a.image_url ?? fallbackMap.get(a.name) ?? null,
+    }))
+  }
 
   // ⑤ Popular works — sort recentArticles by fanza_click count descending
   const sectionE = digitalFirst([...recentArticles])
@@ -227,7 +257,7 @@ export async function ActressDiscoveryBlock({
                 <div className="relative aspect-[2/3] overflow-hidden bg-[var(--surface-2)]">
                   {a.image_url ? (
                     <ProxiedImage
-                      src={proxyUrl(a.image_url)}
+                      src={actressProxyUrl(a.image_url)}
                       alt={a.name}
                       className="absolute inset-0 h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
                     />
