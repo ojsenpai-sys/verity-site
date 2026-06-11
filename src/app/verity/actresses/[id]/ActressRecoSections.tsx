@@ -3,6 +3,7 @@ import { ExternalLink, Film, Building2, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { FanzaLink } from '@/components/FanzaLink'
 import { ProxiedImage } from '@/components/ProxiedImage'
+import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliate } from '@/lib/affiliate'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
 import type { Article, Actress } from '@/lib/types'
@@ -65,12 +66,10 @@ function RecoWorkCard({
           <ProxiedImage
             src={proxyUrl(imgUrl)}
             alt={article.title}
-            className="absolute inset-0 h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+            className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-[10px] text-[var(--text-muted)]">
-            NO IMAGE
-          </div>
+          <NowPrinting />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/5 to-transparent" />
       </div>
@@ -116,9 +115,7 @@ function RelatedActressCard({ actress }: { actress: SlimActress }) {
             className="absolute inset-0 h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
           />
         ) : (
-          <div className="absolute inset-0 flex items-center justify-center text-[10px] text-[var(--text-muted)]">
-            NO IMAGE
-          </div>
+          <NowPrinting />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 p-2.5">

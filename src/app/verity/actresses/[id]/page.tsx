@@ -3,7 +3,7 @@ export const revalidate = 0
 
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, ShoppingCart, Bookmark, UserCircle, Tag, Flame, ExternalLink } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ShoppingCart, Bookmark, UserCircle, Tag, Flame, ExternalLink, Heart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { ArticleCard } from '@/components/ArticleCard'
 import { LogView } from '@/components/LogView'
@@ -32,26 +32,28 @@ function getLang(raw: string | undefined | null): Lang {
 }
 
 type Strs = {
-  metaTitle:     (name: string, month: number) => string
-  metaDesc:      (name: string) => string
-  backHome:      string
-  backProfile:   string
-  works:         (n: number) => string
-  preOrder:      string
-  preOrderBadge: string
-  recent:        string
-  recentBadge:   string
-  fanzaSearch:   (name: string) => string
-  saleSection:   string
-  saleBadge:     string
-  noSale:        string
-  fanzaSaleLink: (name: string) => string
-  genreCatalog:  string
-  genreBadge:    (name: string) => string
-  ctaTitle:      (name: string) => string
-  ctaSub:        string
-  ctaBtn:        string
-  prText:        string
+  metaTitle:      (name: string, month: number) => string
+  metaDesc:       (name: string) => string
+  backHome:       string
+  backProfile:    string
+  works:          (n: number) => string
+  preOrder:       string
+  preOrderBadge:  string
+  recent:         string
+  recentBadge:    string
+  fanzaSearch:    (name: string) => string
+  saleSection:    string
+  saleBadge:      string
+  noSale:         string
+  fanzaSaleLink:  (name: string) => string
+  genreCatalog:   string
+  genreBadge:     (name: string) => string
+  ctaTitle:       (name: string) => string
+  ctaSub:         string
+  ctaBtn:         string
+  prText:         string
+  rankBoostNote:  string
+  rankBoostLink:  string
 }
 
 const I18N: Record<Lang, Strs> = {
@@ -76,6 +78,8 @@ const I18N: Record<Lang, Strs> = {
     ctaSub:        '高画質・サンプル動画あり — 無料会員登録でポイントプレゼント中',
     ctaBtn:        'FANZAで見る — 無料サンプルあり',
     prText:        'アフィリエイト広告を含みます',
+    rankBoostNote: 'お気に入り登録すると、この女優のランキングが +50pt ブーストされます',
+    rankBoostLink: 'ランキングを見る',
   },
   en: {
     metaTitle:     (name, month) => `【Latest ${MONTHS_EN[month - 1]}】${name} Complete Works & Best Video Selection | VERITY`,
@@ -98,6 +102,8 @@ const I18N: Record<Lang, Strs> = {
     ctaSub:        'HD quality & free sample movies — sign up free to receive bonus points',
     ctaBtn:        'Watch on FANZA — Free Sample Available',
     prText:        'Contains affiliate links',
+    rankBoostNote: 'Add to Favorites to boost this actress\'s VERITY ranking by +50pt',
+    rankBoostLink: 'See Ranking',
   },
   zh: {
     metaTitle:     (name, month) => `【${month}月最新】${name} 的所有作品和精彩视频推荐 | VERITY`,
@@ -120,6 +126,8 @@ const I18N: Record<Lang, Strs> = {
     ctaSub:        '高画质・有试看视频 — 免费注册即送积分',
     ctaBtn:        '在FANZA观看 — 有免费试看',
     prText:        '含有推广链接',
+    rankBoostNote: '收藏后，此女优的VERITY排名将提升 +50pt',
+    rankBoostLink: '查看排名',
   },
 }
 
@@ -383,6 +391,18 @@ export default async function ActressPage({
           </p>
         </div>
         <ShareButton url={`/verity/actresses/${actress.external_id}`} title={actress.name} />
+      </div>
+
+      {/* ランキング熱量ヒント */}
+      <div className="flex items-center gap-2 rounded-lg border border-[var(--magenta)]/20 bg-[var(--magenta)]/5 px-3 py-2 text-[11px] text-[var(--text-muted)]">
+        <Heart size={11} className="shrink-0 text-[var(--magenta)]" />
+        <span className="flex-1">{t.rankBoostNote}</span>
+        <Link
+          href={`/verity/ranking${lang !== 'ja' ? `?lang=${lang}` : ''}`}
+          className="shrink-0 font-bold text-[var(--magenta)] hover:underline"
+        >
+          {t.rankBoostLink} →
+        </Link>
       </div>
 
       {total === 0 && (
