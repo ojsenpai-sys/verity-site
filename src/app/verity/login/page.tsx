@@ -11,18 +11,18 @@ export const metadata: Metadata = {
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ error?: string; next?: string }>
+  searchParams: Promise<{ error?: string; next?: string; mode?: string }>
 }) {
   // ログイン済みならプロフィールへ
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
   if (user) redirect('/verity/profile')
 
-  const { error, next } = await searchParams
+  const { error, next, mode } = await searchParams
 
   return (
     <div className="flex min-h-[80vh] items-center justify-center px-4 py-16">
-      <LoginForm error={error} next={next} />
+      <LoginForm error={error} next={next} mode={mode === 'signup' ? 'signup' : 'login'} />
     </div>
   )
 }

@@ -14,18 +14,20 @@ type SaleItem = {
   title:   string
 }
 
+// ── 2026-06-08 更新: DMM 100円セール最新ラインナップ（DB登録済み女優のみ掲載）──
+// 未登録作品（双葉れぇな / 素人企画）はエリア下部のまとめCTAへ集約
 const SALE_ITEMS: SaleItem[] = [
-  // 川越にこ最優先
-  { cid: 'sone00258', actress: '川越にこ',        title: '今いちばん抱きたいカラダ' },
-  { cid: 'mizd00362', actress: '石川澪・宮下玲奈', title: 'MOODYZ 2022年厳選100タイトル' },
-  { cid: 'ebwh00092', actress: '七瀬アリス',       title: '誰もが振り返る高嶺の花が' },
-  { cid: 'juq00682',  actress: '神宮寺ナオ',       title: '合鍵をもらった人妻が' },
-  { cid: 'jur00258',  actress: '紗弥佳',           title: '隠れIカップの元芸能人' },
-  { cid: 'fpre00045', actress: '似鳥日菜',         title: 'オヤジのハメ撮りドキュメント' },
-  { cid: 'miab00157', actress: 'AIKA・鳳カレン',   title: 'ウチらと3Pやろうぜ' },
-  { cid: 'dass00158', actress: '森沢かな',         title: '友達のお母さんと' },
-  { cid: 'hjmo00652', actress: '',                 title: '残酷ミラーゲーム12' },
-  { cid: 'hndb00127', actress: '椎名そら',         title: '初コンプリートBEST 12時間' },
+  { cid: 'cjod00447', actress: '北岡果林',   title: 'キレカワお姉さんにラブホに呼び出され痴女られた僕' },
+  { cid: 'sone00229', actress: '小宵こなん', title: 'タイトワンピ店員のボディライン丸出し接客' },
+  { cid: 'pppe00296', actress: '春陽モカ',   title: '彼女のお姉さんは巨乳と中出しOKで僕を誘惑' },
+  { cid: 'sone00136', actress: 'miru',       title: '個人撮影AVをネットで拾ったら婚約者でした' },
+  { cid: 'mide00786', actress: '七沢みあ',   title: '放課後ラブホで何度も、何度もセックスしてしまった…' },
+  { cid: 'fpre00038', actress: '橘内ひなた', title: '結婚祝いNTRキャンプ' },
+  { cid: 'hmn00673',  actress: '五日市芽依', title: 'Gcupセラピストの秘密の裏オプ中出し爆ヌキ20発' },
+  { cid: 'dass00412', actress: '月野江すい', title: '媚薬盛られ発汗発情！敏感ホットヨガ教室' },
+  { cid: 'ebwh00081', actress: '高橋ゆら',   title: 'パイズリ女王 10年ぶりの電撃復活' },
+  { cid: 'pbd00446',  actress: '篠田ゆう',   title: '55本番24時間20作品 プレミアム総集編' },
+  { cid: 'ure00109',  actress: '日下部加奈', title: 'イイ湯湧いてます 累計12万DL超え！' },
 ]
 
 function dmmUrl(cid: string): string {

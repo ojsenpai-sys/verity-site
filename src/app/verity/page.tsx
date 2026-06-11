@@ -5,6 +5,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ArticleCard } from '@/components/ArticleCard'
 import { FilterBar } from '@/components/FilterBar'
 import { ActressMarquee } from '@/components/ActressMarquee'
+import { HeroSection } from '@/components/HeroSection'
 import { FeaturedSection } from '@/components/FeaturedSection'
 import { RecommendedActressSection } from '@/components/RecommendedActressSection'
 import { MustOneSection } from '@/components/MustOneSection'
@@ -12,12 +13,20 @@ import { Fanza100SaleBanner } from '@/components/Fanza100SaleBanner'
 import { SystemRestorationNotice } from '@/components/SystemRestorationNotice'
 import { TodaysPickSection } from '@/components/TodaysPickSection'
 import { FastReviewSection } from '@/components/FastReviewSection'
-import { SocialFeedSection } from '@/components/SocialFeedSection'
+// import { SocialFeedSection } from '@/components/SocialFeedSection'  // SNS同期一時停止中 — API復旧後に再有効化
 import { PopularActressRankingSection } from '@/components/PopularActressRankingSection'
 import { NewsCard } from '@/components/NewsCard'
 import { fetchNewsList } from '@/app/verity/actions/news'
 import type { Article, Actress, FilterParams } from '@/lib/types'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
+import { FavNewReleaseAlert } from '@/components/FavNewReleaseAlert'
+import { GentlemanAnalysisSection } from '@/components/GentlemanAnalysisSection'
+import { LpContributionSection } from '@/components/LpContributionSection'
+import { FanzaPointNudge } from '@/components/FanzaPointNudge'
+import { WeekTop3Section } from '@/components/WeekTop3Section'
+import { LpNudgeBar } from '@/components/LpNudgeBar'
+import { LpClickFeedback } from '@/components/LpClickFeedback'
+import { MakerBadgesSection } from '@/components/MakerBadgesSection'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -450,71 +459,107 @@ export default async function DashboardPage({ searchParams }: PageProps) {
   const top100Names = actresses.slice(0, 100).map((a) => a.name)
 
   return (
+    <>
     <div className="mx-auto max-w-7xl px-4 py-8 space-y-10">
 
-      {/* ── 0. システム復旧通知（登録不具合修正のお知らせ） ──────────────── */}
+      {/* ── 0. Today's Hero（本日の最イチ推し 全幅バナー） ──────────────── */}
+      <section id="hero">
+        <Suspense fallback={<div className="h-48 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <HeroSection />
+        </Suspense>
+      </section>
+
+      {/* ── 0b. LP ナッジバー（未ログイン: 消滅警告 / ログイン: LP残高） */}
       <Suspense>
-        <SystemRestorationNotice />
+        <LpNudgeBar />
       </Suspense>
 
-      {/* ── 1. ヒーローエリア ──────────────────────────────────────────────── */}
+      {/* ── 0c. 人気女優ランキング TOP（ファーストビュー最優先） ─────────── */}
+      <section id="popular-ranking-top">
+        <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-[var(--surface)]" />}>
+          <PopularActressRankingSection />
+        </Suspense>
+      </section>
+
+      {/* ── 1. 女優マーキー ＋ 検索フィルター ──────────────────────────── */}
       <div className="space-y-6">
         <p className="text-[11px] sm:text-xs leading-relaxed tracking-wide text-[var(--text-muted)]">
           FANZA公式データと直結！旬の女優と最新作を最速で届けるAVキュレーション・メディア
         </p>
-
-        {/* 女優スクロール: 月間ランキング Top 50 最新作パッケージ */}
         <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-[var(--surface)]" />}>
           <ActressMarquee actresses={actresses} />
         </Suspense>
-
-        {/* 検索窓 ＋ ジャンルタグ（上位 30 + もっと見る） */}
         <Suspense>
           <FilterBar categories={categories} sources={sources} tags={tags} />
         </Suspense>
       </div>
 
-      {/* ── 1.5. FANZA 100円セール特集バナー ────────────────────────────── */}
+      {/* ── 2. VERITYオススメ女優（33名 — ファーストビュー最優先） ────── */}
+      <section id="recommended-actresses">
+        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--surface)]" />}>
+          <FeaturedSection />
+        </Suspense>
+      </section>
+
+      {/* ── 2b. 人気メーカー・レーベル一覧 ────────────────────────────── */}
+      <section id="maker-badges">
+        <MakerBadgesSection />
+      </section>
+
+      {/* ── 2c. ジェントルマン分析（ログイン: 属性テーザー / 未ログイン: 登録CTA） */}
+      <section id="gentleman-analysis">
+        <Suspense fallback={<div className="h-28 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <GentlemanAnalysisSection />
+        </Suspense>
+      </section>
+
+      {/* ── 3. TODAY'S PICK × THE MUST ONE（2カラム） ─────────────────── */}
+      <section id="pick-and-must-one">
+        <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
+          <Suspense fallback={<div className="h-56 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+            <TodaysPickSection />
+          </Suspense>
+          <MustOneSection />
+        </div>
+      </section>
+
+      {/* ── 4. FANZA 100円セール特集 ────────────────────────────────────── */}
       <section id="fanza-100-sale">
         <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
           <Fanza100SaleBanner />
         </Suspense>
       </section>
 
-      {/* ── 2. THE MUST ONE ───────────────────────────────────────────────── */}
-      <section id="the-must-one">
-        <MustOneSection />
-      </section>
-
-      {/* ── 2.3. TODAY'S PICK（アルゴリズム自動選定・デイリー更新）───────── */}
-      <section id="todays-pick">
-        <Suspense fallback={<div className="h-36 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
-          <TodaysPickSection />
+      {/* ── 5. 【最速】予約・先行公開 ──────────────────────────────────── */}
+      <section id="pre-orders">
+        <Suspense>
+          <UpcomingSection filters={filters} top100Names={top100Names} />
         </Suspense>
       </section>
 
-      {/* ── 2.5. 最新作最速レビュー ──────────────────────────────────────── */}
+      {/* ── 6. 最新作最速レビュー ──────────────────────────────────────── */}
       <section id="fast-review">
         <Suspense fallback={<div className="h-72 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
           <FastReviewSection />
         </Suspense>
       </section>
 
-      {/* ── 3. VERITY 人気女優ランキング ─────────────────────────────────── */}
-      <section id="popular-ranking">
-        <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-[var(--surface)]" />}>
-          <PopularActressRankingSection />
+      {/* ── 7b. LP長者番付 ─────────────────────────────────────────────── */}
+      <section id="lp-ranking">
+        <Suspense fallback={<div className="h-56 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <LpContributionSection />
         </Suspense>
       </section>
 
-      {/* ── 4. SOCIAL FEEDS ──────────────────────────────────────────────── */}
+      {/* ── 4. SOCIAL FEEDS（SNS同期一時停止中 — API復旧後に再有効化） ──────
       <section id="social-feeds">
         <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-[var(--surface)]" />}>
           <SocialFeedSection />
         </Suspense>
       </section>
+      ─────────────────────────────────────────────────────────────────── */}
 
-      {/* ── 5. 新着情報タイムライン ──────────────────────────────────────── */}
+      {/* ── 8. 新着情報タイムライン ─────────────────────────────────────── */}
       <section id="latest-news-preview">
         <Suspense fallback={
           <div className="space-y-2">
@@ -528,7 +573,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </Suspense>
       </section>
 
-      {/* ── 5.5. 新着ニュース（最大6件カード） ──────────────────────────── */}
+      {/* ── 9. 新着ニュース（カード最大6件） ───────────────────────────── */}
       <section id="latest-news-cards">
         <Suspense fallback={
           <div className="space-y-5">
@@ -551,35 +596,29 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </Suspense>
       </section>
 
-      {/* ── 6. VERITYオススメ女優 ─────────────────────────────────────────── */}
-      <section id="recommended-actresses">
-        <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--surface)]" />}>
-          <FeaturedSection />
-        </Suspense>
-      </section>
-
-      {/* ── 7. 旬の女優 最新作（FANZAイチオシ 30 名）────────────────────────── */}
+      {/* ── 10. 旬の女優 最新作（FANZAイチオシ 30 名） ─────────────────── */}
       <section id="latest-releases">
         <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--surface)]" />}>
           <RecommendedActressSection />
         </Suspense>
       </section>
 
-      {/* ── 8. VERITY推薦！新作コミック ──────────────────────────────────── */}
+      {/* ── 11. VERITY推薦！新作コミック ────────────────────────────────── */}
       <section id="doujin-pick">
         <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-[var(--surface)]" />}>
           <DoujinPickSection />
         </Suspense>
       </section>
 
-      {/* ── 9. 【最速】予約・先行公開 ─────────────────────────────────────── */}
-      <section id="pre-orders">
-        <Suspense>
-          <UpcomingSection filters={filters} top100Names={top100Names} />
-        </Suspense>
-      </section>
+      {/* ── 12. システム復旧通知（ログイン誘導バナー — 最上部から退避） ── */}
+      <Suspense>
+        <SystemRestorationNotice />
+      </Suspense>
 
-      {/* ── 10. 今週のリリース ────────────────────────────────────────────── */}
+      {/* ── 12b. FANZAポイント有効期限ナッジ ───────────────────────────── */}
+      <FanzaPointNudge />
+
+      {/* ── 13. 今週のリリース ──────────────────────────────────────────── */}
       <section id="weekly-releases" className="space-y-5">
         <div className="flex items-center gap-2.5">
           <Clock size={17} className="text-[var(--magenta)]" />
@@ -590,6 +629,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             </span>
           )}
         </div>
+
+        {/* Verity Score Top 3 — ページ0 ＆ フィルターなしのみ表示 */}
+        {!hasFilter && page === 0 && (
+          <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-[var(--surface)]" />}>
+            <WeekTop3Section />
+          </Suspense>
+        )}
 
         <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
           <Suspense
@@ -603,5 +649,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       </section>
 
     </div>
+
+    {/* お気に入り女優の新着通知 — client-side, absolutely positioned */}
+    <FavNewReleaseAlert />
+    {/* FANZAリンクのクリック時に +LP アニメーションを表示 */}
+    <LpClickFeedback />
+    </>
   )
 }

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { Mail, CheckCircle, AlertCircle, RefreshCw, Heart } from 'lucide-react'
 import { createClient, createImplicitClient } from '@/lib/supabase/client'
+import { trackEvent } from '@/lib/analytics'
 
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
 // OAuth (Google/X): PKCE フロー → route.ts で code 交換
@@ -55,11 +56,13 @@ function XIcon({ size = 16 }: { size?: number }) {
 type Props = {
   error?: string
   next?:  string
+  mode?:  'login' | 'signup'
 }
 
 type ViewState = 'buttons' | 'email' | 'sent'
 
-export function LoginForm({ error, next }: Props) {
+export function LoginForm({ error, next, mode = 'login' }: Props) {
+  const isSignup = mode === 'signup'
   // otp_expired / pkce_verification_failed はメール送信画面から再試行を促す
   const isRetryError = error === 'otp_expired' || error === 'pkce_verification_failed'
 
@@ -74,6 +77,7 @@ export function LoginForm({ error, next }: Props) {
   const confirmUrl       = next ? `${CONFIRM}?next=${encodeURIComponent(next)}`  : CONFIRM
 
   async function signInWithGoogle() {
+    trackEvent('signup_start', { provider: 'google', mode })
     setLoading(true); setErr('')
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'google',
@@ -83,6 +87,7 @@ export function LoginForm({ error, next }: Props) {
   }
 
   async function signInWithX() {
+    trackEvent('signup_start', { provider: 'twitter', mode })
     setLoading(true); setErr('')
     const { error } = await supabase.auth.signInWithOAuth({
       provider: 'twitter',
@@ -94,6 +99,7 @@ export function LoginForm({ error, next }: Props) {
   async function sendMagicLink(e: React.FormEvent) {
     e.preventDefault()
     if (!email) return
+    trackEvent('signup_start', { provider: 'email', mode })
     setLoading(true); setErr('')
     // Implicit クライアントを使用。IAB 環境でも code_verifier 不要でログイン可能。
     const { error } = await implicitSupabase.auth.signInWithOtp({
@@ -208,10 +214,12 @@ export function LoginForm({ error, next }: Props) {
           <img src="/assets/verity/king.png" alt="王冠" width={28} height={28} style={{ objectFit: 'contain' }} />
         </div>
         <h1 className="text-2xl font-bold tracking-tight text-[var(--text)]">
-          VERITY メンバーログイン
+          {isSignup ? 'VERITY 新規会員登録' : 'VERITY メンバーログイン'}
         </h1>
         <p className="text-sm text-[var(--text-muted)]">
-          会員限定コンテンツ・特別レビューへアクセス
+          {isSignup
+            ? '無料登録して、限定コンテンツ・特別レビューへアクセス'
+            : '会員限定コンテンツ・特別レビューへアクセス'}
         </p>
       </div>
 
@@ -223,7 +231,9 @@ export function LoginForm({ error, next }: Props) {
             <p className="text-xs font-bold text-[var(--magenta)]">お気に入り保存中です</p>
           </div>
           <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-            ログインすれば、お気に入りをデバイス間で同期・永久保存できます。
+            {isSignup
+              ? '会員登録すれば、お気に入りをデバイス間で同期・永久保存できます。'
+              : 'ログインすれば、お気に入りをデバイス間で同期・永久保存できます。'}
             <br />Login to sync favorites across devices.
           </p>
         </div>
@@ -247,7 +257,7 @@ export function LoginForm({ error, next }: Props) {
                      transition-colors"
         >
           <GoogleIcon size={18} />
-          Google でログイン
+          {isSignup ? 'Google でアカウントを作成' : 'Google でログイン'}
         </button>
 
         {/* X (Twitter) */}
@@ -260,7 +270,7 @@ export function LoginForm({ error, next }: Props) {
                      transition-colors"
         >
           <XIcon size={16} />
-          X でログイン
+          {isSignup ? 'X でアカウントを作成' : 'X でログイン'}
         </button>
 
         <div className="relative flex items-center gap-3 py-1">
@@ -277,12 +287,35 @@ export function LoginForm({ error, next }: Props) {
                      hover:border-[var(--magenta)]/40 transition-colors"
         >
           <Mail size={16} className="text-[var(--text-muted)]" />
-          メールでマジックリンクを受け取る
+          {isSignup ? 'メールアドレスで登録する' : 'メールでマジックリンクを受け取る'}
         </button>
       </div>
 
+      {/* ログイン ⇔ 新規登録 切り替えリンク */}
+      {isSignup ? (
+        <p className="text-center text-xs text-[var(--text-muted)]">
+          すでにアカウントをお持ちの方は{' '}
+          <a
+            href={next ? `/verity/login?next=${encodeURIComponent(next)}` : '/verity/login'}
+            className="text-[var(--magenta)] hover:underline font-medium"
+          >
+            こちらからログイン
+          </a>
+        </p>
+      ) : (
+        <p className="text-center text-xs text-[var(--text-muted)]">
+          アカウントをお持ちでない方は{' '}
+          <a
+            href={next ? `/verity/login?mode=signup&next=${encodeURIComponent(next)}` : '/verity/login?mode=signup'}
+            className="text-[var(--magenta)] hover:underline font-medium"
+          >
+            無料会員登録
+          </a>
+        </p>
+      )}
+
       <p className="text-center text-xs text-[var(--text-muted)]">
-        ログインすることで
+        {isSignup ? '登録することで' : 'ログインすることで'}
         <a href="#" className="text-[var(--magenta)] hover:underline">利用規約</a>
         および
         <a href="#" className="text-[var(--magenta)] hover:underline">プライバシーポリシー</a>

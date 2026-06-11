@@ -6,6 +6,8 @@ import { cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { FavoriteButton } from '@/components/FavoriteButton'
+import { FanzaLink } from './FanzaLink'
+import { CountdownBadge } from './CountdownBadge'
 import type { Article } from '@/lib/types'
 
 function proxyUrl(url: string): string {
@@ -96,6 +98,13 @@ export async function ArticleCard({ article }: ArticleCardProps) {
   const isDvd = !isDoujin && (floor === 'dvd' || (metaUrl !== null && metaUrl.includes('/mono/dvd/')))
   const isDigital = !isDoujin && !isDvd && (floor === 'videoa' || (metaUrl !== null && metaUrl.includes('/digital/')))
 
+  const isOnSale  = Boolean(article.metadata?.is_on_sale)
+  const salePrice = typeof article.metadata?.sale_price === 'number'
+    ? (article.metadata.sale_price as number)
+    : null
+
+  const isVr = !isDoujin && !isDvd && (article.tags ?? []).some(t => /^VR/.test(t))
+
   const imgUrl = effectiveImageUrl(article)
 
   const imageContent = imgUrl ? (
@@ -149,6 +158,14 @@ export async function ArticleCard({ article }: ArticleCardProps) {
           {isDvd ? 'DVD' : '動画配信'}
         </span>
       )}
+      {isOnSale && (
+        <span className="absolute bottom-3 left-0 z-10 rounded-r-full bg-red-500/95 px-3 py-0.5 text-[10px] font-black tracking-wider text-white shadow-[0_0_10px_rgba(239,68,68,0.5)]">
+          {salePrice !== null ? `¥${salePrice}` : 'SALE'}
+        </span>
+      )}
+      {upcoming && article.published_at && (
+        <CountdownBadge releaseAt={article.published_at} />
+      )}
     </>
   )
 
@@ -156,17 +173,23 @@ export async function ArticleCard({ article }: ArticleCardProps) {
 
   return (
     <article className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden transition-all duration-200 hover:border-[var(--magenta)]/60 hover:shadow-[0_0_28px_rgba(226,0,116,0.18)] hover:-translate-y-0.5">
-      {/* Image — clicking goes directly to FANZA affiliate */}
+      {/* Image — FanzaLink tracks fanza_click; image tap goes directly to FANZA on mobile */}
       {affiliateUrl ? (
-        <a
+        <FanzaLink
           href={affiliateUrl}
-          target="_blank"
-          rel="noopener noreferrer sponsored"
-          className={imageWrapperClass}
+          targetId={article.external_id}
+          position="card_image"
+          className={`${imageWrapperClass} group/img`}
         >
           {imageContent}
           {imageBadges}
-        </a>
+          {/* Desktop-only hover overlay — pointer-events-none so FavoriteButton remains clickable */}
+          <div className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/0 transition-all duration-200 group-hover/img:bg-black/60 md:flex">
+            <span className="translate-y-1 scale-95 rounded-full bg-white/90 px-4 py-1.5 text-[11px] font-bold text-gray-900 opacity-0 shadow-lg transition-all duration-200 group-hover/img:translate-y-0 group-hover/img:scale-100 group-hover/img:opacity-100">
+              ▶ FANZAで観る
+            </span>
+          </div>
+        </FanzaLink>
       ) : (
         <div className={imageWrapperClass}>
           {imageContent}
@@ -245,15 +268,37 @@ export async function ArticleCard({ article }: ArticleCardProps) {
         {/* CTA + Footer */}
         <div className="mt-auto space-y-3">
           {affiliateUrl && (
-            <a
+            <FanzaLink
               href={affiliateUrl}
-              target="_blank"
-              rel="noopener noreferrer sponsored"
+              targetId={article.external_id}
+              position="card_cta"
               className="flex items-center justify-center gap-2 rounded-md bg-gradient-to-r from-pink-600 to-rose-600 px-4 py-2 text-sm font-bold text-white transition-all duration-200 hover:from-pink-500 hover:to-rose-500 hover:shadow-[0_0_16px_rgba(225,29,72,0.45)] active:scale-[0.97]"
             >
               {upcoming ? 'FANZAで今すぐ予約する' : 'FANZAでサンプル動画を試聴'}
               <ExternalLink size={13} />
-            </a>
+            </FanzaLink>
+          )}
+          {affiliateUrl && isVr && (
+            <FanzaLink
+              href={affiliateUrl}
+              targetId={article.external_id}
+              position="card_premium_vr"
+              className="flex items-center justify-center gap-2 rounded-md bg-gradient-to-r from-violet-600 to-purple-600 px-4 py-2 text-sm font-bold text-white transition-all duration-200 hover:brightness-110 hover:shadow-[0_0_16px_rgba(139,92,246,0.45)] active:scale-[0.97]"
+            >
+              🥽 VRで体感する
+              <ExternalLink size={13} />
+            </FanzaLink>
+          )}
+          {affiliateUrl && isDvd && (
+            <FanzaLink
+              href={affiliateUrl}
+              targetId={article.external_id}
+              position="card_premium_dvd"
+              className="flex items-center justify-center gap-2 rounded-md bg-gradient-to-r from-blue-600 to-indigo-600 px-4 py-2 text-sm font-bold text-white transition-all duration-200 hover:brightness-110 hover:shadow-[0_0_16px_rgba(59,130,246,0.45)] active:scale-[0.97]"
+            >
+              📀 特典付きDVD版をGET
+              <ExternalLink size={13} />
+            </FanzaLink>
           )}
           <div className="flex items-center justify-between border-t border-[var(--border)] pt-3 text-xs text-[var(--text-muted)]">
             <span className="flex items-center gap-1">

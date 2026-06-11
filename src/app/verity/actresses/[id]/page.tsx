@@ -3,36 +3,195 @@ export const revalidate = 0
 
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, CalendarDays, ShoppingCart, Bookmark, UserCircle, Tag } from 'lucide-react'
+import { ArrowLeft, CalendarDays, ShoppingCart, Bookmark, UserCircle, Tag, Flame, ExternalLink } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { ArticleCard } from '@/components/ArticleCard'
 import { LogView } from '@/components/LogView'
 import { ShareButton } from '@/components/ShareButton'
 import { FavoriteButton } from '@/components/FavoriteButton'
-import { withAffiliate } from '@/lib/affiliate'
+import { withAffiliate, withAffiliateForRegion } from '@/lib/affiliate'
+import { getIsOverseasUser } from '@/lib/geoLocale'
+import { FanzaLink } from '@/components/FanzaLink'
 import { PurchaseLink } from '@/components/PurchaseLink'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
+import { ActressDiscoveryBlock } from './ActressDiscoveryBlock'
 import type { Article, Actress } from '@/lib/types'
 
+// ── i18n ──────────────────────────────────────────────────────────────────────
+
+type Lang = 'ja' | 'en' | 'zh'
 type Params = { id: string }
 
 const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
+const MONTHS_EN = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'] as const
 
-export async function generateMetadata({ params }: { params: Promise<Params> }) {
-  const { id } = await params
+function getLang(raw: string | undefined | null): Lang {
+  if (raw === 'en') return 'en'
+  if (raw === 'zh') return 'zh'
+  return 'ja'
+}
+
+type Strs = {
+  metaTitle:     (name: string, month: number) => string
+  metaDesc:      (name: string) => string
+  backHome:      string
+  backProfile:   string
+  works:         (n: number) => string
+  preOrder:      string
+  preOrderBadge: string
+  recent:        string
+  recentBadge:   string
+  fanzaSearch:   (name: string) => string
+  saleSection:   string
+  saleBadge:     string
+  noSale:        string
+  fanzaSaleLink: (name: string) => string
+  genreCatalog:  string
+  genreBadge:    (name: string) => string
+  ctaTitle:      (name: string) => string
+  ctaSub:        string
+  ctaBtn:        string
+  prText:        string
+}
+
+const I18N: Record<Lang, Strs> = {
+  ja: {
+    metaTitle:     (name, month) => `【${month}月最新】${name}の神作・出演動画まとめ！今すぐ使えるセール作品・無料サンプル情報【VERITY】`,
+    metaDesc:      (name) => `${name}の最新作・セール中作品・無料サンプル動画を徹底まとめ。FANZAで視聴できる${name}出演AV作品をVERITY編集部がキュレーション。`,
+    backHome:      'ダッシュボードへ戻る',
+    backProfile:   'マイページへ戻る',
+    works:         (n) => `最新 ${n} 作品を表示`,
+    preOrder:      '予約受付中',
+    preOrderBadge: '先行予約',
+    recent:        '最新作・準新作',
+    recentBadge:   '今、買うべき作品',
+    fanzaSearch:   (name) => `FANZAで${name}の全作品を検索`,
+    saleSection:   'セール中の作品',
+    saleBadge:     '期間限定',
+    noSale:        '現在セール中の作品はありません',
+    fanzaSaleLink: (name) => `FANZAで${name}のセール作品をもっと見る`,
+    genreCatalog:  'ジャンル別カタログ',
+    genreBadge:    (name) => `${name} × ジャンル`,
+    ctaTitle:      (name) => `${name}の全作品を今すぐチェック`,
+    ctaSub:        '高画質・サンプル動画あり — 無料会員登録でポイントプレゼント中',
+    ctaBtn:        'FANZAで見る — 無料サンプルあり',
+    prText:        'アフィリエイト広告を含みます',
+  },
+  en: {
+    metaTitle:     (name, month) => `【Latest ${MONTHS_EN[month - 1]}】${name} Complete Works & Best Video Selection | VERITY`,
+    metaDesc:      (name) => `Browse all ${name} videos on FANZA. Latest releases, sale picks & free sample movies curated by VERITY.`,
+    backHome:      'Back to Dashboard',
+    backProfile:   'My Page',
+    works:         (n) => `Showing ${n} works`,
+    preOrder:      'Pre-order Available',
+    preOrderBadge: 'Pre-order',
+    recent:        'Latest Releases',
+    recentBadge:   'Must-buy Now',
+    fanzaSearch:   (name) => `Browse all ${name} works on FANZA`,
+    saleSection:   'On Sale Now',
+    saleBadge:     'Limited Time',
+    noSale:        'No items currently on sale',
+    fanzaSaleLink: (name) => `See more ${name} sale items on FANZA`,
+    genreCatalog:  'Genre Catalog',
+    genreBadge:    (name) => `${name} × Genre`,
+    ctaTitle:      (name) => `Browse All ${name} Works Now`,
+    ctaSub:        'HD quality & free sample movies — sign up free to receive bonus points',
+    ctaBtn:        'Watch on FANZA — Free Sample Available',
+    prText:        'Contains affiliate links',
+  },
+  zh: {
+    metaTitle:     (name, month) => `【${month}月最新】${name} 的所有作品和精彩视频推荐 | VERITY`,
+    metaDesc:      (name) => `浏览${name}在FANZA上的所有视频。VERITY编辑部精选最新发售、特价和免费试看视频。`,
+    backHome:      '返回首页',
+    backProfile:   '我的主页',
+    works:         (n) => `显示最新 ${n} 部作品`,
+    preOrder:      '预约受付中',
+    preOrderBadge: '预约',
+    recent:        '最新作品',
+    recentBadge:   '现在必买',
+    fanzaSearch:   (name) => `在FANZA搜索${name}的全部作品`,
+    saleSection:   '特价中的作品',
+    saleBadge:     '限时特价',
+    noSale:        '目前没有特价作品',
+    fanzaSaleLink: (name) => `在FANZA查看更多${name}的特价作品`,
+    genreCatalog:  '按类型分类',
+    genreBadge:    (name) => `${name} × 类型`,
+    ctaTitle:      (name) => `立即查看${name}的全部作品`,
+    ctaSub:        '高画质・有试看视频 — 免费注册即送积分',
+    ctaBtn:        '在FANZA观看 — 有免费试看',
+    prText:        '含有推广链接',
+  },
+}
+
+function LangSwitch({ lang }: { lang: Lang }) {
+  return (
+    <div
+      className="flex items-center gap-0.5 rounded-full border border-[var(--border)] bg-[var(--surface)]/60 p-0.5 text-[11px]"
+      aria-label="Language"
+    >
+      <a
+        href="?"
+        className={`rounded-full px-2.5 py-1 font-bold transition-colors ${lang === 'ja' ? 'bg-[var(--magenta)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
+      >
+        JP
+      </a>
+      <a
+        href="?lang=en"
+        className={`rounded-full px-2.5 py-1 font-bold transition-colors ${lang === 'en' ? 'bg-[var(--magenta)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
+      >
+        EN
+      </a>
+      <a
+        href="?lang=zh"
+        className={`rounded-full px-2.5 py-1 font-bold transition-colors ${lang === 'zh' ? 'bg-[var(--magenta)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}
+      >
+        中文
+      </a>
+    </div>
+  )
+}
+
+// ── generateMetadata ──────────────────────────────────────────────────────────
+
+export async function generateMetadata({
+  params,
+  searchParams,
+}: {
+  params:       Promise<Params>
+  searchParams: Promise<{ lang?: string }>
+}) {
+  const { id }      = await params
+  const { lang: lp } = await searchParams
+  const lang         = getLang(lp)
+  const t            = I18N[lang]
+
   const supabase = await createClient()
   const { data } = await supabase
     .from('actresses')
-    .select('name, ruby, image_url')
+    .select('name, ruby, image_url, metadata')
     .eq('external_id', id)
     .single()
   if (!data) return {}
-  const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
-  const rubyPart = data.ruby ? `（${data.ruby}）` : ''
-  const description = `${data.name}の最新作・動画を一覧。FANZAで購入できる${data.name}のおすすめAV作品をVERITY編集部がキュレーション。`
+  const BASE  = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
+  const meta  = data.metadata as Record<string, unknown> | null
+  const month = new Date().getMonth() + 1
+
+  const keywords = Array.isArray(meta?.seo_keywords)
+    ? (meta!.seo_keywords as string[])
+    : undefined
+
+  const title = lang === 'ja'
+    ? ((meta?.seo_title as string | undefined) ?? t.metaTitle(data.name, month))
+    : t.metaTitle(data.name, month)
+
+  const description = lang === 'ja'
+    ? ((meta?.seo_description as string | undefined) ?? t.metaDesc(data.name))
+    : t.metaDesc(data.name)
+
   return {
-    title: `${data.name}${rubyPart}の作品一覧`,
+    title,
     description,
+    ...(keywords && lang === 'ja' ? { keywords } : {}),
     alternates: { canonical: `${BASE}/actresses/${id}` },
     openGraph: {
       title:       `${data.name} — VERITY`,
@@ -47,8 +206,20 @@ export async function generateMetadata({ params }: { params: Promise<Params> }) 
   }
 }
 
-export default async function ActressPage({ params }: { params: Promise<Params> }) {
-  const { id } = await params
+// ── Page ──────────────────────────────────────────────────────────────────────
+
+export default async function ActressPage({
+  params,
+  searchParams,
+}: {
+  params:       Promise<Params>
+  searchParams: Promise<{ lang?: string }>
+}) {
+  const { id }       = await params
+  const { lang: lp } = await searchParams
+  const lang         = getLang(lp)
+  const t            = I18N[lang]
+
   const supabase = await createClient()
 
   const { data: actressData } = await supabase
@@ -66,7 +237,9 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
   const aliases = (actress.metadata?.aliases ?? []) as string[]
   const searchNames = [actress.name, ...aliases]
 
-  const [{ data: upcomingData }, { data: recentData }, { data: lpRankRows }, { data: tagRows }] = await Promise.all([
+  const isOverseas = await getIsOverseasUser()
+
+  const [{ data: upcomingData }, { data: recentData }, { data: lpRankRows }, { data: tagRows }, { data: saleData }] = await Promise.all([
     supabase
       .from('articles')
       .select('*')
@@ -95,6 +268,15 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
       .overlaps('tags', searchNames)
       .not('metadata->>url', 'like', '%/dc/doujin/%')
       .limit(300),
+    supabase
+      .from('articles')
+      .select('*')
+      .eq('is_active', true)
+      .overlaps('tags', searchNames)
+      .filter('metadata->>is_on_sale', 'eq', 'true')
+      .lte('published_at', now)
+      .order('published_at', { ascending: false })
+      .limit(10),
   ])
 
   function soloFirst(rows: Article[]): Article[] {
@@ -108,20 +290,20 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
     ].slice(0, 6)
   }
 
-  const upcoming = soloFirst(deduplicateDigitalFirst((upcomingData as Article[]) ?? []))
-  const recent   = soloFirst(deduplicateDigitalFirst((recentData   as Article[]) ?? []))
-  const total    = upcoming.length + recent.length
+  const upcoming     = soloFirst(deduplicateDigitalFirst((upcomingData as Article[]) ?? []))
+  const recent       = soloFirst(deduplicateDigitalFirst((recentData   as Article[]) ?? []))
+  const saleArticles = deduplicateDigitalFirst((saleData as Article[]) ?? []).slice(0, 8)
+  const total        = upcoming.length + recent.length
 
   type LpRankRow = { rank: number; display_name: string; lp_points: number }
   const lpRanking = (lpRankRows ?? []) as LpRankRow[]
 
-  // この女優のジャンル別カタログ（女優名・エイリアスを除外した上位12ジャンル）
   const actressNameSet = new Set(searchNames)
   const tagCounts = new Map<string, number>()
   for (const row of tagRows ?? []) {
-    for (const t of (row.tags as string[]) ?? []) {
-      if (t && !actressNameSet.has(t)) {
-        tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)
+    for (const t2 of (row.tags as string[]) ?? []) {
+      if (t2 && !actressNameSet.has(t2)) {
+        tagCounts.set(t2, (tagCounts.get(t2) ?? 0) + 1)
       }
     }
   }
@@ -130,27 +312,60 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
     .slice(0, 12)
     .map(([tag, count]) => ({ tag, count }))
 
+  const coStarFreq = new Map<string, number>()
+  for (const art of [...((upcomingData as Article[]) ?? []), ...((recentData as Article[]) ?? [])]) {
+    const meta = art.metadata?.actress
+    if (Array.isArray(meta)) {
+      for (const a of meta as { id: number; name: string }[]) {
+        if (a.id > 0) {
+          const extId = `dmm-actress-${a.id}`
+          if (extId !== actress.external_id) {
+            coStarFreq.set(extId, (coStarFreq.get(extId) ?? 0) + 1)
+          }
+        }
+      }
+    }
+  }
+  const coStarExtIds = [...coStarFreq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([id]) => id)
+
+  type MakerEntry = { id: number; name: string }
+  let makerEntry: MakerEntry | null = null
+  for (const art of (recentData as Article[]) ?? []) {
+    const raw = art.metadata?.maker
+    if (typeof raw === 'string') {
+      try {
+        const parsed = JSON.parse(raw) as MakerEntry[]
+        if (parsed[0]?.id) { makerEntry = parsed[0]; break }
+      } catch { /* ignore */ }
+    }
+  }
+
   return (
     <div className="mx-auto max-w-5xl px-4 py-10 space-y-10">
       <LogView targetType="actress" targetId={actress.external_id} />
 
-      {/* Back navigation */}
-      <div className="flex flex-wrap items-center gap-4">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
-        >
-          <ArrowLeft size={14} />
-          ダッシュボードへ戻る
-        </Link>
-        <span className="text-[var(--border)]" aria-hidden>|</span>
-        <Link
-          href="/verity/profile"
-          className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
-        >
-          <UserCircle size={14} />
-          マイページへ戻る
-        </Link>
+      {/* Back navigation + Language Switcher */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center gap-4">
+          <Link
+            href="/"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
+          >
+            <ArrowLeft size={14} />
+            {t.backHome}
+          </Link>
+          <span className="text-[var(--border)]" aria-hidden>|</span>
+          <Link
+            href="/verity/profile"
+            className="inline-flex items-center gap-1.5 text-sm text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
+          >
+            <UserCircle size={14} />
+            {t.backProfile}
+          </Link>
+        </div>
+        <LangSwitch lang={lang} />
       </div>
 
       {/* Actress header */}
@@ -164,7 +379,7 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
             <p className="text-sm text-[var(--text-muted)]">{actress.ruby}</p>
           )}
           <p className="text-xs text-[var(--text-muted)]">
-            最新 {total} 作品を表示
+            {t.works(total)}
           </p>
         </div>
         <ShareButton url={`/verity/actresses/${actress.external_id}`} title={actress.name} />
@@ -179,9 +394,9 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
         <section className="space-y-4">
           <div className="flex items-center gap-2.5">
             <Bookmark size={16} className="text-sky-400" />
-            <h2 className="text-base font-bold text-[var(--text)]">予約受付中</h2>
+            <h2 className="text-base font-bold text-[var(--text)]">{t.preOrder}</h2>
             <span className="rounded-full bg-sky-600/20 px-2 py-0.5 text-[10px] font-bold text-sky-400">
-              先行予約
+              {t.preOrderBadge}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -197,9 +412,9 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
         <section className="space-y-4">
           <div className="flex items-center gap-2.5">
             <CalendarDays size={16} className="text-[var(--magenta)]" />
-            <h2 className="text-base font-bold text-[var(--text)]">最新作・準新作</h2>
+            <h2 className="text-base font-bold text-[var(--text)]">{t.recent}</h2>
             <span className="rounded-full bg-[var(--magenta)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--magenta)]">
-              今、買うべき作品
+              {t.recentBadge}
             </span>
           </div>
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
@@ -215,7 +430,7 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
               className="inline-flex items-center gap-2 rounded-full border border-[var(--border)] px-4 py-2 text-sm text-[var(--text-muted)] hover:border-[var(--magenta)] hover:text-[var(--magenta)] transition-colors"
             >
               <ShoppingCart size={13} />
-              FANZAで{actress.name}の全作品を検索
+              {t.fanzaSearch(actress.name)}
             </PurchaseLink>
             <span className="rounded px-1.5 py-0.5 text-[11px] font-bold tracking-widest bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">
               PR
@@ -224,14 +439,77 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
         </section>
       )}
 
+      {/* セール中の作品 */}
+      <section className="space-y-4">
+          <div className="flex items-center gap-2.5">
+            <Flame size={16} className="text-red-400" />
+            <h2 className="text-base font-bold text-[var(--text)]">{t.saleSection}</h2>
+            <span className="rounded-full bg-red-500/15 px-2 py-0.5 text-[10px] font-bold text-red-400">
+              {t.saleBadge}
+            </span>
+          </div>
+          {saleArticles.length > 0 ? (
+            <div className="flex gap-3 overflow-x-auto pb-2 scrollbar-none">
+              {saleArticles.map((art) => {
+                const meta = (art.metadata ?? {}) as Record<string, unknown>
+                const rawUrl = (meta.affiliate_url ?? meta.url) as string | null
+                const saleUrl = withAffiliateForRegion(rawUrl, isOverseas)
+                const salePrice = typeof meta.sale_price === 'number' ? (meta.sale_price as number) : null
+                const proxyImg = art.image_url
+                  ? `/api/proxy/image?url=${encodeURIComponent(art.image_url)}`
+                  : null
+                return saleUrl ? (
+                  <FanzaLink
+                    key={art.id}
+                    href={saleUrl}
+                    targetId={art.external_id}
+                    position="actress_sale_card"
+                    className="group/sc relative shrink-0 w-24 overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--surface-2)] hover:border-red-400/50 transition-colors"
+                  >
+                    <div className="relative aspect-[2/3]">
+                      {proxyImg ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={proxyImg} alt={art.title} className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-200 group-hover/sc:scale-105" />
+                      ) : (
+                        <div className="absolute inset-0 bg-[var(--surface-2)]" />
+                      )}
+                      <span className="absolute bottom-1 left-0 rounded-r-full bg-red-500/95 px-1.5 py-0.5 text-[8px] font-black text-white">
+                        {salePrice !== null ? `¥${salePrice}` : 'SALE'}
+                      </span>
+                    </div>
+                    <p className="p-1.5 text-[9px] leading-tight text-[var(--text)] line-clamp-2">
+                      {art.title}
+                    </p>
+                  </FanzaLink>
+                ) : null
+              })}
+            </div>
+          ) : (
+            <p className="text-sm text-[var(--text-muted)]">{t.noSale}</p>
+          )}
+          <FanzaLink
+            href={withAffiliateForRegion(
+              `https://www.dmm.co.jp/digital/videoa/-/sale/=/searchstr=${encodeURIComponent(actress.name)}/`,
+              isOverseas,
+            ) ?? '#'}
+            targetId={actress.external_id}
+            position="actress_sale_search"
+            className="inline-flex items-center gap-2 rounded-full border border-red-400/40 bg-red-500/10 px-4 py-2 text-sm font-bold text-red-400 hover:bg-red-500/20 transition-colors"
+          >
+            <Flame size={13} />
+            {t.fanzaSaleLink(actress.name)}
+            <ExternalLink size={12} />
+          </FanzaLink>
+      </section>
+
       {/* ジャンル別カタログ */}
       {topGenres.length > 0 && (
         <section className="space-y-4">
           <div className="flex items-center gap-2.5">
             <Tag size={16} className="text-[var(--magenta)]" />
-            <h2 className="text-base font-bold text-[var(--text)]">ジャンル別カタログ</h2>
+            <h2 className="text-base font-bold text-[var(--text)]">{t.genreCatalog}</h2>
             <span className="rounded-full bg-[var(--magenta)]/15 px-2 py-0.5 text-[10px] font-medium text-[var(--magenta)]">
-              {actress.name} × ジャンル
+              {t.genreBadge(actress.name)}
             </span>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -250,16 +528,71 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
         </section>
       )}
 
+      {/* 自動レコメンド */}
+      <ActressDiscoveryBlock
+        actress={actress}
+        recentArticles={(recentData as Article[]) ?? []}
+        makerEntry={makerEntry}
+        coStarExtIds={coStarExtIds}
+      />
+
+      {/* 大型 FANZA 誘導 CTA */}
+      {(() => {
+        const ctaUrl = withAffiliateForRegion(
+          `https://www.dmm.co.jp/digital/videoa/-/list/search/=/searchstr=${encodeURIComponent(actress.name)}/`,
+          isOverseas,
+        )
+        return ctaUrl ? (
+          <FanzaLink
+            href={ctaUrl}
+            targetId={actress.external_id}
+            position="actress_large_cta"
+            className="block"
+          >
+            <div
+              className="relative overflow-hidden rounded-2xl px-6 py-8 text-center hover:brightness-110 active:scale-[0.99] transition-all"
+              style={{
+                background: 'linear-gradient(135deg, #120006 0%, #1a000d 50%, #080010 100%)',
+                border: '1px solid rgba(226,0,116,0.30)',
+              }}
+            >
+              <div
+                className="pointer-events-none absolute inset-0 opacity-[0.07]"
+                style={{
+                  backgroundImage:
+                    'linear-gradient(rgba(226,0,116,0.8) 1px, transparent 1px), linear-gradient(90deg, rgba(226,0,116,0.8) 1px, transparent 1px)',
+                  backgroundSize: '32px 32px',
+                }}
+              />
+              <div className="relative z-10 space-y-4">
+                <p className="text-xs font-bold tracking-[0.2em] uppercase text-[var(--magenta)]">FANZA 公式</p>
+                <h2 className="text-xl font-black text-white">
+                  {t.ctaTitle(actress.name)}
+                </h2>
+                <p className="text-sm text-[var(--text-muted)]">
+                  {t.ctaSub}
+                </p>
+                <div className="inline-flex items-center gap-2 rounded-full bg-[var(--magenta)] px-8 py-3 text-sm font-black text-white shadow-[0_0_24px_rgba(226,0,116,0.5)]">
+                  <ExternalLink size={14} />
+                  {t.ctaBtn}
+                </div>
+                <p className="text-[10px] text-[var(--text-muted)] tracking-widest">
+                  {t.prText}
+                </p>
+              </div>
+            </div>
+          </FanzaLink>
+        ) : null
+      })()}
+
       {/* 宣伝担当ランキング */}
       {lpRanking.length > 0 && (
         <section className="space-y-4">
-          {/* スプレーアート風ヘッダー */}
           <div className="relative overflow-hidden rounded-2xl px-6 py-5"
             style={{
               background: 'linear-gradient(135deg, #0a0a0f 0%, #150a20 50%, #0a0f1a 100%)',
               border: '1px solid rgba(226,0,116,0.25)',
             }}>
-            {/* 背景グリッドライン演出 */}
             <div className="pointer-events-none absolute inset-0 opacity-10"
               style={{
                 backgroundImage: 'linear-gradient(rgba(226,0,116,0.6) 1px, transparent 1px), linear-gradient(90deg, rgba(226,0,116,0.6) 1px, transparent 1px)',
@@ -279,7 +612,6 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
             </div>
           </div>
 
-          {/* ランキングリスト */}
           <ol className="space-y-2">
             {lpRanking.map((row, i) => {
               const isTop3  = i < 3
@@ -296,14 +628,11 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
                       : '1px solid rgba(42,42,58,0.6)',
                     boxShadow: isTop3 ? `0 0 20px ${glowColors[i]}` : 'none',
                   }}>
-                  {/* ランク番号 */}
                   <span className="w-8 shrink-0 text-center text-sm font-black font-mono"
                     style={{ color: isTop3 ? rankColors[i] : 'rgba(136,136,170,0.6)',
                              textShadow: isTop3 ? `0 0 8px ${rankColors[i]}` : 'none' }}>
                     {i < 9 ? `0${i + 1}` : `${i + 1}`}
                   </span>
-
-                  {/* ユーザー名 */}
                   <span className="flex-1 min-w-0 truncate font-bold text-sm"
                     style={{
                       color:       isTop3 ? '#f0f0f8' : 'rgba(240,240,248,0.7)',
@@ -312,8 +641,6 @@ export default async function ActressPage({ params }: { params: Promise<Params> 
                     }}>
                     {row.display_name}
                   </span>
-
-                  {/* LP ポイント */}
                   <span className="shrink-0 font-black text-sm font-mono"
                     style={{
                       color:      isTop3 ? rankColors[i] : '#8888aa',

@@ -1,9 +1,9 @@
 'use client'
 
 import { useState, useEffect } from 'react'
-import { LogOut, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown } from 'lucide-react'
+import { LogOut, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown, Clock } from 'lucide-react'
 import { FavoriteActressSelector } from '@/components/FavoriteActressSelector'
-import { MyGalleryGrid } from '@/components/MyGalleryGrid'
+// import { MyGalleryGrid } from '@/components/MyGalleryGrid'  // SNS同期一時停止中 — API復旧後に再有効化
 // import { StatusCard } from '@/components/StatusCard'  // TODO: デザイン再検討中のため一時非表示
 import { EPITHET_DEFS, EPITHET_MAP, RARITY_STYLE } from '@/lib/epithets'
 import type { Actress, Profile } from '@/lib/types'
@@ -11,10 +11,12 @@ import type { TitleDef, GenreStats } from '@/lib/titles'
 import type { EpithetDef } from '@/lib/epithets'
 import { useProfileLogic } from './hooks/useProfileLogic'
 import type { UnlockedEntry } from './hooks/useProfileLogic'
-import type { LoginBonusResult } from './page'
+import type { LoginBonusResult, ActressHistoryEntry } from './page'
 import { GentlemanAnalysis } from '@/components/GentlemanAnalysis'
 import type { AxisScore, RecommendedProduct } from '@/components/GentlemanAnalysis'
 import { LocalFavArticles } from '@/components/LocalFavArticles'
+import { FanzaLink } from '@/components/FanzaLink'
+import { withAffiliate } from '@/lib/affiliate'
 
 type Props = {
   user:                  { id: string; email: string }
@@ -41,6 +43,21 @@ type Props = {
   axisScores:            AxisScore[]
   topAxis:               string | null
   recommendedProduct:    RecommendedProduct | null
+  actressHistory:        ActressHistoryEntry[]
+}
+
+// ── ユーティリティ ─────────────────────────────────────────────────────────────
+
+function formatRelativeTime(iso: string): string {
+  if (!iso) return ''
+  const diff = Date.now() - new Date(iso).getTime()
+  const h = Math.floor(diff / 3600000)
+  const d = Math.floor(diff / 86400000)
+  if (h < 1)  return 'たった今'
+  if (h < 24) return `${h}時間前`
+  if (d < 7)  return `${d}日前`
+  if (d < 30) return `${Math.floor(d / 7)}週間前`
+  return `${Math.floor(d / 30)}ヶ月前`
 }
 
 // ── 小型 UI コンポーネント ─────────────────────────────────────────────────────
@@ -174,7 +191,7 @@ export function ProfileClient({
   lpBalance: initialLpBalance, lpTotalAccumulated, loginStreak, bonusResult,
   lpPointsMap: initialLpPointsMap, hasNewGalleryPosts,
   missingSnsActresses, earnedEpithetIds: initialEpithetIds,
-  axisScores, topAxis, recommendedProduct,
+  axisScores, topAxis, recommendedProduct, actressHistory,
 }: Props) {
   const {
     activeTab, setActiveTab,
@@ -224,13 +241,12 @@ export function ProfileClient({
         </div>
       )}
 
-      {/* ── タブ ── */}
+      {/* ── タブ（SNS同期一時停止中のためギャラリータブを非表示 — API復旧後に再有効化） ──
       <div className="flex gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-1">
         <button
           onClick={() => setActiveTab('profile')}
           className={['flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all', activeTab === 'profile' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text)]'].join(' ')}
         >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/assets/verity/king.png" alt="王冠" width={14} height={14} style={{ objectFit: 'contain' }} />
           プロフィール
         </button>
@@ -243,7 +259,9 @@ export function ProfileClient({
           {hasNewGallery && <span className="absolute right-3 top-2 h-2 w-2 rounded-full bg-[var(--magenta)] shadow-[0_0_6px_rgba(226,0,116,0.8)]" />}
         </button>
       </div>
+      ── */}
 
+      {/* ── ギャラリー（SNS同期一時停止中のため非表示 — API復旧後に再有効化） ──
       {activeTab === 'gallery' && (
         <MyGalleryGrid
           lastCheckedAt={profile?.last_gallery_checked_at ?? null}
@@ -251,8 +269,9 @@ export function ProfileClient({
           missingSnsActresses={missingSnsActresses}
         />
       )}
+      ── */}
 
-      {activeTab === 'profile' && (
+      {(
       <div className="space-y-8">
 
         {/* ── ユーザー情報 ── */}
@@ -460,6 +479,32 @@ export function ProfileClient({
               毎日ログインで <strong className="text-[var(--magenta)]">+1 LP</strong>、7日連続で <strong className="text-amber-400">+6 LP</strong>。LP をお気に入り女優に捧げましょう。
             </p>
           </div>
+          {favActresses.length > 0 && (
+            <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+              {favActresses.map(a => {
+                const searchUrl = `https://www.dmm.co.jp/digital/videoa/-/list/search/=/searchstr=${encodeURIComponent(a.name)}/`
+                const href = withAffiliate(searchUrl) ?? searchUrl
+                return (
+                  <FanzaLink key={a.external_id} href={href} targetId={a.external_id} position="profile_fav_actress">
+                    <div className="flex flex-col items-center gap-1.5 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-2 hover:border-[var(--magenta)]/40 transition-colors">
+                      <div className="relative w-full aspect-square rounded-lg overflow-hidden">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={a.image_url ?? '/assets/verity/placeholder.jpg'}
+                          alt={a.name}
+                          className="w-full h-full object-cover"
+                        />
+                        {crownActressIds.includes(a.id) && (
+                          <span className="absolute top-0.5 right-0.5 text-[11px]">👑</span>
+                        )}
+                      </div>
+                      <p className="w-full text-[10px] text-center text-[var(--text)] leading-tight line-clamp-2">{a.name}</p>
+                    </div>
+                  </FanzaLink>
+                )
+              })}
+            </div>
+          )}
           <FavoriteActressSelector
             favorites={favActresses}
             maxFavorites={maxFavorites}
@@ -481,6 +526,42 @@ export function ProfileClient({
 
         {/* ── ローカル保存済み記事 ── */}
         <LocalFavArticles />
+
+        {/* ── 最近チェックした女優（ディグ履歴） ── */}
+        {actressHistory.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]">
+              <Clock size={15} className="text-[var(--magenta)]" />
+              最近チェックした女優
+              <span className="text-xs font-normal text-[var(--text-muted)]">直近{actressHistory.length}名</span>
+            </h2>
+            <ul className="space-y-2">
+              {actressHistory.map(({ actress: a, visitedAt }) => {
+                const searchUrl = `https://www.dmm.co.jp/digital/videoa/-/list/search/=/searchstr=${encodeURIComponent(a.name)}/`
+                const href = withAffiliate(searchUrl) ?? searchUrl
+                return (
+                  <li key={a.external_id}>
+                    <FanzaLink href={href} targetId={a.external_id} position="profile_history_click">
+                      <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 hover:border-[var(--magenta)]/30 transition-colors">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={a.image_url ?? '/assets/verity/placeholder.jpg'}
+                          alt={a.name}
+                          className="w-10 h-10 rounded-lg object-cover shrink-0"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-[var(--text)] truncate">{a.name}</p>
+                          <p className="text-[11px] text-[var(--text-muted)]">{formatRelativeTime(visitedAt)}</p>
+                        </div>
+                        <span className="text-xs text-[var(--text-muted)] shrink-0">FANZA →</span>
+                      </div>
+                    </FanzaLink>
+                  </li>
+                )
+              })}
+            </ul>
+          </section>
+        )}
 
         {/* ── ステータスカード（TODO: デザイン再検討中のため一時非表示） ──
         <section className="space-y-3">

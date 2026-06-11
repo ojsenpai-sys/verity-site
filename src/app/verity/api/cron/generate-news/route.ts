@@ -8,7 +8,9 @@
  *
  * 日付条件:
  *   プライマリ: published_at >= 今日 + PRIMARY_AHEAD_DAYS (デフォルト10日先以降)
- *   バックアップ: プライマリで BATCH_SIZE に満たない場合のみ、直近 BACKUP_PAST_DAYS 以内で補填
+ *   Tier M (監視メーカー新着): 直近 MAKER_RECENT_DAYS 日以内のメーカー限定
+ *   Tier A: 今日〜プライマリ開始前（近日発売）
+ *   Tier B: 過去 BACKUP_PAST_DAYS 日（全作品）
  *
  * 重複排除:
  *   同一作品の動画配信/DVD/BD等メディア違いによる二重生成を防ぐため、
@@ -21,6 +23,7 @@ import { NextResponse }          from 'next/server'
 import { createClient }           from '@supabase/supabase-js'
 import { withAffiliate }          from '@/lib/affiliate'
 import { toHighResPackageUrl }    from '@/lib/cidUtils'
+import { MONITORED_MAKER_IDS }   from '@/lib/makers'
 import {
   generateNewsFromArticle,
   articleRowToInput,
@@ -30,12 +33,15 @@ import {
 
 // ── 設定定数 ──────────────────────────────────────────────────────────────────
 
-const SITE_KEY          = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
-const BATCH_SIZE        = 10
+const SITE_KEY            = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
+const BATCH_SIZE          = 20    // 1回あたりの最大生成件数（旧: 10）
 const PRIMARY_AHEAD_DAYS  = 10    // 今日から何日先以降の作品を優先対象とするか
-const BACKUP_PAST_DAYS    = 120   // バックアップ時: 過去何日以内まで遡るか（60→120 に拡張）
+const MAKER_RECENT_DAYS   = 14    // 監視メーカー新着: 過去何日以内を対象とするか
+const BACKUP_PAST_DAYS    = 120   // バックアップ時: 過去何日以内まで遡るか
 const RANKING_TOP_N       = 30    // 人気ランキング上位何位まで優先するか
-const CANDIDATE_POOL_SIZE = 1000  // 候補として取得する最大件数（500→1000 に拡張）
+const CANDIDATE_POOL_SIZE = 1000  // 候補として取得する最大件数
+
+const MONITORED_MAKER_SET = new Set(MONITORED_MAKER_IDS)
 
 // ── DB クライアント ────────────────────────────────────────────────────────────
 
@@ -75,6 +81,13 @@ function baseCid(cid: string): string {
     .replace(/(?:dv|hd|so2?|vr|bd|4k|2k|bod|tk)$/i, '')  // Step 1: サフィックス除去（tk含む）
     .replace(/([a-z])0+(\d)/g, '$1$2')                     // Step 2: 先頭ゼロ正規化
     .replace(/^(?:\d|tk)([a-z]{2,}\d+)$/, '$1')           // Step 3: 単桁またはtk-プレフィックス除去
+}
+
+/** metadata.maker[0].id が監視メーカーリストに含まれるか */
+function isMonitoredMaker(row: ArticleRow): boolean {
+  const meta   = row.metadata as Record<string, unknown> | null
+  const makers = (meta?.maker as Array<{ id: number }> | undefined) ?? []
+  return makers.some(m => MONITORED_MAKER_SET.has(m.id))
 }
 
 /** articles.metadata.actress[0].id → "dmm-actress-{id}" */
@@ -218,33 +231,59 @@ export async function GET(request: Request) {
   )
 
   // ─ Step 5: バックアップ補填（プライマリが BATCH_SIZE 未満の場合） ────────────
-  // Tier A: 直近（今日〜プライマリ開始前）の近日発売作品
-  // Tier B: 過去 BACKUP_PAST_DAYS 日（60日）以内の未記事化作品
-  if (toProcess.length < BATCH_SIZE) {
-    const needed       = BATCH_SIZE - toProcess.length
-    const backupFrom   = new Date(now.getTime() - BACKUP_PAST_DAYS * 86400_000).toISOString()
-    const nearTermFrom = now.toISOString()
+  // Tier M: 直近 MAKER_RECENT_DAYS 日以内の監視メーカー新着（最優先補填）
+  // Tier A: 今日〜プライマリ開始前（近日発売）
+  // Tier B: 過去 BACKUP_PAST_DAYS 日（全作品）
 
-    // Tier A: 今日〜プライマリ開始前（近日発売）
-    const nearTermPool = await fetchCandidates(db, nearTermFrom, primaryFrom, processedCids, processedBaseCids)
-    nearTermPool.sort((a, b) =>
+  const nearTermFrom  = now.toISOString()
+  const backupFrom    = new Date(now.getTime() - BACKUP_PAST_DAYS * 86400_000).toISOString()
+  const makerRecentFrom = new Date(now.getTime() - MAKER_RECENT_DAYS * 86400_000).toISOString()
+
+  // 選択済み CID をランタイム追跡（Tier 間の重複排除）
+  function trackSelected(rows: ArticleRow[]) {
+    for (const row of rows) {
+      processedCids.add(row.external_id)
+      processedBaseCids.add(baseCid(row.external_id))
+    }
+  }
+
+  if (toProcess.length < BATCH_SIZE) {
+    // Tier M: 監視メーカー直近 MAKER_RECENT_DAYS 日（newest first）
+    const makerPool   = await fetchCandidates(db, makerRecentFrom, nearTermFrom, processedCids, processedBaseCids, true)
+    const makerFiltered = makerPool.filter(isMonitoredMaker)
+    makerFiltered.sort((a, b) =>
       priority(a, recommendedIds, rankedIds) - priority(b, recommendedIds, rankedIds),
     )
-    const nearTermSlice = nearTermPool.slice(0, needed)
-    toProcess.push(...nearTermSlice)
+    const makerSlice = makerFiltered.slice(0, BATCH_SIZE - toProcess.length)
+    trackSelected(makerSlice)
+    toProcess.push(...makerSlice)
     console.log(
-      `[cron:generate-news] 近日発売補填 (Tier A): ${nearTermPool.length}件候補 → ${nearTermSlice.length}件追加`,
+      `[cron:generate-news] 監視メーカー新着 (Tier M, ${MAKER_RECENT_DAYS}日): ${makerPool.length}件取得 → メーカー絞込${makerFiltered.length}件 → ${makerSlice.length}件追加`,
+      makerSlice.map(r => ({ cid: r.external_id, maker: (r.metadata as Record<string, unknown>)?.maker, date: r.published_at?.slice(0, 10) })),
     )
+
+    // Tier A: 今日〜プライマリ開始前（近日発売）
+    if (toProcess.length < BATCH_SIZE) {
+      const nearTermPool = await fetchCandidates(db, nearTermFrom, primaryFrom, processedCids, processedBaseCids)
+      nearTermPool.sort((a, b) =>
+        priority(a, recommendedIds, rankedIds) - priority(b, recommendedIds, rankedIds),
+      )
+      const nearTermSlice = nearTermPool.slice(0, BATCH_SIZE - toProcess.length)
+      trackSelected(nearTermSlice)
+      toProcess.push(...nearTermSlice)
+      console.log(
+        `[cron:generate-news] 近日発売補填 (Tier A): ${nearTermPool.length}件候補 → ${nearTermSlice.length}件追加`,
+      )
+    }
 
     // Tier B: まだ足りない場合は過去 BACKUP_PAST_DAYS 日を検索
     // newestFirst=true: 今日発売の最新作が 1000 件制限の末尾に押しやられないよう新着順で取得
     if (toProcess.length < BATCH_SIZE) {
-      const stillNeeded = BATCH_SIZE - toProcess.length
-      const backupPool  = await fetchCandidates(db, backupFrom, nearTermFrom, processedCids, processedBaseCids, true)
+      const backupPool = await fetchCandidates(db, backupFrom, nearTermFrom, processedCids, processedBaseCids, true)
       backupPool.sort((a, b) =>
         priority(a, recommendedIds, rankedIds) - priority(b, recommendedIds, rankedIds),
       )
-      const backupSlice = backupPool.slice(0, stillNeeded)
+      const backupSlice = backupPool.slice(0, BATCH_SIZE - toProcess.length)
       toProcess.push(...backupSlice)
       console.log(
         `[cron:generate-news] 過去作補填 (Tier B, ${BACKUP_PAST_DAYS}日): ${backupPool.length}件候補 → ${backupSlice.length}件追加`,

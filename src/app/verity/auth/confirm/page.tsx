@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { Loader2 } from 'lucide-react'
 import { createImplicitClient } from '@/lib/supabase/client'
+import { trackEvent } from '@/lib/analytics'
 import type { Session } from '@supabase/supabase-js'
 
 // ── OTP マジックリンク用コールバックページ（Implicit フロー） ──────────────────
@@ -37,6 +38,7 @@ async function ensureProfile(supabase: ReturnType<typeof createImplicitClient>, 
       console.error('[auth/confirm] profile INSERT failed:', insertErr.message, '| code:', insertErr.code ?? '(none)')
       throw insertErr
     }
+    trackEvent('signup_complete', { provider: 'email' })
   }
 }
 

@@ -45,6 +45,8 @@ export const metadata: Metadata = {
 
 const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
 
+export type ActressHistoryEntry = { actress: Actress; visitedAt: string }
+
 export type LoginBonusResult = {
   already_claimed?: boolean
   ok?:              boolean
@@ -126,6 +128,7 @@ export default async function ProfilePage() {
     lpAllResult,
     clickResult,
     achievementResult,
+    actressViewHistoryResult,
   ] = await Promise.all([
     favIds.length > 0
       ? supabase.from('actresses')
@@ -153,6 +156,13 @@ export default async function ProfilePage() {
       .select('epithet_id')
       .eq('user_id',  user.id)
       .eq('brand_id', BRAND_ID),
+    supabase.from('user_events')
+      .select('target_id, created_at')
+      .eq('user_id', user.id)
+      .eq('event_name', 'actress_view')
+      .not('target_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(50),
   ])
 
   let favoriteActresses = (actressResult.data ?? []) as Actress[]
@@ -193,6 +203,22 @@ export default async function ProfilePage() {
   const genreTitle    = computeGenreTitle(topGenres)
   const activityTitle = computeActivityTitle(totalClicks)
 
+  // ── 閲覧履歴 actress_view (user_events) の重複排除 ──────────────────────────
+  const actressViewHistoryRows = (actressViewHistoryResult.data ?? []) as { target_id: string; created_at: string }[]
+  const historyActressIds: string[] = []
+  const historyVisitedAt:  string[] = []
+  {
+    const seen = new Set<string>()
+    for (const row of actressViewHistoryRows) {
+      if (row.target_id && !seen.has(row.target_id)) {
+        seen.add(row.target_id)
+        historyActressIds.push(row.target_id)
+        historyVisitedAt.push(row.created_at)
+        if (historyActressIds.length >= 10) break
+      }
+    }
+  }
+
   // ── セカンダリ並列クエリ ────────────────────────────────────────────────────
   const favNames        = favoriteActresses.map(a => a.name)
   const articleViewRows = logRows.filter(r => r.target_type === 'article')
@@ -216,6 +242,7 @@ export default async function ProfilePage() {
     newsSlugResult,
     coverageResult,
     newPostsResult,
+    historyActressResult,
   ] = await Promise.all([
     augCids.length > 0
       ? supabase.from('articles')
@@ -238,6 +265,11 @@ export default async function ProfilePage() {
       ? supabase.from('social_feeds').select('actress_name').in('actress_name', favNames)
       : Promise.resolve({ data: [], error: null }),
     newPostsQuery,
+    historyActressIds.length > 0
+      ? supabase.from('actresses')
+          .select('id, name, ruby, image_url, metadata, external_id')
+          .in('external_id', historyActressIds)
+      : Promise.resolve({ data: [] as Actress[], error: null }),
   ])
 
   // ── 壊れた画像を articles テーブルの画像で補完 ─────────────────────────────
@@ -277,6 +309,17 @@ export default async function ProfilePage() {
     const soloImg = soloImageMap.get(a.name)
     return soloImg ? { ...a, image_url: soloImg } : a
   })
+
+  // ── 閲覧履歴: 取得した女優データを historyActressIds 順に並べ直す ─────────────
+  const historyActressMap = new Map(
+    ((historyActressResult.data ?? []) as Actress[]).map(a => [a.external_id, a])
+  )
+  const actressHistory: ActressHistoryEntry[] = historyActressIds
+    .map((id, i) => {
+      const actress = historyActressMap.get(id)
+      return actress ? { actress, visitedAt: historyVisitedAt[i] ?? '' } : null
+    })
+    .filter((e): e is ActressHistoryEntry => e !== null)
 
   // ── sn_news published_at マップ（clairvoyant / swift_reader 用）────────────
   const articlePubMap = new Map<string, string | null>(
@@ -529,6 +572,7 @@ export default async function ProfilePage() {
         axisScores={axisScores}
         topAxis={topAxis}
         recommendedProduct={recommendedProduct}
+        actressHistory={actressHistory}
       />
     </div>
   )

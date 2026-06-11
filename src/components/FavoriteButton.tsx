@@ -1,9 +1,11 @@
 'use client'
 
-import { useCallback } from 'react'
-import { Heart } from 'lucide-react'
+import { useCallback, useState } from 'react'
+import { Heart, X } from 'lucide-react'
+import Link from 'next/link'
 import { useFavorite } from '@/hooks/useFavorite'
 import { useAuth } from '@/components/AuthProvider'
+import { trackEvent } from '@/lib/analytics'
 import type { FavType, FavMeta } from '@/hooks/useFavorite'
 
 type Props = {
@@ -20,20 +22,20 @@ export function FavoriteButton({ type, id, meta, className, size = 'sm' }: Props
   const faved                   = isFavorited(id)
   const dim                     = size === 'md' ? 36 : 28
   const iconSize                = size === 'md' ? 16 : 13
+  const [showModal, setShowModal] = useState(false)
 
   const handleClick = useCallback(async (e: React.MouseEvent) => {
     e.preventDefault()
     e.stopPropagation()
 
-    // 未ログイン時: localStorage には書かずログイン促進モーダルを表示
     if (!user) {
       window.dispatchEvent(new Event('verity:auth-required'))
+      setShowModal(true)
       return
     }
 
     toggle(id, meta)
 
-    // Supabase sync（女優のみ）
     if (type === 'actress') {
       fetch('/verity/api/favorites/actress', {
         method:  'POST',
@@ -44,7 +46,48 @@ export function FavoriteButton({ type, id, meta, className, size = 'sm' }: Props
   }, [toggle, id, meta, user, type, faved])
 
   return (
-    <button
+    <>
+      {showModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4"
+          style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(8px)', WebkitBackdropFilter: 'blur(8px)' }}
+          onClick={() => setShowModal(false)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl p-6 space-y-4"
+            style={{ background: 'var(--surface)', border: '1px solid rgba(226,0,116,0.35)', boxShadow: '0 0 40px rgba(226,0,116,0.2)' }}
+            onClick={e => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div className="space-y-1">
+                <p className="text-base font-black text-[var(--text)]">お気に入り機能は<br />無料会員限定です</p>
+                <p className="text-sm text-[var(--text-muted)]">今なら <strong className="text-amber-400">30 LP</strong> 貰えるキャンペーン中 🎁</p>
+              </div>
+              <button
+                onClick={() => setShowModal(false)}
+                className="shrink-0 rounded-full p-1 text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+              >
+                <X size={16} />
+              </button>
+            </div>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              無料登録するだけで推し女優をお気に入り登録できます。毎日ログインで LP が貯まります。
+            </p>
+            <Link
+              href="/verity/login"
+              className="block w-full rounded-xl py-3 text-center text-sm font-bold text-white transition-all hover:opacity-90 active:scale-[0.98]"
+              style={{ background: 'linear-gradient(135deg, #E20074, #aa00ff)' }}
+              onClick={() => {
+                trackEvent('signup_start', { position: 'actress_fav_lock' })
+                setShowModal(false)
+              }}
+            >
+              無料で登録する ▶
+            </Link>
+          </div>
+        </div>
+      )}
+      <button
       onClick={handleClick}
       aria-label={faved ? 'お気に入りを解除' : 'お気に入りに追加'}
       style={{
@@ -91,5 +134,6 @@ export function FavoriteButton({ type, id, meta, className, size = 'sm' }: Props
         }}
       />
     </button>
+    </>
   )
 }

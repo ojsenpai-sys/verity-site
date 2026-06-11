@@ -60,3 +60,9 @@ body {
 .crown-neon-frame {
   animation: neon-crown-pulse 2.2s ease-in-out infinite;
 }
+
+@keyframes lp-float {
+  0%   { opacity: 1; transform: translateX(-50%) translateY(0); }
+  75%  { opacity: 0.9; }
+  100% { opacity: 0; transform: translateX(-50%) translateY(-64px); }
+}

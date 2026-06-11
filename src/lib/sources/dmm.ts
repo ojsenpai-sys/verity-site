@@ -1,6 +1,11 @@
 // DMM Affiliate API v3
 // Docs: https://affiliate.dmm.com/api/v3/
 
+// ─── DMM API 同期休止フラグ ───────────────────────────────────────────────────
+// DMM_API_ID が無効な期間、外部リクエストを完全停止してOOMログ洪水を防ぐ。
+// APIキーが復旧したら false に戻してデプロイすること。
+const DMM_SYNC_DISABLED = false
+
 const ITEM_LIST_BASE   = 'https://api.dmm.com/affiliate/v3/ItemList'
 const ACTRESS_SEARCH_BASE = 'https://api.dmm.com/affiliate/v3/ActressSearch'
 
@@ -121,6 +126,10 @@ export type FetchDmmParams = {
 }
 
 export async function fetchDmmItems(params: FetchDmmParams = {}): Promise<DmmItem[]> {
+  if (DMM_SYNC_DISABLED) {
+    console.log('[dmm:item] 同期休止中 — DMM_API_ID復旧後にDMM_SYNC_DISABLEDをfalseへ戻すこと')
+    return []
+  }
   const { apiId, affiliateId } = getCredentials()
 
   // keyword 指定時は sort=match が必須。それ以外はデフォルト sort=date。
@@ -214,6 +223,7 @@ type ActressSearchResponse = {
  * サーバープロキシして表示すること（直接 <img src> は弾かれる）。
  */
 export async function fetchActressImages(actressIds: number[]): Promise<Map<number, string>> {
+  if (DMM_SYNC_DISABLED) return new Map()
   if (actressIds.length === 0) return new Map()
 
   const { apiId, affiliateId } = getCredentials()
@@ -264,6 +274,7 @@ export async function fetchActressImagesByName(
   names: string[],
   maxCalls = 20,
 ): Promise<Map<string, string>> {
+  if (DMM_SYNC_DISABLED) return new Map()
   if (names.length === 0) return new Map()
   const { apiId, affiliateId } = getCredentials()
   const imageMap = new Map<string, string>()

@@ -4,7 +4,8 @@ import { useRef, useEffect, useCallback } from 'react'
 import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { NowPrinting } from './NowPrinting'
-import { cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
+import { ProxiedImage } from './ProxiedImage'
+import { isBadImageUrl } from '@/lib/cidUtils'
 
 export type MarqueeTile = {
   name: string
@@ -18,7 +19,7 @@ function proxyUrl(url: string) {
 
 function resolveImageUrl(tile: MarqueeTile): string | null {
   if (!isBadImageUrl(tile.imageUrl)) return tile.imageUrl!
-  return tile.externalId ? cidToCdnUrl(tile.externalId, 'pl') : null
+  return null
 }
 
 const SPEED = 0.15
@@ -78,8 +79,7 @@ export function ActressMarqueeStrip({ tiles }: { tiles: MarqueeTile[] }) {
               >
                 <div className="h-44 w-28 overflow-hidden rounded-lg ring-1 ring-[var(--border)]">
                   {imgUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <ProxiedImage
                       src={proxyUrl(imgUrl)}
                       alt={tile.name}
                       className="h-full w-full object-cover object-right"
@@ -135,8 +135,7 @@ export function ActressMarqueeStrip({ tiles }: { tiles: MarqueeTile[] }) {
                 {(() => {
                   const imgUrl = resolveImageUrl(tile)
                   return imgUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
+                    <ProxiedImage
                       src={proxyUrl(imgUrl)}
                       alt={tile.name}
                       className="h-full w-full object-cover object-right"

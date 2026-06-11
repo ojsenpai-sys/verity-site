@@ -5,10 +5,11 @@ import { FEATURED_CIDS } from '@/lib/featuredCids'
 import { ArticleCard } from './ArticleCard'
 import type { Article } from '@/lib/types'
 
-// "snos208" → "SNOS-208"  /  "1fns197" → "1FNS-197"
+// "snos00303" → "SNOS-303"  /  "ipzz00870" → "IPZZ-870"
+// parseInt strips leading zeros so the product number matches DMM's catalog format.
 function cidToProductNumber(cid: string): string {
   const m = cid.match(/^(.*?)(\d+)$/)
-  return m ? `${m[1].toUpperCase()}-${m[2]}` : cid.toUpperCase()
+  return m ? `${m[1].toUpperCase()}-${parseInt(m[2], 10)}` : cid.toUpperCase()
 }
 
 // Fetch one specific CID from both digital and mono endpoints in parallel.

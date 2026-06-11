@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect } from 'react'
+import { trackEvent } from '@/lib/analytics'
 
 type TargetType = 'genre' | 'actress' | 'article' | 'search' | 'sns'
 type ActionType = 'click' | 'view' | 'search' | 'share'
@@ -19,6 +20,12 @@ export function LogView({ targetType, targetId, actionType = 'view' }: Props) {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ target_type: targetType, target_id: targetId, action_type: actionType }),
     }).catch(() => {})
+
+    if (targetType === 'actress') {
+      trackEvent('actress_view', { actressId: targetId })
+    } else if (targetType === 'article') {
+      trackEvent('video_view', { cid: targetId })
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
   return null

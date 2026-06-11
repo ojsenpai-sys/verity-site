@@ -3,7 +3,9 @@ import { SOCIAL_FEED_ACTRESSES, type SocialActress } from './socialFeedActresses
 
 const IMAGES_PER_ACTRESS = 3
 const FRESHNESS_HOURS    = 5
-const REQUEST_DELAY_MS   = 300
+const REQUEST_DELAY_MS   = 1500   // 300→1500: 192女優×2req で per-minute 上限に当たる問題を回避
+const MAX_RETRIES        = 2      // 429 時のリトライ上限
+const RETRY_BASE_MS      = 5000   // 429 リトライの初回待機時間（指数バックオフ）
 
 function getServiceClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL  ?? ''
@@ -53,34 +55,58 @@ function pickRestId(json: unknown): string | null {
   return null
 }
 
+// 403 "not subscribed" を全体に通知するフラグ（sync実行中の早期中断用）
+let _subscriptionDead = false
+
 async function resolveUserId(screenName: string): Promise<string | null> {
   const url = `https://${rapidApiHost()}/user?username=${encodeURIComponent(screenName)}`
-  try {
-    const res = await fetch(url, { headers: rapidApiHeaders(), cache: 'no-store' })
-    const rawBody = await res.text()
 
-    if (!res.ok) {
-      console.error(`[social:id] HTTP ${res.status} for @${screenName}`)
-      return null
-    }
-
-    let json: unknown
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
-      json = JSON.parse(rawBody)
-    } catch {
-      console.error(`[social:id] Non-JSON for @${screenName}: ${rawBody.slice(0, 200)}`)
+      const res = await fetch(url, { headers: rapidApiHeaders(), cache: 'no-store' })
+      const rawBody = await res.text()
+
+      if (res.status === 403 && rawBody.includes('not subscribed')) {
+        console.error(`[social:id] SUBSCRIPTION DEAD — RapidAPI key is not subscribed to twitter241. Aborting sync.`)
+        _subscriptionDead = true
+        return null
+      }
+
+      if (res.status === 429) {
+        if (attempt < MAX_RETRIES) {
+          const wait = RETRY_BASE_MS * (attempt + 1)
+          console.warn(`[social:id] 429 for @${screenName} — retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
+          await delay(wait)
+          continue
+        }
+        console.error(`[social:id] HTTP 429 for @${screenName} (gave up after ${MAX_RETRIES} retries)`)
+        return null
+      }
+
+      if (!res.ok) {
+        console.error(`[social:id] HTTP ${res.status} for @${screenName}`)
+        return null
+      }
+
+      let json: unknown
+      try {
+        json = JSON.parse(rawBody)
+      } catch {
+        console.error(`[social:id] Non-JSON for @${screenName}: ${rawBody.slice(0, 200)}`)
+        return null
+      }
+
+      const id = pickRestId(json)
+      if (!id) {
+        console.error(`[social:id] rest_id not found for @${screenName} — keys: [${Object.keys(json as object).join(', ')}]`)
+      }
+      return id
+    } catch (err) {
+      console.error(`[social:id] fetch error for @${screenName}: ${err instanceof Error ? err.message : String(err)}`)
       return null
     }
-
-    const id = pickRestId(json)
-    if (!id) {
-      console.error(`[social:id] rest_id not found for @${screenName} — keys: [${Object.keys(json as object).join(', ')}]`)
-    }
-    return id
-  } catch (err) {
-    console.error(`[social:id] fetch error for @${screenName}: ${err instanceof Error ? err.message : String(err)}`)
-    return null
   }
+  return null
 }
 
 // ── Media fetch ───────────────────────────────────────────────────────────────
@@ -89,9 +115,22 @@ type MediaItem = { tweetId: string; imageUrl: string; postUrl: string; tweetDate
 
 async function fetchUserMedia(userId: string, screenName: string): Promise<MediaItem[]> {
   const url = `https://${rapidApiHost()}/user-media?user=${userId}&count=40`
+
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
   try {
     const res = await fetch(url, { headers: rapidApiHeaders(), cache: 'no-store' })
     const rawBody = await res.text()
+
+    if (res.status === 429) {
+      if (attempt < MAX_RETRIES) {
+        const wait = RETRY_BASE_MS * (attempt + 1)
+        console.warn(`[social:media] 429 for @${screenName} — retry ${attempt + 1}/${MAX_RETRIES} in ${wait}ms`)
+        await delay(wait)
+        continue
+      }
+      console.error(`[social:media] HTTP 429 for @${screenName} (gave up after ${MAX_RETRIES} retries)`)
+      return []
+    }
 
     if (!res.ok) {
       console.error(`[social:media] HTTP ${res.status} for @${screenName} (userId=${userId})`)
@@ -206,6 +245,8 @@ async function fetchUserMedia(userId: string, screenName: string): Promise<Media
     console.error(`[social:media] fetch error for @${screenName}: ${err instanceof Error ? err.message : String(err)}`)
     return []
   }
+  } // end for (retry loop)
+  return []
 }
 
 // ── Per-actress sync ──────────────────────────────────────────────────────────
@@ -219,6 +260,10 @@ type ActressResult = {
 }
 
 async function syncActress(actress: SocialActress, index: number): Promise<ActressResult> {
+  if (_subscriptionDead) {
+    return { name: actress.name, screenName: actress.screenName, status: 'error', upserted: 0, error: 'subscription_dead' }
+  }
+
   const supabase = getServiceClient()
   const base: ActressResult = { name: actress.name, screenName: actress.screenName, status: 'error', upserted: 0 }
   const tag = `(${index}) ${actress.name}`
@@ -316,7 +361,41 @@ export type SocialFeedSyncResult = {
   details: ActressResult[]
 }
 
+// ── サブスクリプション プリフライト確認 ────────────────────────────────────────
+// 全女優をループする前に 1 リクエストで API の生死を確認する。
+// 403 "not subscribed" なら即座に全件スキップして不要なログを 190 行生成しない。
+async function checkSubscription(): Promise<'ok' | 'dead' | 'rate_limited' | 'unknown_error'> {
+  const url = `https://${rapidApiHost()}/user?username=saika_kawakita`
+  try {
+    const res     = await fetch(url, { headers: rapidApiHeaders(), cache: 'no-store' })
+    const rawBody = await res.text()
+    if (res.status === 403 && rawBody.includes('not subscribed')) return 'dead'
+    if (res.status === 429) return 'rate_limited'
+    if (res.ok)             return 'ok'
+    return 'unknown_error'
+  } catch {
+    return 'unknown_error'
+  }
+}
+
 export async function syncAllSocialFeeds(): Promise<SocialFeedSyncResult> {
+  _subscriptionDead = false   // 各回の sync 開始時にリセット
+
+  // ── プリフライト ──────────────────────────────────────────────────────────────
+  const apiStatus = await checkSubscription()
+  if (apiStatus === 'dead') {
+    console.error('[social] SUBSCRIPTION DEAD — RapidAPI twitter241 "not subscribed". Sync aborted. RapidAPIダッシュボードでサブスクリプションを確認してください。')
+    return { synced: 0, skipped: 0, errors: 0, details: [] }
+  }
+  if (apiStatus === 'rate_limited') {
+    console.warn('[social] RATE LIMITED at preflight — sync deferred.')
+    return { synced: 0, skipped: 0, errors: 0, details: [] }
+  }
+  if (apiStatus === 'unknown_error') {
+    console.error('[social] Preflight check failed with unknown error — sync aborted.')
+    return { synced: 0, skipped: 0, errors: 0, details: [] }
+  }
+
   const actresses = await buildActressList()
   const total     = actresses.length
   console.log(`--- SOCIAL SYNC START --- (${total} actresses: DB+static merged)`)
@@ -324,6 +403,11 @@ export async function syncAllSocialFeeds(): Promise<SocialFeedSyncResult> {
   let synced = 0, skipped = 0, errors = 0
 
   for (let i = 0; i < actresses.length; i++) {
+    if (_subscriptionDead) {
+      console.error(`[social] Subscription went dead mid-sync at actress ${i + 1}/${total} — aborting loop.`)
+      break
+    }
+
     const actress = actresses[i]
     const result  = await syncActress(actress, i + 1)
     details.push(result)
