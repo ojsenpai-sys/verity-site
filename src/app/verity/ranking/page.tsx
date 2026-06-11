@@ -1,9 +1,8 @@
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
-import type { Metadata } from 'next'
 import Link from 'next/link'
-import { Trophy, ExternalLink } from 'lucide-react'
+import { Trophy, ExternalLink, Info } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { FanzaLink } from '@/components/FanzaLink'
 import { FavoriteButton } from '@/components/FavoriteButton'
@@ -14,18 +13,30 @@ import { getIsOverseasUser } from '@/lib/geoLocale'
 import { isBadImageUrl, cidToCdnUrl, toHighResPackageUrl } from '@/lib/cidUtils'
 import type { Actress, Article } from '@/lib/types'
 
-const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
-const BASE     = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
+// ── i18n ──────────────────────────────────────────────────────────────────────
 
-export const metadata: Metadata = {
-  title: '人気AV女優ランキング【リアルタイム】| VERITY',
-  description:
-    'VERITYが集計するリアルタイム人気女優ランキング。クリック数・お気に入り登録数に基づくTOP10を毎日更新。各女優の最新作・代表作・FANZAリンクつき。',
-  alternates: { canonical: `${BASE}/ranking` },
-  openGraph: {
-    title:       '人気AV女優ランキング【リアルタイム】| VERITY',
-    description: 'VERITYが集計するリアルタイム人気女優ランキング TOP10',
-  },
+type Lang = 'ja' | 'en' | 'zh'
+
+function getLang(raw: string | undefined | null): Lang {
+  if (raw === 'en') return 'en'
+  if (raw === 'zh') return 'zh'
+  return 'ja'
+}
+
+const SCORING_NOTE: Record<Lang, string> = {
+  ja: '※VERITY人気女優ランキングは、直近のページ閲覧数（1pt）、FANZA作品詳細へのアクセス（10pt）、およびお気に入り登録（50pt）を総合した『熱量スコア』によって毎日リアルタイムに自動集計されています。あなたの『お気に入り登録』が、推し女優の順位を押し上げる最大の原動力になります。',
+  en: "*The VERITY Popular Actress Ranking is automatically calculated in real-time based on Recent Views (1pt), FANZA Link Clicks (10pt), and Favorites (50pt). Your 'Favorite' registration is the biggest power to boost your favorite actress!",
+  zh: '※VERITY人气女优排行榜是根据最近的页面浏览量（1pt）、访问FANZA作品详情（10pt）以及收藏夹注册（50pt）综合的『热度得分』每天实时自动统计的。您的『收藏』是提升您最喜爱的女优排名的最大动力。',
+}
+
+function LangSwitch({ lang }: { lang: Lang }) {
+  return (
+    <div className="inline-flex items-center gap-0.5 rounded-full border border-[var(--border)] bg-[var(--surface)]/60 p-0.5 text-[11px]">
+      <a href="?"        className={`rounded-full px-2.5 py-1 font-bold transition-colors ${lang === 'ja' ? 'bg-[var(--magenta)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>JP</a>
+      <a href="?lang=en" className={`rounded-full px-2.5 py-1 font-bold transition-colors ${lang === 'en' ? 'bg-[var(--magenta)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>EN</a>
+      <a href="?lang=zh" className={`rounded-full px-2.5 py-1 font-bold transition-colors ${lang === 'zh' ? 'bg-[var(--magenta)] text-white' : 'text-[var(--text-muted)] hover:text-[var(--text)]'}`}>中文</a>
+    </div>
+  )
 }
 
 // ── 型定義 ────────────────────────────────────────────────────────────────────
@@ -34,6 +45,41 @@ type RankedActress = {
   rank:    number
   points:  number
   actress: Actress
+}
+
+const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
+const BASE     = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
+
+// ── Metadata ──────────────────────────────────────────────────────────────────
+
+export async function generateMetadata({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>
+}) {
+  const { lang: lp } = await searchParams
+  const lang = getLang(lp)
+
+  const titles: Record<Lang, string> = {
+    ja: '人気AV女優ランキング【リアルタイム熱量スコア】| VERITY',
+    en: 'Popular Actress Ranking [Real-time Heat Score] | VERITY',
+    zh: '人气女优排行榜【实时热度得分】| VERITY',
+  }
+  const descs: Record<Lang, string> = {
+    ja: 'VERITYが閲覧数・FANZAクリック・お気に入り登録を総合した熱量スコアでリアルタイム集計。お気に入り登録で推し女優の順位をブーストできます。',
+    en: 'VERITY real-time ranking based on views, FANZA clicks, and favorites. Boost your favorite actress by adding her to your favorites!',
+    zh: 'VERITY基于浏览量、FANZA点击和收藏综合计算的实时排行榜。收藏您喜爱的女优，帮助她提升排名！',
+  }
+
+  return {
+    title:       titles[lang],
+    description: descs[lang],
+    alternates:  { canonical: `${BASE}/ranking` },
+    openGraph: {
+      title:       titles[lang],
+      description: descs[lang],
+    },
+  }
 }
 
 // ── データ取得 ────────────────────────────────────────────────────────────────
@@ -69,7 +115,7 @@ async function getRanking(): Promise<RankedActress[]> {
     if (live.length > 0) return live
   }
 
-  // フォールバック: キャッシュ参照
+  // フォールバック: 最新スナップショットキャッシュ
   const { data: latest } = await supabase
     .from('actress_ranking_cache')
     .select('snapshot_date')
@@ -152,8 +198,6 @@ const RANK_STYLES: Record<number, { border: string; badge: string; glow: string;
   3: { border: 'border-amber-600/60',  badge: 'bg-amber-700 text-amber-100',   glow: 'shadow-[0_0_18px_rgba(180,83,9,0.25)]' },
 }
 
-// ── 女優画像 URL 解決 ─────────────────────────────────────────────────────────
-
 function resolveImgSrc(actress: Actress): string | null {
   const raw = isBadImageUrl(actress.image_url) ? null : actress.image_url
   const url = toHighResPackageUrl(raw) ?? (() => {
@@ -170,14 +214,22 @@ function RankingCard({
   item,
   articles,
   fanzaUrl,
+  lang,
 }: {
   item:     RankedActress
   articles: Article[]
   fanzaUrl: string | null
+  lang:     Lang
 }) {
   const { rank, actress } = item
   const imgSrc = resolveImgSrc(actress)
   const style  = RANK_STYLES[rank]
+
+  const ctaLabel: Record<Lang, string> = {
+    ja: `FANZAで${actress.name}の作品を見る`,
+    en: `Browse ${actress.name} on FANZA`,
+    zh: `在FANZA查看${actress.name}的作品`,
+  }
 
   return (
     <div
@@ -289,7 +341,7 @@ function RankingCard({
             className="mt-auto inline-flex items-center justify-center gap-2 rounded-full bg-gradient-to-r from-sky-500 to-blue-600 px-4 py-2 text-xs font-bold text-white shadow-[0_0_16px_rgba(14,165,233,0.35)] hover:shadow-[0_0_24px_rgba(14,165,233,0.6)] hover:brightness-110 active:scale-95 transition-all"
           >
             <ExternalLink size={12} />
-            FANZAで{actress.name}の作品を見る
+            {ctaLabel[lang]}
           </FanzaLink>
         )}
       </div>
@@ -299,7 +351,14 @@ function RankingCard({
 
 // ── ページ本体 ────────────────────────────────────────────────────────────────
 
-export default async function RankingPage() {
+export default async function RankingPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ lang?: string }>
+}) {
+  const { lang: lp } = await searchParams
+  const lang = getLang(lp)
+
   const [ranking, isOverseas] = await Promise.all([
     getRanking(),
     getIsOverseasUser(),
@@ -308,23 +367,37 @@ export default async function RankingPage() {
   const actressNames = ranking.map(r => r.actress.name)
   const articlesMap  = await getLatestArticlesForActresses(actressNames)
 
+  const headerText: Record<Lang, string> = {
+    ja: '人気AV女優ランキング',
+    en: 'Popular Actress Ranking',
+    zh: '人气女优排行榜',
+  }
+  const subText: Record<Lang, string> = {
+    ja: '閲覧数・FANZAクリック・お気に入りを総合した熱量スコアでリアルタイム集計',
+    en: 'Real-time ranking based on views, FANZA clicks, and favorites',
+    zh: '基于浏览量、FANZA点击和收藏综合计算的实时排行榜',
+  }
+
   return (
     <div className="mx-auto max-w-4xl px-4 py-10 space-y-8">
 
       {/* ── ヘッダー ── */}
-      <div className="space-y-2">
-        <div className="flex items-center gap-3">
-          <Trophy size={22} className="text-amber-400" />
-          <h1 className="text-2xl font-black text-[var(--text)]">
-            人気AV女優ランキング
-          </h1>
-          <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold text-amber-400">
-            Top {ranking.length}
-          </span>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="space-y-1">
+          <div className="flex items-center gap-3">
+            <Trophy size={22} className="text-amber-400" />
+            <h1 className="text-2xl font-black text-[var(--text)]">
+              {headerText[lang]}
+            </h1>
+            <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold text-amber-400">
+              Top {ranking.length}
+            </span>
+          </div>
+          <p className="text-sm text-[var(--text-muted)]">
+            {subText[lang]}
+          </p>
         </div>
-        <p className="text-sm text-[var(--text-muted)]">
-          VERITYの実クリック数・お気に入り登録数を基にリアルタイム集計。毎日更新。
-        </p>
+        <LangSwitch lang={lang} />
       </div>
 
       {/* ── ランキングリスト ── */}
@@ -333,8 +406,8 @@ export default async function RankingPage() {
       ) : (
         <div className="space-y-4">
           {ranking.map(item => {
-            const dmmId  = item.actress.external_id.replace('dmm-actress-', '')
-            const rawUrl = `https://www.dmm.co.jp/digital/videoa/-/list/=/article=actress/id=${dmmId}/`
+            const dmmId    = item.actress.external_id.replace('dmm-actress-', '')
+            const rawUrl   = `https://www.dmm.co.jp/digital/videoa/-/list/=/article=actress/id=${dmmId}/`
             const fanzaUrl = withAffiliateForRegion(rawUrl, isOverseas)
             const articles = articlesMap.get(item.actress.name) ?? []
 
@@ -344,16 +417,43 @@ export default async function RankingPage() {
                 item={item}
                 articles={articles}
                 fanzaUrl={fanzaUrl}
+                lang={lang}
               />
             )
           })}
         </div>
       )}
 
-      {/* ── フッター注記 ── */}
+      {/* ── 集計基準アナウンスエリア ── */}
+      <div className="rounded-xl border border-[var(--border)] bg-[var(--surface)]/40 px-5 py-4 space-y-2">
+        <div className="flex items-center gap-1.5 text-[11px] font-semibold text-[var(--text-muted)]">
+          <Info size={12} />
+          {lang === 'ja' ? '集計基準について' : lang === 'en' ? 'About Ranking Criteria' : '关于排名标准'}
+        </div>
+        <p className="text-[11px] leading-relaxed text-[var(--text-muted)]">
+          {SCORING_NOTE[lang]}
+        </p>
+        <div className="flex flex-wrap gap-2 pt-1">
+          {[
+            { label: lang === 'ja' ? 'ページ閲覧'  : lang === 'en' ? 'Page View'    : '浏览',   pt: '1pt'  },
+            { label: lang === 'ja' ? 'FANZAクリック': lang === 'en' ? 'FANZA Click'  : 'FANZA点击', pt: '10pt' },
+            { label: lang === 'ja' ? 'お気に入り'  : lang === 'en' ? 'Add Favorite' : '收藏',   pt: '50pt' },
+          ].map(({ label, pt }) => (
+            <span
+              key={label}
+              className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 text-[10px] font-mono"
+            >
+              <span className="text-[var(--text-muted)]">{label}</span>
+              <span className="font-bold text-[var(--magenta)]">{pt}</span>
+            </span>
+          ))}
+        </div>
+      </div>
+
+      {/* ── フッター ── */}
       <p className="text-center text-[11px] text-[var(--text-muted)]">
         <span className="rounded px-1.5 py-0.5 font-bold tracking-widest bg-[var(--magenta)]/15 text-[var(--magenta)] border border-[var(--magenta)]/30">PR</span>
-        {' '}FANZAへのリンクはアフィリエイトリンクです
+        {' '}{lang === 'ja' ? 'FANZAへのリンクはアフィリエイトリンクです' : lang === 'en' ? 'FANZA links are affiliate links' : 'FANZA链接为推广链接'}
       </p>
 
       <div className="flex justify-center">
@@ -361,7 +461,7 @@ export default async function RankingPage() {
           href="/"
           className="text-sm text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
         >
-          ← トップへ戻る
+          ← {lang === 'ja' ? 'トップへ戻る' : lang === 'en' ? 'Back to Top' : '返回首页'}
         </Link>
       </div>
     </div>
