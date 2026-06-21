@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 import Link from 'next/link'
-import { Trophy, ExternalLink, Info } from 'lucide-react'
+import { Trophy, ExternalLink, Info, Heart } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { FanzaLink } from '@/components/FanzaLink'
 import { FavoriteButton } from '@/components/FavoriteButton'
@@ -10,7 +10,7 @@ import { ProxiedImage } from '@/components/ProxiedImage'
 import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
-import { isBadImageUrl, cidToCdnUrl, toHighResPackageUrl } from '@/lib/cidUtils'
+import { isBadImageUrl, cidToCdnUrl, toHighResPackageUrl, coverPosClass } from '@/lib/cidUtils'
 import type { Actress, Article } from '@/lib/types'
 
 // ── i18n ──────────────────────────────────────────────────────────────────────
@@ -87,35 +87,8 @@ export async function generateMetadata({
 async function getRanking(): Promise<RankedActress[]> {
   const supabase = await createClient()
 
-  const { data: rankRows } = await supabase
-    .rpc('get_actress_ranking', { p_brand_id: BRAND_ID, p_limit: 15 })
-
-  if (rankRows && (rankRows as unknown[]).length > 0) {
-    const rows        = rankRows as { actress_external_id: string; points: number }[]
-    const externalIds = rows.map(r => r.actress_external_id)
-
-    const { data: actresses } = await supabase
-      .from('actresses')
-      .select('id, external_id, name, ruby, image_url, metadata, is_active')
-      .in('external_id', externalIds)
-      .eq('is_active', true)
-
-    const actressMap = new Map(
-      ((actresses ?? []) as Actress[]).map(a => [a.external_id, a])
-    )
-
-    const live = rows
-      .map((r, i) => {
-        const actress = actressMap.get(r.actress_external_id)
-        if (!actress) return null
-        return { rank: i + 1, points: Number(r.points), actress }
-      })
-      .filter((r): r is RankedActress => r !== null)
-
-    if (live.length > 0) return live
-  }
-
-  // フォールバック: 最新スナップショットキャッシュ
+  // キャッシュ優先: cron で定期更新されるスナップショットを即座に返す
+  // RPC はフルスキャンで重いため、キャッシュが空の場合のみ呼ぶ
   const { data: latest } = await supabase
     .from('actress_ranking_cache')
     .select('snapshot_date')
@@ -160,6 +133,22 @@ async function getRanking(): Promise<RankedActress[]> {
     .filter((r): r is RankedActress => r !== null)
 }
 
+type FavRankRow = {
+  actress_id:     string
+  external_id:    string
+  name:           string
+  image_url:      string | null
+  ruby:           string | null
+  favorite_count: number
+}
+
+async function getFavoriteRanking(): Promise<FavRankRow[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_actress_favorite_ranking', { p_limit: 20 })
+  if (error) { console.error('[fav-ranking]', error.message); return [] }
+  return (data ?? []) as FavRankRow[]
+}
+
 async function getLatestArticlesForActresses(
   actressNames: string[],
 ): Promise<Map<string, Article[]>> {
@@ -167,27 +156,21 @@ async function getLatestArticlesForActresses(
   const supabase = await createClient()
   const now = new Date().toISOString()
 
-  const { data } = await supabase
-    .from('articles')
-    .select('*')
-    .eq('is_active', true)
-    .overlaps('tags', actressNames)
-    .lte('published_at', now)
-    .order('published_at', { ascending: false })
-    .limit(actressNames.length * 3)
+  const results = await Promise.all(
+    actressNames.map(async (name) => {
+      const { data } = await supabase
+        .from('articles')
+        .select('id, external_id, title, image_url, published_at, slug, tags')
+        .eq('is_active', true)
+        .contains('tags', [name])
+        .lte('published_at', now)
+        .order('published_at', { ascending: false })
+        .limit(2)
+      return { name, articles: (data as Article[]) ?? [] }
+    }),
+  )
 
-  const result = new Map<string, Article[]>()
-  for (const article of (data as Article[]) ?? []) {
-    for (const name of actressNames) {
-      if ((article.tags ?? []).includes(name)) {
-        const existing = result.get(name) ?? []
-        if (existing.length < 2) {
-          result.set(name, [...existing, article])
-        }
-      }
-    }
-  }
-  return result
+  return new Map(results.map(r => [r.name, r.articles]))
 }
 
 // ── ランク装飾スタイル ─────────────────────────────────────────────────────────
@@ -222,7 +205,11 @@ function RankingCard({
   lang:     Lang
 }) {
   const { rank, actress } = item
-  const imgSrc = resolveImgSrc(actress)
+  const actressImgSrc = resolveImgSrc(actress)
+  const fallbackImgSrc = !actressImgSrc && articles.length > 0 && articles[0].image_url
+    ? `/verity/api/proxy/image?url=${encodeURIComponent(toHighResPackageUrl(articles[0].image_url) ?? articles[0].image_url)}`
+    : null
+  const imgSrc = actressImgSrc ?? fallbackImgSrc
   const style  = RANK_STYLES[rank]
 
   const ctaLabel: Record<Lang, string> = {
@@ -243,14 +230,14 @@ function RankingCard({
       {/* ── 左: 女優画像 ── */}
       <Link
         href={`/verity/actresses/${actress.external_id}`}
-        className="group relative shrink-0 w-full sm:w-36 aspect-[3/4] sm:aspect-auto overflow-hidden bg-[var(--surface-2)]"
+        className={`group relative shrink-0 w-full aspect-[3/4] sm:aspect-auto overflow-hidden bg-[var(--surface-2)] ${rank === 1 ? 'sm:w-52' : 'sm:w-36'}`}
       >
         {imgSrc ? (
           <>
             <ProxiedImage
               src={imgSrc}
               alt={actress.name}
-              className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover:scale-105"
+              className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(actress.image_url)} transition-transform duration-300 group-hover:scale-105`}
             />
             <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/70 via-transparent to-transparent sm:bg-gradient-to-r sm:from-transparent sm:to-[var(--surface)]/30" />
           </>
@@ -302,8 +289,9 @@ function RankingCard({
         {articles.length > 0 && (
           <div className="flex gap-2">
             {articles.slice(0, 2).map(art => {
-              const proxyImg = art.image_url
-                ? `/verity/api/proxy/image?url=${encodeURIComponent(art.image_url)}`
+              const hiResUrl = toHighResPackageUrl(art.image_url) ?? art.image_url
+              const proxyImg = hiResUrl
+                ? `/verity/api/proxy/image?url=${encodeURIComponent(hiResUrl)}`
                 : null
               return (
                 <Link
@@ -317,7 +305,7 @@ function RankingCard({
                       <img
                         src={proxyImg}
                         alt={art.title}
-                        className="h-full w-full object-cover transition-transform duration-200 group-hover/mini:scale-105"
+                        className={`h-full w-full object-cover ${coverPosClass(art.image_url)} transition-transform duration-200 group-hover/mini:scale-105`}
                       />
                     ) : (
                       <div className="h-full w-full bg-[var(--surface)]" />
@@ -359,9 +347,10 @@ export default async function RankingPage({
   const { lang: lp } = await searchParams
   const lang = getLang(lp)
 
-  const [ranking, isOverseas] = await Promise.all([
+  const [ranking, isOverseas, favRanking] = await Promise.all([
     getRanking(),
     getIsOverseasUser(),
+    getFavoriteRanking(),
   ])
 
   const actressNames = ranking.map(r => r.actress.name)
@@ -449,6 +438,97 @@ export default async function RankingPage({
           ))}
         </div>
       </div>
+
+      {/* ── お気に入り数ランキング ── */}
+      {favRanking.length > 0 && (
+        <section className="space-y-4">
+          <div className="flex items-center gap-2.5">
+            <Heart size={16} className="text-[var(--magenta)]" style={{ fill: 'var(--magenta)' }} />
+            <h2 className="text-base font-black text-[var(--text)]">
+              {lang === 'ja' ? 'お気に入り数ランキング'
+               : lang === 'en' ? 'Most Favorited Actresses'
+               : '收藏数排行榜'}
+            </h2>
+            <span className="rounded-full bg-[var(--magenta)]/15 px-2.5 py-0.5 text-[11px] font-bold text-[var(--magenta)]">
+              TOP {favRanking.filter(r => r.favorite_count > 0).length}
+            </span>
+          </div>
+          <p className="text-xs text-[var(--text-muted)]">
+            {lang === 'ja' ? 'VERITYユーザーのお気に入り登録数による純粋なランキング。熱量スコアとは異なる指標です。'
+             : lang === 'en' ? 'Pure ranking by number of VERITY users who added each actress to their favorites.'
+             : '基于VERITY用户收藏数量的纯粹排行榜，与热度分数不同。'}
+          </p>
+
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+            {favRanking.map((row, i) => {
+              const imgSrc = (() => {
+                const hi = toHighResPackageUrl(row.image_url)
+                if (!hi || isBadImageUrl(hi)) return null
+                return `/verity/api/proxy/image?url=${encodeURIComponent(hi)}`
+              })()
+
+              return (
+                <Link
+                  key={row.actress_id}
+                  href={`/verity/actresses/${row.external_id}`}
+                  className="group relative flex flex-col overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)] transition-all hover:-translate-y-0.5 hover:border-[var(--magenta)]/40 hover:shadow-[0_0_16px_rgba(226,0,116,0.15)]"
+                >
+                  {/* 画像（ps.jpg → pl.jpg に高解像度化） */}
+                  <div className="relative aspect-[2/3] w-full overflow-hidden bg-[var(--surface-2)]">
+                    {imgSrc ? (
+                      <>
+                        <ProxiedImage
+                          src={imgSrc}
+                          alt={row.name}
+                          className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(row.image_url)} transition-transform duration-300 group-hover:scale-105`}
+                        />
+                        <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/70 via-transparent to-transparent" />
+                      </>
+                    ) : (
+                      <NowPrinting />
+                    )}
+
+                    {/* 順位バッジ */}
+                    <span
+                      className="absolute left-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-black"
+                      style={
+                        i === 0
+                          ? { background: '#f59e0b', color: '#451a03' }
+                          : i === 1
+                            ? { background: '#94a3b8', color: '#0f172a' }
+                            : i === 2
+                              ? { background: '#92400e', color: '#fef3c7' }
+                              : { background: 'rgba(0,0,0,0.6)', color: '#fff', border: '1px solid rgba(255,255,255,0.2)' }
+                      }
+                    >
+                      {i + 1}
+                    </span>
+                  </div>
+
+                  {/* テキスト */}
+                  <div className="flex flex-col gap-0.5 px-2.5 py-2">
+                    <p className="truncate text-xs font-semibold text-[var(--text)] group-hover:text-[var(--magenta)] transition-colors">
+                      {row.name}
+                    </p>
+                    {row.ruby && (
+                      <p className="truncate text-[9px] text-[var(--text-muted)]">{row.ruby}</p>
+                    )}
+                    <div className="mt-1 flex items-center gap-1">
+                      <Heart size={9} className="shrink-0 text-[var(--magenta)]" style={{ fill: 'var(--magenta)' }} />
+                      <span className="text-[10px] font-bold text-[var(--magenta)]">
+                        {row.favorite_count.toLocaleString()}
+                      </span>
+                      <span className="text-[9px] text-[var(--text-muted)]">
+                        {lang === 'ja' ? '人' : lang === 'en' ? 'fans' : '人'}
+                      </span>
+                    </div>
+                  </div>
+                </Link>
+              )
+            })}
+          </div>
+        </section>
+      )}
 
       {/* ── フッター ── */}
       <p className="text-center text-[11px] text-[var(--text-muted)]">

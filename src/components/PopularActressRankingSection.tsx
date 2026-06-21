@@ -3,7 +3,7 @@ import { Trophy } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { NowPrinting } from '@/components/NowPrinting'
-import { isBadImageUrl, cidToCdnUrl, toHighResPackageUrl } from '@/lib/cidUtils'
+import { isBadImageUrl, cidToCdnUrl, toHighResPackageUrl, coverPosClass } from '@/lib/cidUtils'
 import type { Actress } from '@/lib/types'
 
 const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
@@ -17,36 +17,8 @@ type RankedActress = {
 async function getRanking(): Promise<RankedActress[]> {
   const supabase = await createClient()
 
-  // ── リアルタイム RPC を常に最優先（最新投票・アクセス数を即時反映） ────────────
-  const { data: rankRows } = await supabase
-    .rpc('get_actress_ranking', { p_brand_id: BRAND_ID, p_limit: 10 })
-
-  if (rankRows && (rankRows as unknown[]).length > 0) {
-    const rows        = rankRows as { actress_external_id: string; points: number }[]
-    const externalIds = rows.map(r => r.actress_external_id)
-
-    const { data: actresses } = await supabase
-      .from('actresses')
-      .select('id, external_id, name, ruby, image_url, metadata, is_active')
-      .in('external_id', externalIds)
-      .eq('is_active', true)
-
-    const actressMap = new Map(
-      ((actresses ?? []) as Actress[]).map(a => [a.external_id, a])
-    )
-
-    const live = rows
-      .map((r, i) => {
-        const actress = actressMap.get(r.actress_external_id)
-        if (!actress) return null
-        return { rank: i + 1, points: Number(r.points), actress }
-      })
-      .filter((r): r is RankedActress => r !== null)
-
-    if (live.length > 0) return live
-  }
-
-  // ── フォールバック: RPC が空の場合のみキャッシュを参照 ──────────────────────
+  // ── キャッシュ優先: cron で定期更新されるスナップショットを即座に返す ─────────
+  // NOTE: get_actress_ranking RPC はフルスキャンで重いため、キャッシュが空の場合のみ呼ぶ
   const { data: latest } = await supabase
     .from('actress_ranking_cache')
     .select('snapshot_date')
@@ -55,51 +27,86 @@ async function getRanking(): Promise<RankedActress[]> {
     .limit(1)
     .maybeSingle()
 
-  if (!latest) return []
+  if (latest) {
+    const { data: cache } = await supabase
+      .from('actress_ranking_cache')
+      .select('rank, points, actress_id, image_url')
+      .eq('brand_id', BRAND_ID)
+      .eq('snapshot_date', latest.snapshot_date)
+      .order('rank', { ascending: true })
+      .limit(10)
 
-  const { data: cache, error: cacheErr } = await supabase
-    .from('actress_ranking_cache')
-    .select('rank, points, actress_id, image_url')
-    .eq('brand_id', BRAND_ID)
-    .eq('snapshot_date', latest.snapshot_date)
-    .order('rank', { ascending: true })
-    .limit(10)
+    if (cache && cache.length > 0) {
+      const actressIds = cache.map(c => c.actress_id as string)
+      const { data: actresses } = await supabase
+        .from('actresses')
+        .select('id, external_id, name, ruby, image_url, metadata, is_active')
+        .in('id', actressIds)
+        .eq('is_active', true)
 
-  if (cacheErr || !cache || cache.length === 0) return []
+      const actressMap = new Map(
+        ((actresses ?? []) as Actress[]).map(a => [a.id, a])
+      )
 
-  const actressIds = cache.map(c => c.actress_id as string)
+      const cached = cache
+        .map(c => {
+          const actress = actressMap.get(c.actress_id as string)
+          if (!actress) return null
+          const merged: Actress = {
+            ...actress,
+            image_url: toHighResPackageUrl(c.image_url as string | null) ?? actress.image_url,
+          }
+          return { rank: c.rank as number, points: Number(c.points), actress: merged }
+        })
+        .filter((r): r is RankedActress => r !== null)
 
+      if (cached.length > 0) return cached
+    }
+  }
+
+  // ── キャッシュが空の場合のみ RPC を試行（4s タイムアウト付き） ────────────────
+  const rpcResult = await Promise.race([
+    supabase.rpc('get_actress_ranking', { p_brand_id: BRAND_ID, p_limit: 10 }),
+    new Promise<{ data: null; error: string }>(resolve =>
+      setTimeout(() => resolve({ data: null, error: 'timeout' }), 4000)
+    ),
+  ])
+  const rankRows = rpcResult?.data ?? null
+  if (!rankRows || (rankRows as unknown[]).length === 0) return []
+
+  const rows        = rankRows as { actress_external_id: string; points: number }[]
+  const externalIds = rows.map(r => r.actress_external_id)
   const { data: actresses } = await supabase
     .from('actresses')
     .select('id, external_id, name, ruby, image_url, metadata, is_active')
-    .in('id', actressIds)
+    .in('external_id', externalIds)
     .eq('is_active', true)
 
   const actressMap = new Map(
-    ((actresses ?? []) as Actress[]).map(a => [a.id, a])
+    ((actresses ?? []) as Actress[]).map(a => [a.external_id, a])
   )
-
-  return cache
-    .map(c => {
-      const actress = actressMap.get(c.actress_id as string)
+  return rows
+    .map((r, i) => {
+      const actress = actressMap.get(r.actress_external_id)
       if (!actress) return null
-      const merged: Actress = {
-        ...actress,
-        image_url: toHighResPackageUrl(c.image_url as string | null) ?? actress.image_url,
-      }
-      return { rank: c.rank as number, points: Number(c.points), actress: merged }
+      return { rank: i + 1, points: Number(r.points), actress }
     })
     .filter((r): r is RankedActress => r !== null)
 }
 
-function getProxiedSrc(actress: Actress): string | null {
+function getProxiedSrc(actress: Actress): { src: string; raw: string } | null {
+  // Prefer latest_cid: always produces a digital/video URL with the exact
+  // zero-padded CID from the DMM API, avoiding mono-path format mismatches
+  // (e.g. cache stores "babd025" but CDN digital path requires "babd00025").
+  const cid = actress.metadata?.latest_cid as string | undefined
+  if (cid) {
+    const url = cidToCdnUrl(cid, 'pl')
+    return { src: `/verity/api/proxy/image?url=${encodeURIComponent(url)}`, raw: url }
+  }
   const raw = isBadImageUrl(actress.image_url) ? null : actress.image_url
-  const url = toHighResPackageUrl(raw) ?? (() => {
-    const cid = actress.metadata?.latest_cid as string | undefined
-    return cid ? cidToCdnUrl(cid, 'pl') : null
-  })()
+  const url = toHighResPackageUrl(raw)
   if (!url) return null
-  return `/verity/api/proxy/image?url=${encodeURIComponent(url)}`
+  return { src: `/verity/api/proxy/image?url=${encodeURIComponent(url)}`, raw: url }
 }
 
 // ── ランク装飾スタイル ────────────────────────────────────────────────────────
@@ -142,7 +149,8 @@ function RankCard({
   heroOnMobile?:  boolean
 }) {
   const { rank, actress } = item
-  const imgSrc   = getProxiedSrc(actress)
+  const proxied  = getProxiedSrc(actress)
+  const imgSrc   = proxied?.src ?? null
   const top3      = RANK_STYLES[rank]
   const borderCls = top3?.border ?? 'border-[var(--border)]'
 
@@ -172,8 +180,8 @@ function RankCard({
             <ProxiedImage
               src={imgSrc}
               alt={actress.name}
-              className="absolute inset-0 h-full w-full object-cover object-right
-                         transition-transform duration-300 group-hover:scale-105"
+              className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(proxied?.raw)}
+                         transition-transform duration-300 group-hover:scale-105`}
             />
             <div className={[
               'absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent',
