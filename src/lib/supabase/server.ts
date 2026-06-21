@@ -14,6 +14,11 @@ export async function createClient() {
     SUPABASE_URL,
     SUPABASE_ANON_KEY,
     {
+      global: {
+        // Next.js Data Cache を完全に回避: force-dynamic ルートでも明示的に no-store
+        fetch: (url: RequestInfo | URL, options: RequestInit = {}) =>
+          fetch(url, { ...options, cache: 'no-store' }),
+      },
       cookies: {
         getAll() {
           return cookieStore.getAll()

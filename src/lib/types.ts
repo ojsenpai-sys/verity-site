@@ -81,6 +81,9 @@ export type Profile = {
   lp_transfer_count:        number
   favorite_change_count:    number
   equipped_epithet:         string | null
+  // ジャンル傾向スコア: {"中出し": 25, "巨乳": 10, ...}
+  genre_scores:             Record<string, number>
+  profiling_done:           boolean
   // VERITY BLACK サブスク・従量課金枠
   is_subscribed:            boolean
   subscription_expires_at:  string | null
