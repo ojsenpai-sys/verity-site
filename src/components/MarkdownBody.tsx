@@ -101,7 +101,7 @@ export function MarkdownBody({ content, className }: Props) {
     }
 
     // Empty line → paragraph break
-    if (line.trim() === '') { blocks.push('<div class="my-3" />'); i++; continue }
+    if (line.trim() === '') { blocks.push('<div class="my-3"></div>'); i++; continue }
 
     // Paragraph
     // NOTE: [-*+]\s (not bare [-*+]) so lines starting with ** (bold) are not excluded
