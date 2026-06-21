@@ -47,6 +47,16 @@ const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
 
 export type ActressHistoryEntry = { actress: Actress; visitedAt: string }
 
+export type HistoryWork = {
+  external_id: string
+  title:       string
+  slug:        string | null
+  image_url:   string | null
+  metadata:    Record<string, unknown> | null
+}
+export type WorkHistoryEntry  = { article: HistoryWork; viewedAt: string }
+export type FavoriteArticle   = HistoryWork & { favorited_at: string }
+
 export type LoginBonusResult = {
   already_claimed?: boolean
   ok?:              boolean
@@ -130,6 +140,8 @@ export default async function ProfilePage() {
     achievementResult,
     actressViewHistoryResult,
     favDatesResult,
+    videoViewHistoryResult,
+    favArticlesResult,
   ] = await Promise.all([
     favIds.length > 0
       ? supabase.from('actresses')
@@ -170,6 +182,16 @@ export default async function ProfilePage() {
           .select('actress_id, created_at')
           .eq('user_id', user.id)
       : Promise.resolve({ data: [] as { actress_id: string; created_at: string }[], error: null }),
+    // 作品閲覧履歴（最近見た作品）: video_view, target_id = CID
+    supabase.from('user_events')
+      .select('target_id, created_at')
+      .eq('user_id', user.id)
+      .eq('event_name', 'video_view')
+      .not('target_id', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(50),
+    // DB 永続化された作品お気に入り（ログインユーザー）
+    supabase.rpc('get_my_favorite_articles', { p_user_id: user.id }),
   ])
 
   let favoriteActresses = (actressResult.data ?? []) as Actress[]
@@ -232,6 +254,25 @@ export default async function ProfilePage() {
     }
   }
 
+  // ── 閲覧履歴 video_view (作品) の重複排除 ──────────────────────────────────
+  const videoViewHistoryRows = (videoViewHistoryResult.data ?? []) as { target_id: string; created_at: string }[]
+  const historyWorkCids:     string[] = []
+  const historyWorkViewedAt: string[] = []
+  {
+    const seen = new Set<string>()
+    for (const row of videoViewHistoryRows) {
+      if (row.target_id && !seen.has(row.target_id)) {
+        seen.add(row.target_id)
+        historyWorkCids.push(row.target_id)
+        historyWorkViewedAt.push(row.created_at)
+        if (historyWorkCids.length >= 10) break
+      }
+    }
+  }
+
+  // ── DB 永続化された作品お気に入り ─────────────────────────────────────────────
+  const favoriteArticles = (favArticlesResult.data ?? []) as FavoriteArticle[]
+
   // ── セカンダリ並列クエリ ────────────────────────────────────────────────────
   const favNames        = favoriteActresses.map(a => a.name)
   const articleViewRows = logRows.filter(r => r.target_type === 'article')
@@ -256,6 +297,7 @@ export default async function ProfilePage() {
     coverageResult,
     newPostsResult,
     historyActressResult,
+    historyWorkResult,
   ] = await Promise.all([
     augCids.length > 0
       ? supabase.from('articles')
@@ -283,6 +325,11 @@ export default async function ProfilePage() {
           .select('id, name, ruby, image_url, metadata, external_id')
           .in('external_id', historyActressIds)
       : Promise.resolve({ data: [] as Actress[], error: null }),
+    historyWorkCids.length > 0
+      ? supabase.from('articles')
+          .select('external_id, title, slug, image_url, metadata')
+          .in('external_id', historyWorkCids)
+      : Promise.resolve({ data: [] as HistoryWork[], error: null }),
   ])
 
   // ── 壊れた画像を articles テーブルの画像で補完 ─────────────────────────────
@@ -333,6 +380,17 @@ export default async function ProfilePage() {
       return actress ? { actress, visitedAt: historyVisitedAt[i] ?? '' } : null
     })
     .filter((e): e is ActressHistoryEntry => e !== null)
+
+  // ── 最近見た作品: 取得した作品データを historyWorkCids 順に並べ直す ─────────────
+  const historyWorkMap = new Map(
+    ((historyWorkResult.data ?? []) as HistoryWork[]).map(a => [a.external_id, a])
+  )
+  const workHistory: WorkHistoryEntry[] = historyWorkCids
+    .map((cid, i) => {
+      const article = historyWorkMap.get(cid)
+      return article ? { article, viewedAt: historyWorkViewedAt[i] ?? '' } : null
+    })
+    .filter((e): e is WorkHistoryEntry => e !== null)
 
   // ── sn_news published_at マップ（clairvoyant / swift_reader 用）────────────
   const articlePubMap = new Map<string, string | null>(
@@ -586,6 +644,8 @@ export default async function ProfilePage() {
         topAxis={topAxis}
         recommendedProduct={recommendedProduct}
         actressHistory={actressHistory}
+        workHistory={workHistory}
+        favoriteArticles={favoriteArticles}
         genreScores={resolvedProfile?.genre_scores ?? {}}
         profilingDone={resolvedProfile?.profiling_done ?? false}
         favoritedAtMap={favoritedAtMap}

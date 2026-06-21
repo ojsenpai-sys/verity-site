@@ -141,6 +141,7 @@ export async function ArticleCard({ article, hotTags }: ArticleCardProps) {
         <FavoriteButton
           type="article"
           id={article.slug || article.external_id}
+          cid={article.external_id}
           meta={{
             title: article.title,
             href:  article.slug ? `/articles/${article.slug}` : '',

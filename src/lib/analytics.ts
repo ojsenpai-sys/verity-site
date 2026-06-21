@@ -7,12 +7,22 @@ declare global {
 }
 
 // ── イベント名 Union 型（厳格な制限） ─────────────────────────────────────────
+//
+// 5正規イベント（Phase4）と既存DB名の対応:
+//   view_work     ≡ video_view    （別名維持。article_scores 等が依存のためリネームしない）
+//   view_actress  ≡ actress_view
+//   click_fanza   ≡ fanza_click
+//   favorite_work    （新規）
+//   favorite_actress （新規）
+// favorite 系は payload.action='add'|'remove' を metadata に格納する。
 export type EventName =
   | 'signup_start'
   | 'signup_complete'
-  | 'actress_view'
-  | 'video_view'
-  | 'fanza_click'
+  | 'actress_view'      // = view_work の女優版: view_actress
+  | 'video_view'        // = view_work
+  | 'fanza_click'       // = click_fanza
+  | 'favorite_work'
+  | 'favorite_actress'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -30,9 +40,11 @@ export interface TrackPayload {
 
 // ── イベント → DB ターゲット マッピング ────────────────────────────────────────
 const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' | 'cid' }>> = {
-  actress_view: { type: 'actress', idKey: 'actressId' },
-  video_view:   { type: 'article', idKey: 'cid'       },
-  fanza_click:  { type: 'article', idKey: 'cid'       },
+  actress_view:     { type: 'actress', idKey: 'actressId' },
+  video_view:       { type: 'article', idKey: 'cid'       },
+  fanza_click:      { type: 'article', idKey: 'cid'       },
+  favorite_work:    { type: 'article', idKey: 'cid'       },
+  favorite_actress: { type: 'actress', idKey: 'actressId' },
 }
 
 // target_id にマップされる構造キーは metadata から除外する

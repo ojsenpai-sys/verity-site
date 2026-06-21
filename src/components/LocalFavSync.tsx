@@ -26,17 +26,30 @@ export function LocalFavSync() {
     attempted.current = true
 
     const actressIds = readLS('verity_fav_actresses')
-    if (actressIds.length === 0) {
+    const articleIds = readLS('verity_fav_articles')
+    if (actressIds.length === 0 && articleIds.length === 0) {
       sessionStorage.setItem(SESSION_KEY, user.id)
       return
     }
 
-    fetch('/verity/api/favorites/sync', {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ actress_external_ids: actressIds }),
-    })
-      .then(r => r.ok && sessionStorage.setItem(SESSION_KEY, user.id))
+    const jobs: Promise<Response>[] = []
+    if (actressIds.length > 0) {
+      jobs.push(fetch('/verity/api/favorites/sync', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ actress_external_ids: actressIds }),
+      }))
+    }
+    if (articleIds.length > 0) {
+      jobs.push(fetch('/verity/api/favorites/sync-articles', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ article_ids: articleIds }),
+      }))
+    }
+
+    Promise.all(jobs)
+      .then(rs => { if (rs.every(r => r.ok)) sessionStorage.setItem(SESSION_KEY, user.id) })
       .catch(() => { attempted.current = false }) // 失敗時は次回マウント時に再試行
   }, [user, loading])
 

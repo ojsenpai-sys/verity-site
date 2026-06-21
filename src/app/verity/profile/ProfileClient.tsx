@@ -1,7 +1,7 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { LogOut, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown, Clock, BarChart2, RefreshCw } from 'lucide-react'
+import { LogOut, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown, Clock, BarChart2, RefreshCw, Heart } from 'lucide-react'
 import { FavoriteActressSelector } from '@/components/FavoriteActressSelector'
 // import { MyGalleryGrid } from '@/components/MyGalleryGrid'  // SNS同期一時停止中 — API復旧後に再有効化
 // import { StatusCard } from '@/components/StatusCard'  // TODO: デザイン再検討中のため一時非表示
@@ -11,7 +11,7 @@ import type { TitleDef, GenreStats } from '@/lib/titles'
 import type { EpithetDef } from '@/lib/epithets'
 import { useProfileLogic } from './hooks/useProfileLogic'
 import type { UnlockedEntry } from './hooks/useProfileLogic'
-import type { LoginBonusResult, ActressHistoryEntry } from './page'
+import type { LoginBonusResult, ActressHistoryEntry, WorkHistoryEntry, FavoriteArticle, HistoryWork } from './page'
 import { GentlemanAnalysis } from '@/components/GentlemanAnalysis'
 import type { AxisScore, RecommendedProduct } from '@/components/GentlemanAnalysis'
 import { LocalFavArticles } from '@/components/LocalFavArticles'
@@ -45,6 +45,8 @@ type Props = {
   topAxis:               string | null
   recommendedProduct:    RecommendedProduct | null
   actressHistory:        ActressHistoryEntry[]
+  workHistory:           WorkHistoryEntry[]
+  favoriteArticles:      FavoriteArticle[]
   genreScores:           Record<string, number>
   profilingDone:         boolean
   favoritedAtMap:        Record<string, string>
@@ -62,6 +64,39 @@ function formatRelativeTime(iso: string): string {
   if (d < 7)  return `${d}日前`
   if (d < 30) return `${Math.floor(d / 7)}週間前`
   return `${Math.floor(d / 30)}ヶ月前`
+}
+
+function proxiedCover(url: string | null): string {
+  return url ? `/api/proxy/image?url=${encodeURIComponent(url)}` : '/assets/verity/placeholder.jpg'
+}
+
+function workFanzaHref(metadata: Record<string, unknown> | null): string | null {
+  const raw = (metadata?.affiliate_url ?? metadata?.url) as string | undefined
+  if (!raw) return null
+  return withAffiliate(raw) ?? raw
+}
+
+// 作品行（最近見た作品 / お気に入り作品 で共用）
+function WorkRow({ article, sub, position }: { article: HistoryWork; sub: string; position: string }) {
+  const href = workFanzaHref(article.metadata)
+  const inner = (
+    <div className="flex items-center gap-3 rounded-xl border border-[var(--border)] bg-[var(--surface)] px-3 py-2.5 hover:border-[var(--magenta)]/30 transition-colors">
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={proxiedCover(article.image_url)}
+        alt={article.title}
+        className="w-10 h-14 rounded-md object-cover shrink-0"
+      />
+      <div className="flex-1 min-w-0">
+        <p className="line-clamp-2 text-sm font-medium text-[var(--text)] leading-snug">{article.title}</p>
+        <p className="mt-0.5 text-[11px] text-[var(--text-muted)]">{sub}</p>
+      </div>
+      {href && <span className="shrink-0 text-xs text-[var(--text-muted)]">FANZA →</span>}
+    </div>
+  )
+  return href
+    ? <FanzaLink href={href} targetId={article.external_id} position={position}>{inner}</FanzaLink>
+    : inner
 }
 
 // ── 小型 UI コンポーネント ─────────────────────────────────────────────────────
@@ -241,6 +276,7 @@ export function ProfileClient({
   lpPointsMap: initialLpPointsMap, hasNewGalleryPosts,
   missingSnsActresses, earnedEpithetIds: initialEpithetIds,
   axisScores, topAxis, recommendedProduct, actressHistory,
+  workHistory, favoriteArticles,
   genreScores: initialGenreScores, profilingDone: initialProfilingDone,
   favoritedAtMap,
 }: Props) {
@@ -664,8 +700,43 @@ export function ProfileClient({
           />
         </section>
 
-        {/* ── ローカル保存済み記事 ── */}
-        <LocalFavArticles />
+        {/* ── お気に入り作品（DBに同期済み）。未同期/空ならローカル表示にフォールバック ── */}
+        {favoriteArticles.length > 0 ? (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]">
+              <Heart size={14} style={{ fill: '#E20074', color: '#E20074' }} />
+              お気に入り作品
+              <span className="text-xs font-normal text-[var(--text-muted)]">{favoriteArticles.length}件</span>
+            </h2>
+            <ul className="space-y-2">
+              {favoriteArticles.map(a => (
+                <li key={a.external_id}>
+                  <WorkRow article={a} sub={`登録 ${formatRelativeTime(a.favorited_at)}`} position="profile_fav_work_click" />
+                </li>
+              ))}
+            </ul>
+          </section>
+        ) : (
+          <LocalFavArticles />
+        )}
+
+        {/* ── 最近見た作品（閲覧履歴） ── */}
+        {workHistory.length > 0 && (
+          <section className="space-y-3">
+            <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]">
+              <Clock size={15} className="text-[var(--magenta)]" />
+              最近見た作品
+              <span className="text-xs font-normal text-[var(--text-muted)]">直近{workHistory.length}件</span>
+            </h2>
+            <ul className="space-y-2">
+              {workHistory.map(({ article, viewedAt }) => (
+                <li key={article.external_id}>
+                  <WorkRow article={article} sub={formatRelativeTime(viewedAt)} position="profile_history_work_click" />
+                </li>
+              ))}
+            </ul>
+          </section>
+        )}
 
         {/* ── 最近チェックした女優（ディグ履歴） ── */}
         {actressHistory.length > 0 && (

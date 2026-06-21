@@ -11,12 +11,13 @@ import type { FavType, FavMeta } from '@/hooks/useFavorite'
 type Props = {
   type:       FavType
   id:         string      // externalId for actress, slug/id for article
+  cid?:       string      // article: 計測・DB用の安定キー(external_id)。未指定なら id を使用
   meta?:      FavMeta     // { title, href } stored in localStorage for display
   className?: string
   size?:      'sm' | 'md'
 }
 
-export function FavoriteButton({ type, id, meta, className, size = 'sm' }: Props) {
+export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: Props) {
   const { isFavorited, toggle } = useFavorite(type)
   const { user }                = useAuth()
   const faved                   = isFavorited(id)
@@ -35,15 +36,25 @@ export function FavoriteButton({ type, id, meta, className, size = 'sm' }: Props
     }
 
     toggle(id, meta)
+    const action = faved ? 'remove' : 'add'
 
     if (type === 'actress') {
       fetch('/verity/api/favorites/actress', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ external_id: id, action: faved ? 'remove' : 'add' }),
+        body:    JSON.stringify({ external_id: id, action }),
       }).catch(() => {})
+      trackEvent('favorite_actress', { actressId: id, action })
+    } else {
+      // 作品: DB へ永続化（slug|CID は API 側で解決）。news 等で未解決なら 404 → LS のみ
+      fetch('/verity/api/favorites/article', {
+        method:  'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body:    JSON.stringify({ id, action }),
+      }).catch(() => {})
+      trackEvent('favorite_work', { cid: cid ?? id, action })
     }
-  }, [toggle, id, meta, user, type, faved])
+  }, [toggle, id, cid, meta, user, type, faved])
 
   return (
     <>
