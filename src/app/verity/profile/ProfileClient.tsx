@@ -1,7 +1,7 @@
 'use client'
 
-import { useState, useEffect } from 'react'
-import { LogOut, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown, Clock } from 'lucide-react'
+import { useState, useEffect, useCallback } from 'react'
+import { LogOut, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown, Clock, BarChart2, RefreshCw } from 'lucide-react'
 import { FavoriteActressSelector } from '@/components/FavoriteActressSelector'
 // import { MyGalleryGrid } from '@/components/MyGalleryGrid'  // SNS同期一時停止中 — API復旧後に再有効化
 // import { StatusCard } from '@/components/StatusCard'  // TODO: デザイン再検討中のため一時非表示
@@ -17,6 +17,7 @@ import type { AxisScore, RecommendedProduct } from '@/components/GentlemanAnalys
 import { LocalFavArticles } from '@/components/LocalFavArticles'
 import { FanzaLink } from '@/components/FanzaLink'
 import { withAffiliate } from '@/lib/affiliate'
+import { GenreProfilingModal } from '@/components/GenreProfilingModal'
 
 type Props = {
   user:                  { id: string; email: string }
@@ -44,6 +45,9 @@ type Props = {
   topAxis:               string | null
   recommendedProduct:    RecommendedProduct | null
   actressHistory:        ActressHistoryEntry[]
+  genreScores:           Record<string, number>
+  profilingDone:         boolean
+  favoritedAtMap:        Record<string, string>
 }
 
 // ── ユーティリティ ─────────────────────────────────────────────────────────────
@@ -184,6 +188,51 @@ function EpithetTag({ epithetId }: { epithetId: string }) {
 
 // ── メインコンポーネント ──────────────────────────────────────────────────────
 
+// ── 認定ジャンルバッジ ─────────────────────────────────────────────────────────
+const BADGE_STYLES = [
+  { bg: 'linear-gradient(135deg, rgba(226,0,116,0.25), rgba(255,110,180,0.15))', border: 'rgba(226,0,116,0.6)', text: '#ff6eb4', rank: '1st' },
+  { bg: 'linear-gradient(135deg, rgba(139,92,246,0.25), rgba(167,139,250,0.15))', border: 'rgba(139,92,246,0.6)', text: '#a78bfa', rank: '2nd' },
+  { bg: 'linear-gradient(135deg, rgba(59,130,246,0.25), rgba(96,165,250,0.15))', border: 'rgba(59,130,246,0.55)', text: '#60a5fa', rank: '3rd' },
+]
+
+function CertifiedGenreBadge({ genre, score, rank }: { genre: string; score: number; rank: number }) {
+  const s = BADGE_STYLES[rank] ?? BADGE_STYLES[2]
+  return (
+    <div className="flex items-center gap-2 rounded-full px-3 py-1.5" style={{ background: s.bg, border: `1px solid ${s.border}` }}>
+      <span className="text-[9px] font-black opacity-60" style={{ color: s.text }}>{s.rank}</span>
+      <span className="text-xs font-bold" style={{ color: s.text }}>{genre}</span>
+      <span className="text-[10px] font-mono opacity-50" style={{ color: s.text }}>{score}pt</span>
+    </div>
+  )
+}
+
+function GenreBarChart({ scores }: { scores: Record<string, number> }) {
+  const sorted = Object.entries(scores).sort((a, b) => b[1] - a[1]).slice(0, 10)
+  if (sorted.length === 0) return null
+  const max = sorted[0][1]
+  return (
+    <ol className="space-y-1.5">
+      {sorted.map(([genre, score], i) => {
+        const pct  = Math.round((score / max) * 100)
+        const s    = i < 3 ? BADGE_STYLES[i] : null
+        const barColor = s
+          ? `linear-gradient(90deg, ${s.border.replace('0.6', '0.8')}, ${s.border.replace('0.6', '0.4')})`
+          : 'rgba(226,0,116,0.3)'
+        return (
+          <li key={genre} className="flex items-center gap-3 text-xs">
+            <span className="w-4 text-right font-mono text-[var(--text-muted)]">{i + 1}</span>
+            <span className="min-w-[72px] font-medium text-[var(--text)] truncate">{genre}</span>
+            <div className="flex-1 h-1.5 rounded-full bg-[var(--border)] overflow-hidden">
+              <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: barColor }} />
+            </div>
+            <span className="w-10 text-right font-mono text-[var(--text-muted)]">{score}pt</span>
+          </li>
+        )
+      })}
+    </ol>
+  )
+}
+
 export function ProfileClient({
   user, profile, favoriteActresses, unlockedTitles, allTitleDefs,
   topGenres, genreTitle, activityTitle, totalClicks,
@@ -192,7 +241,32 @@ export function ProfileClient({
   lpPointsMap: initialLpPointsMap, hasNewGalleryPosts,
   missingSnsActresses, earnedEpithetIds: initialEpithetIds,
   axisScores, topAxis, recommendedProduct, actressHistory,
+  genreScores: initialGenreScores, profilingDone: initialProfilingDone,
+  favoritedAtMap,
 }: Props) {
+  const [showProfilingModal, setShowProfilingModal] = useState(false)
+  const [localGenreScores,   setLocalGenreScores]   = useState<Record<string, number>>(initialGenreScores)
+
+  // 初回アクセス時のみモーダルを表示（マウント後に判定してちらつきを防ぐ）
+  useEffect(() => {
+    if (!initialProfilingDone) {
+      setShowProfilingModal(true)
+    }
+  }, [initialProfilingDone])
+
+  const handleProfilingComplete = useCallback((delta: Record<string, number>) => {
+    setShowProfilingModal(false)
+    setLocalGenreScores(prev => {
+      const next = { ...prev }
+      for (const [k, v] of Object.entries(delta)) next[k] = (next[k] ?? 0) + v
+      return next
+    })
+  }, [])
+
+  const topCertified = Object.entries(localGenreScores)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 3)
+
   const {
     activeTab, setActiveTab,
     hasNewGallery,
@@ -231,6 +305,19 @@ export function ProfileClient({
 
   return (
     <>
+      {showProfilingModal && (
+        <GenreProfilingModal
+          onComplete={handleProfilingComplete}
+          onSkip={() => {
+            setShowProfilingModal(false)
+            fetch('/verity/api/genre-scores', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ delta: {}, mark_done: true }),
+            }).catch(() => {})
+          }}
+        />
+      )}
       {showBonus && <BonusToast bonus={bonusResult.bonus!} isWeek={!!bonusResult.is_week} />}
       {newEpithetToast && <EpithetToast epithet={newEpithetToast} />}
 
@@ -323,6 +410,58 @@ export function ProfileClient({
             {saveMsg && <p className="text-center text-xs text-emerald-400">{saveMsg}</p>}
           </div>
         </section>
+
+        {/* ── 認定ジャンル ── */}
+        {topCertified.length > 0 ? (
+          <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 space-y-4">
+            <div className="flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--text)]">
+                <BarChart2 size={15} className="text-[var(--magenta)]" />
+                あなたの認定ジャンル
+              </h2>
+              <button
+                onClick={() => setShowProfilingModal(true)}
+                className="flex items-center gap-1.5 text-[10px] text-[var(--text-muted)] hover:text-[var(--text)] transition-colors"
+                title="再診断する"
+              >
+                <RefreshCw size={11} />
+                再診断
+              </button>
+            </div>
+
+            {/* TOP 3 バッジ */}
+            <div className="flex flex-wrap gap-2">
+              {topCertified.map(([genre, score], i) => (
+                <CertifiedGenreBadge key={genre} genre={genre} score={score} rank={i} />
+              ))}
+            </div>
+
+            {/* スコア分布バーチャート */}
+            <div className="space-y-1.5">
+              <p className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">スコア分布 TOP 10</p>
+              <GenreBarChart scores={localGenreScores} />
+            </div>
+          </section>
+        ) : (
+          <section className="rounded-2xl border border-dashed border-[var(--border)] bg-[var(--surface-2)] p-6 text-center space-y-3">
+            <div className="flex justify-center">
+              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-[var(--magenta)]/20 to-purple-600/20 border border-[var(--magenta)]/30">
+                <Sparkles size={18} className="text-[var(--magenta)]" />
+              </div>
+            </div>
+            <div>
+              <p className="text-sm font-bold text-[var(--text)]">ジャンル傾向診断</p>
+              <p className="text-xs text-[var(--text-muted)] mt-1">気になる作品を直感で選ぶだけで、あなたの好みを分析します。</p>
+            </div>
+            <button
+              onClick={() => setShowProfilingModal(true)}
+              className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-[var(--magenta)] to-purple-600 px-5 py-2 text-xs font-bold text-white hover:shadow-[0_0_16px_rgba(226,0,116,0.4)] transition-all active:scale-[0.98]"
+            >
+              <Sparkles size={12} />
+              今すぐ診断する
+            </button>
+          </section>
+        )}
 
         {/* ── 行動傾向 ── */}
         {totalClicks > 0 && (
@@ -512,6 +651,7 @@ export function ProfileClient({
             lpBalance={lpBalance}
             lpPointsMap={lpPointsMap}
             isLegend={isLegend}
+            favoritedAtMap={favoritedAtMap}
             onChange={async (ids, updatedList) => {
               if (updatedList) setFavActresses(updatedList)
               else setFavActresses(prev => {

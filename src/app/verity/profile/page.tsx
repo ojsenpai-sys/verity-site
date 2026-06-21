@@ -129,6 +129,7 @@ export default async function ProfilePage() {
     clickResult,
     achievementResult,
     actressViewHistoryResult,
+    favDatesResult,
   ] = await Promise.all([
     favIds.length > 0
       ? supabase.from('actresses')
@@ -163,6 +164,12 @@ export default async function ProfilePage() {
       .not('target_id', 'is', null)
       .order('created_at', { ascending: false })
       .limit(50),
+    // お気に入り登録日（favorite_actresses テーブル）
+    favIds.length > 0
+      ? supabase.from('favorite_actresses')
+          .select('actress_id, created_at')
+          .eq('user_id', user.id)
+      : Promise.resolve({ data: [] as { actress_id: string; created_at: string }[], error: null }),
   ])
 
   let favoriteActresses = (actressResult.data ?? []) as Actress[]
@@ -170,6 +177,12 @@ export default async function ProfilePage() {
   const earnedSet       = new Set(
     (achievementResult.data ?? []).map(r => (r as { epithet_id: string }).epithet_id)
   )
+
+  // actress.id → お気に入り登録日時 のマップ
+  const favoritedAtMap: Record<string, string> = {}
+  for (const row of (favDatesResult.data ?? []) as { actress_id: string; created_at: string }[]) {
+    favoritedAtMap[row.actress_id] = row.created_at
+  }
 
   // ── LP マップ ────────────────────────────────────────────────────────────────
   const lpPointsMap: Record<string, number> = {}
@@ -573,6 +586,9 @@ export default async function ProfilePage() {
         topAxis={topAxis}
         recommendedProduct={recommendedProduct}
         actressHistory={actressHistory}
+        genreScores={resolvedProfile?.genre_scores ?? {}}
+        profilingDone={resolvedProfile?.profiling_done ?? false}
+        favoritedAtMap={favoritedAtMap}
       />
     </div>
   )

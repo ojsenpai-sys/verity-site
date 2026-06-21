@@ -16,6 +16,7 @@ type Props = {
   lpBalance?:        number
   lpPointsMap?:      Record<string, number>
   isLegend?:         boolean
+  favoritedAtMap?:   Record<string, string>   // actress.id → ISO timestamp
   onChange:          (ids: string[], updatedList?: Actress[]) => Promise<void>
   onLpTransfer?:     (actressId: string, amount: number) => Promise<void>
 }
@@ -117,6 +118,16 @@ function ConfirmRemoveModal({
 
 // ── お気に入り女優カード ────────────────────────────────────────────────────
 
+function formatFavoritedAt(iso: string): string {
+  const diff = Date.now() - new Date(iso).getTime()
+  const d = Math.floor(diff / 86400000)
+  if (d < 1)  return '今日'
+  if (d < 7)  return `${d}日前`
+  if (d < 30) return `${Math.floor(d / 7)}週間前`
+  if (d < 365) return `${Math.floor(d / 30)}ヶ月前`
+  return `${Math.floor(d / 365)}年前`
+}
+
 function ActressCard({
   actress,
   onRemove,
@@ -126,6 +137,7 @@ function ActressCard({
   lpPoints,
   lpCap,
   onLpTransfer,
+  favoritedAt,
 }: {
   actress:       Actress
   onRemove:      () => void
@@ -135,6 +147,7 @@ function ActressCard({
   lpPoints:      number
   lpCap:         number
   onLpTransfer?: (actressId: string, amount: number) => Promise<void>
+  favoritedAt?:  string
 }) {
   const imgSrc   = getProxiedSrc(actress)
   const [lpPending, setLpPending] = useState(false)
@@ -215,6 +228,11 @@ function ActressCard({
             {actress.ruby && (
               <p className="truncate text-[10px] text-[var(--text-muted)]">{actress.ruby}</p>
             )}
+            {favoritedAt && (
+              <p className="text-[9px] text-[var(--text-muted)]/60">
+                ♥ {formatFavoritedAt(favoritedAt)}から
+              </p>
+            )}
           </Link>
 
           <button
@@ -290,6 +308,7 @@ export function FavoriteActressSelector({
   lpBalance = 0,
   lpPointsMap = {},
   isLegend = false,
+  favoritedAtMap = {},
   onChange,
   onLpTransfer,
 }: Props) {
@@ -388,6 +407,7 @@ export function FavoriteActressSelector({
                   lpPoints={lpPointsMap[actress.id] ?? 0}
                   lpCap={lpCap}
                   onLpTransfer={onLpTransfer}
+                  favoritedAt={favoritedAtMap[actress.id]}
                 />
               : <EmptySlot key={`empty-${i}`} index={i} />
           })}
