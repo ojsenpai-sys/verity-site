@@ -1,37 +1,58 @@
 /**
  * Google Search Console API サービス層
  *
- * 環境変数が設定されていれば実際のAPIを叩く。
- * 未設定 or エラー時はリアルなデモデータにフォールバックする。
+ * 認証方式（優先順位順）:
+ *   ① OAuth2 リフレッシュトークン方式（推奨）
+ *      → Search Console へのサービスアカウント登録不要
+ *      → scripts/get-gsc-token.mjs を一度だけ実行して取得
+ *      必要な環境変数:
+ *        GOOGLE_OAUTH_CLIENT_ID      OAuth2 クライアントID
+ *        GOOGLE_OAUTH_CLIENT_SECRET  OAuth2 クライアントシークレット
+ *        GOOGLE_OAUTH_REFRESH_TOKEN  リフレッシュトークン
+ *        GOOGLE_SC_SITE_URL          例: "https://verity-official.com/"
  *
- * 必要な環境変数:
- *   GOOGLE_SC_SERVICE_ACCOUNT_JSON  サービスアカウントのJSONキーファイル（文字列化）
- *   GOOGLE_SC_SITE_URL              例: "https://verity-official.com/"
+ *   ② サービスアカウント方式（後方互換）
+ *      → Search Console でサービスアカウントのメールを登録済みの場合のみ
+ *      必要な環境変数:
+ *        GOOGLE_SC_SERVICE_ACCOUNT_JSON  サービスアカウントJSONキー（文字列化）
+ *        GOOGLE_SC_SITE_URL
+ *
+ *   未設定 / エラー時はデモデータで動作する。
+ *
+ *   その他:
+ *     SUPABASE_SERVICE_ROLE_KEY  キャッシュ読み書きに使用
  */
 
 import { createSign } from 'crypto'
+import { createClient as createSvcClient } from '@supabase/supabase-js'
 
 // ── 型 ────────────────────────────────────────────────────────────────────────
 
 export type SearchConsoleRow = {
-  query:       string
-  page:        string   // ランディングページの絶対 or 相対URL
-  clicks:      number
-  impressions: number
-  ctr:         number   // 0.0〜1.0（例: 0.05 = 5%）
-  position:    number   // 平均掲載順位（小さいほど上位）
+  query:          string
+  page:           string
+  clicks:         number
+  impressions:    number
+  ctr:            number
+  position:       number
+  // キャッシュから読んだ場合のみ付加される enriched フィールド
+  actressName?:   string
+  actressId?:     string
+  suggestedTitle?: string
+  altTitles?:     string[]
+  suggestionId?:  string   // seo_suggestions.id（適用ボタンに使用）
+  isApplied?:     boolean
 }
 
 export type SearchConsoleResult = {
-  rows:   SearchConsoleRow[]
-  isMock: boolean   // デモデータ使用中なら true
+  rows:      SearchConsoleRow[]
+  isMock:    boolean
+  cachedAt?: string   // ISO timestamp of last refresh
 }
 
 // ── デモデータ ────────────────────────────────────────────────────────────────
-// 「高インプレッション × 低CTR × 好順位」のリアルな分布を再現
-// 穴場条件（position≤15 / impressions≥30 / ctr<1%）に引っかかるものを意図的に混在
+
 const MOCK_ROWS: SearchConsoleRow[] = [
-  // ★ 穴場候補（好順位なのにCTR不振）
   { query: '篠崎沙帆 作品一覧',           page: '/verity/actresses/dmm-actress-1154783', clicks: 4,  impressions: 520, ctr: 0.0077, position: 6.2  },
   { query: '篠崎沙帆 最新作 2025',         page: '/verity/actresses/dmm-actress-1154783', clicks: 3,  impressions: 412, ctr: 0.0073, position: 4.8  },
   { query: '人気 av 女優 ランキング 2025', page: '/verity/',                              clicks: 4,  impressions: 680, ctr: 0.0059, position: 8.9  },
@@ -48,15 +69,12 @@ const MOCK_ROWS: SearchConsoleRow[] = [
   { query: '河北彩花 動画 一覧',           page: '/verity/actresses/dmm-actress-1026028', clicks: 1,  impressions: 160, ctr: 0.0063, position: 9.4  },
   { query: 'av 女優 プロフィール 一覧',    page: '/verity/actresses',                     clicks: 1,  impressions: 210, ctr: 0.0048, position: 13.2 },
   { query: '篠崎沙帆 セール 安い',         page: '/verity/actresses/dmm-actress-1154783', clicks: 0,  impressions: 75,  ctr: 0.0000, position: 4.5  },
-  // ★ 高CTR行（穴場フィルタに引っかからない — 健全な行）
   { query: 'verity av 女優',               page: '/verity/',                              clicks: 42, impressions: 180, ctr: 0.2333, position: 1.8  },
   { query: 'verity 篠崎沙帆',              page: '/verity/actresses/dmm-actress-1154783', clicks: 28, impressions: 95,  ctr: 0.2947, position: 1.2  },
   { query: 'verity 公式',                  page: '/verity/',                              clicks: 35, impressions: 120, ctr: 0.2917, position: 1.5  },
   { query: '篠崎沙帆 プロフィール',        page: '/verity/actresses/dmm-actress-1154783', clicks: 21, impressions: 175, ctr: 0.1200, position: 3.2  },
-  // ★ 順位圏外（15位超）
   { query: 'av 女優 動画 2025',            page: '/verity/',                              clicks: 1,  impressions: 820, ctr: 0.0012, position: 22.4 },
   { query: 'fanza 人気 av',                page: '/verity/',                              clicks: 2,  impressions: 650, ctr: 0.0031, position: 18.6 },
-  // ★ インプレッション不足（30未満）
   { query: '篠崎沙帆 ファン',              page: '/verity/actresses/dmm-actress-1154783', clicks: 1,  impressions: 12,  ctr: 0.0833, position: 4.1  },
 ]
 
@@ -72,7 +90,7 @@ function b64url(input: string | Buffer): string {
 async function getAccessToken(serviceAccountJson: string): Promise<string> {
   const sa = JSON.parse(serviceAccountJson) as { client_email: string; private_key: string }
 
-  const now    = Math.floor(Date.now() / 1000)
+  const now     = Math.floor(Date.now() / 1000)
   const header  = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }))
   const payload = b64url(JSON.stringify({
     iss:   sa.client_email,
@@ -88,14 +106,12 @@ async function getAccessToken(serviceAccountJson: string): Promise<string> {
   sign.update(signingInput)
   const signature = b64url(sign.sign(sa.private_key))
 
-  const jwt = `${signingInput}.${signature}`
-
   const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
     method:  'POST',
     headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
     body:    new URLSearchParams({
       grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion:  jwt,
+      assertion:  `${signingInput}.${signature}`,
     }),
   })
 
@@ -106,6 +122,38 @@ async function getAccessToken(serviceAccountJson: string): Promise<string> {
 
   const { access_token } = await tokenRes.json() as { access_token: string }
   return access_token
+}
+
+// ── OAuth2 リフレッシュトークン方式 ───────────────────────────────────────────
+// サービスアカウントを Search Console に登録しなくても
+// オーナーアカウントの refresh_token だけで動作する。
+
+async function getAccessTokenOAuth(
+  clientId:     string,
+  clientSecret: string,
+  refreshToken: string,
+): Promise<string> {
+  const res = await fetch('https://oauth2.googleapis.com/token', {
+    method:  'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body:    new URLSearchParams({
+      client_id:     clientId,
+      client_secret: clientSecret,
+      refresh_token: refreshToken,
+      grant_type:    'refresh_token',
+    }),
+  })
+
+  if (!res.ok) {
+    const body = await res.text()
+    throw new Error(`OAuth2 token refresh failed (${res.status}): ${body}`)
+  }
+
+  const data = await res.json() as { access_token?: string; error?: string; error_description?: string }
+  if (!data.access_token) {
+    throw new Error(`OAuth2: no access_token — ${data.error}: ${data.error_description}`)
+  }
+  return data.access_token
 }
 
 // ── Search Console API 呼び出し ───────────────────────────────────────────────
@@ -149,36 +197,119 @@ async function fetchFromApi(accessToken: string, siteUrl: string): Promise<Searc
   }))
 }
 
-// ── パブリック API ─────────────────────────────────────────────────────────────
+// ── パブリック API（直接取得） ─────────────────────────────────────────────────
 
 export async function getSearchConsoleData(): Promise<SearchConsoleResult> {
-  const saJson  = process.env.GOOGLE_SC_SERVICE_ACCOUNT_JSON
   const siteUrl = process.env.GOOGLE_SC_SITE_URL
+  if (!siteUrl) return { rows: MOCK_ROWS, isMock: true }
 
-  if (!saJson || !siteUrl) {
-    return { rows: MOCK_ROWS, isMock: true }
+  // ① OAuth2 リフレッシュトークン方式（推奨 — SA登録不要）
+  const clientId     = process.env.GOOGLE_OAUTH_CLIENT_ID
+  const clientSecret = process.env.GOOGLE_OAUTH_CLIENT_SECRET
+  const refreshToken = process.env.GOOGLE_OAUTH_REFRESH_TOKEN
+
+  if (clientId && clientSecret && refreshToken) {
+    try {
+      const token = await getAccessTokenOAuth(clientId, clientSecret, refreshToken)
+      const rows  = await fetchFromApi(token, siteUrl)
+      return { rows, isMock: false }
+    } catch (err) {
+      console.error('[SearchConsole] OAuth2 error:', err)
+    }
   }
 
+  // ② サービスアカウント方式（後方互換）
+  const saJson = process.env.GOOGLE_SC_SERVICE_ACCOUNT_JSON
+  if (saJson) {
+    try {
+      const token = await getAccessToken(saJson)
+      const rows  = await fetchFromApi(token, siteUrl)
+      return { rows, isMock: false }
+    } catch (err) {
+      console.error('[SearchConsole] Service account error:', err)
+    }
+  }
+
+  return { rows: MOCK_ROWS, isMock: true }
+}
+
+// ── Supabase キャッシュ経由取得 ───────────────────────────────────────────────
+// seo-refresh API ルートが書き込んだ最新バッチを読む（TTL: 6時間）。
+// キャッシュなし or 期限切れの場合は直接APIにフォールバック。
+
+const CACHE_TTL_MS = 6 * 60 * 60 * 1000  // 6h
+
+function svc() {
+  return createSvcClient(
+    process.env.NEXT_PUBLIC_SUPABASE_URL!,
+    process.env.SUPABASE_SERVICE_ROLE_KEY!,
+  )
+}
+
+export async function getSearchConsoleDataCached(): Promise<SearchConsoleResult> {
   try {
-    const token = await getAccessToken(saJson)
-    const rows  = await fetchFromApi(token, siteUrl)
-    return { rows, isMock: false }
+    const db = svc()
+
+    const { data: meta } = await db
+      .from('seo_cache_meta')
+      .select('*')
+      .eq('singleton', 1)
+      .single()
+
+    if (meta?.batch_id && meta.fetched_at) {
+      const ageMs = Date.now() - new Date(meta.fetched_at as string).getTime()
+      if (ageMs < CACHE_TTL_MS) {
+        const { data: cached } = await db
+          .from('seo_suggestions')
+          .select('*')
+          .eq('batch_id', meta.batch_id)
+          .order('opportunity', { ascending: false })
+          .limit(500)
+
+        if (cached && cached.length > 0) {
+          type CachedRow = {
+            id: string; query: string; page: string; clicks: number; impressions: number
+            ctr: number; position: number; actress_name: string | null; actress_id: string | null
+            suggested_title: string | null; alt_titles: string[]; is_applied: boolean
+          }
+          return {
+            rows: (cached as CachedRow[]).map(r => ({
+              query:          r.query,
+              page:           r.page,
+              clicks:         r.clicks,
+              impressions:    r.impressions,
+              ctr:            r.ctr,
+              position:       r.position,
+              actressName:    r.actress_name ?? undefined,
+              actressId:      r.actress_id ?? undefined,
+              suggestedTitle: r.suggested_title ?? undefined,
+              altTitles:      r.alt_titles ?? [],
+              suggestionId:   r.id,
+              isApplied:      r.is_applied ?? false,
+            })),
+            isMock:   !(meta.is_real as boolean),
+            cachedAt: meta.fetched_at as string,
+          }
+        }
+      }
+    }
   } catch (err) {
-    console.error('[SearchConsole] API error, falling back to demo data:', err)
-    return { rows: MOCK_ROWS, isMock: true }
+    console.warn('[SC cache] read failed, falling back to direct API:', err)
   }
+
+  return getSearchConsoleData()
 }
 
 // ── 穴場抽出ユーティリティ ────────────────────────────────────────────────────
 
 export const TREASURE_CONFIG = {
   maxPosition:    15,   // 上位15位以内
-  minImpressions: 30,   // 月30インプレッション以上
+  minImpressions: 50,   // 月50インプレッション以上（旧30→50に変更）
   maxCtr:         0.01, // CTR 1%未満
   targetCtr:      0.03, // 健全なCTR基準（3%）
 } as const
 
-/** 穴場スコア: 健全CTR（3%）時の想定クリックと現在のクリックの差 */
+/** 穴場スコア: 健全CTR時の想定クリックと現在のクリックの差 */
 export function opportunityScore(row: SearchConsoleRow): number {
   return Math.round(row.impressions * TREASURE_CONFIG.targetCtr - row.clicks)
 }
@@ -198,19 +329,16 @@ export type ImprovementBadge = { label: string; color: string }
 export function getImprovementBadges(row: SearchConsoleRow): ImprovementBadge[] {
   const badges: ImprovementBadge[] = []
 
-  // 順位が良いのにCTRが壊滅的 → タイトルが魅力不足
   if (row.position <= 5 && row.ctr < 0.01) {
     badges.push({ label: 'タイトル要改善', color: '#ff5533' })
   } else if (row.position <= 10 && row.ctr < 0.01) {
     badges.push({ label: 'タイトル要改善', color: '#fbbf24' })
   }
 
-  // 大量露出なのにほぼ無視 → ディスクリプションが機能していない
   if (row.impressions >= 150 && row.ctr < 0.005) {
     badges.push({ label: 'meta description要改善', color: '#aa77ff' })
   }
 
-  // 超高インプ × 低CTR → 最優先対応
   if (row.impressions >= 400 && row.ctr < 0.01) {
     badges.push({ label: '🔥 強化優先', color: '#ff5533' })
   }
@@ -218,46 +346,133 @@ export function getImprovementBadges(row: SearchConsoleRow): ImprovementBadge[] 
   return badges
 }
 
-// ── タイトル改善案 ────────────────────────────────────────────────────────────
-// 実装済みの自動生成ロジック（actresses/[id]/page.tsx・articles/[slug]/page.tsx）と
-// フォーマットを揃えることで、SEO改善ボードの提案が現行タイトルと一貫する。
+// ── タイトル改善案（複数バリアント） ─────────────────────────────────────────
+// 検索クエリの intent を分類し、CTRを最大化するタイトル候補を3件返す。
+// actressName が渡された場合は query の先頭語推測より優先する。
 
-export function suggestTitle(query: string, page: string): string {
-  const month = new Date().getMonth() + 1
-  const name  = query.split(/\s/)[0]   // クエリ先頭語（女優名など）
+type Intent = 'sale' | 'video' | 'latest' | 'ranking' | 'profile' | 'generic'
 
-  const isActress = page.includes('/actresses/')
-  const isTop     = page === '/verity/' || page.endsWith('/verity')
-  const isActList = page.includes('/actresses') && !page.includes('/actresses/')
+function classifyIntent(query: string): Intent {
+  if (/セール|安い|100円|割引/.test(query))             return 'sale'
+  if (/動画|fanza|無料|sample|サンプル/i.test(query))   return 'video'
+  if (/最新|new|新作/i.test(query))                     return 'latest'
+  if (/ランキング|rank|人気|おすすめ/i.test(query))     return 'ranking'
+  if (/プロフィール|profile|生年月日|身長/i.test(query)) return 'profile'
+  return 'generic'
+}
 
-  // ── 女優ページ: 【N月最新】フォーマット ─────────────────────────────────────
+/**
+ * 3つのタイトル改善候補を返す（[0] がベスト）
+ */
+export function suggestTitles(
+  query:       string,
+  page:        string,
+  actressName?: string,
+): string[] {
+  const now    = new Date()
+  const month  = now.getMonth() + 1
+  const year   = now.getFullYear()
+  const name   = actressName ?? query.split(/[\s　]/)[0]
+  const intent = classifyIntent(query)
+
+  const isActress = page.includes('/actresses/') && !page.includes('/genres/')
+  const isActList = page.includes('/actresses') && !isActress
+  const isTop     = page === '/verity/' || page.endsWith('/verity') || page === '/'
+
+  // ── 女優個別ページ ────────────────────────────────────────────────────────
   if (isActress) {
-    if (/セール|安い|100円/.test(query))
-      return `【${month}月最新】${name}のセール作品まとめ！業界最安値でFANZA割引中【VERITY】`
-    if (/fanza|動画/.test(query))
-      return `【${month}月最新】${name}の動画・サンプルあり出演作一覧【VERITY】`
-    if (/最新/.test(query))
-      return `【${month}月最新】${name}の最新作！予約・発売情報まとめ【VERITY】`
-    // 作品一覧系クエリ・汎用 — 自動生成タイトルと完全一致
-    return `【${month}月最新】${name}の神作・出演動画まとめ！今すぐ使えるセール作品・無料サンプル情報【VERITY】`
+    switch (intent) {
+      case 'sale':
+        return [
+          `【${month}月セール中】${name}の作品が最大80%OFF！FANZAで今すぐ視聴 | VERITY`,
+          `${name} セール作品まとめ【${year}年${month}月版】期間限定割引中 | VERITY`,
+          `【期間限定】${name}出演作品セール中 — 無料サンプル動画つき | VERITY`,
+        ]
+      case 'video':
+        return [
+          `【${month}月最新】${name}の動画一覧 — 無料サンプルあり・HD画質 | VERITY`,
+          `${name} FANZAで視聴できる全動画まとめ【${year}年${month}月更新】`,
+          `${name}の動画・出演作品完全一覧 — 無料サンプルつき | VERITY`,
+        ]
+      case 'latest':
+        return [
+          `【${year}年${month}月最新作】${name}の新作・予約情報まとめ | VERITY`,
+          `${name} 最新作${year}年${month}月版 — 発売日・予約・サンプル一覧 | VERITY`,
+          `${name}の${month}月新作！予約受付中・発売スケジュール完全版 | VERITY`,
+        ]
+      case 'ranking':
+        return [
+          `【${month}月版】${name}の人気作品ランキング — ファンが選んだ神作TOP | VERITY`,
+          `${name} おすすめ作品ランキング【${year}年${month}月最新】 | VERITY`,
+          `${name}の代表作・神作ランキング — VERITYユーザー評価順 | VERITY`,
+        ]
+      case 'profile':
+        return [
+          `${name} プロフィール・出演全作品一覧【${year}年${month}月版】| VERITY`,
+          `${name}（AV女優）プロフィール・代表作・最新情報まとめ | VERITY`,
+          `【完全版】${name}のプロフィール・出演作品一覧 | VERITY`,
+        ]
+      default:
+        return [
+          `【${month}月最新】${name}の神作・出演動画まとめ！セール作品・無料サンプル情報 | VERITY`,
+          `${name} 出演全作品一覧【${year}年${month}月更新】FANZAで視聴可能 | VERITY`,
+          `${name}の作品一覧と人気ランキング【VERITY編集部が厳選・毎月更新】`,
+        ]
+    }
   }
 
-  // ── 女優一覧ページ ──────────────────────────────────────────────────────────
-  if (isActList) return `人気AV女優一覧【${month}月版】篠崎沙帆・河北彩花ほか | VERITY`
+  // ── 女優一覧ページ ────────────────────────────────────────────────────────
+  if (isActList) {
+    return [
+      `人気AV女優一覧【${year}年${month}月最新版】プロフィール・代表作まとめ | VERITY`,
+      `AV女優ランキング${year}年${month}月版 — FANZAで人気の女優を一挙紹介 | VERITY`,
+      `AV女優完全データベース${year}年版 — 1,100名超の出演作品・プロフィール | VERITY`,
+    ]
+  }
 
-  // ── トップページ ─────────────────────────────────────────────────────────────
+  // ── トップページ ──────────────────────────────────────────────────────────
   if (isTop) {
-    if (/ランキング/.test(query))
-      return `${query.replace(/\s*\d{4}年?\s*/, '')}【VERITYが厳選 ${month}月随時更新】`
-    if (/おすすめ/.test(query))
-      return `${query.replace(/\s*\d{4}年?\s*/, '')}【${month}月版】FANZAセール情報つき | VERITY`
-    return `${query} — VERITY公式まとめ【${month}月最新版】`
+    if (intent === 'ranking') {
+      return [
+        `AV女優人気ランキング【${year}年${month}月版】ユーザー評価 × FANZAデータ | VERITY`,
+        `【${month}月最新】AV女優おすすめランキング — VERITYが選ぶ厳選作品 | VERITY`,
+        `人気AV女優ランキング${year}年${month}月 — ファンが選ぶTOP女優 | VERITY`,
+      ]
+    }
+    return [
+      `${query} — VERITY公式まとめ【${year}年${month}月最新版】`,
+      `【${month}月最新】${query} | FANZAデータ × 編集部厳選 | VERITY`,
+      `${query}【${year}年版】VERITYがFANZAデータで徹底解説`,
+    ]
   }
 
-  // ── 記事ページ: buildSeoTitle と同一優先順位 ─────────────────────────────────
-  if (/VR/.test(query))
-    return `【🥽VR対応・脳汁炸裂】${query} - 圧倒的没入感のサンプル動画｜VERITY`
-  if (/100円|セール|安い/.test(query))
-    return `【限定割引：100円SALE】${query} - 業界最安値で今すぐ視聴｜VERITY`
-  return `【最速配信】${query} - 無料動画サンプル・出演女優情報｜VERITY`
+  // ── 記事ページ ────────────────────────────────────────────────────────────
+  if (/VR/i.test(query)) {
+    return [
+      `【VR対応】${query} — 圧倒的没入感・無料サンプルあり | VERITY`,
+      `【VR動画】${query} | HD画質・神作品 | VERITY`,
+      `${query}【VR最新作】無料サンプル動画あり | VERITY`,
+    ]
+  }
+  if (/100円|セール|安い/.test(query)) {
+    return [
+      `【限定割引】${query} — 今すぐ視聴可能・無料サンプルあり | VERITY`,
+      `${query}【期間限定SALE中】FANZAで最安値 | VERITY`,
+      `【${month}月SALE】${query} | VERITY`,
+    ]
+  }
+  return [
+    `【${month}月最新】${query} — 無料サンプル・出演女優情報 | VERITY`,
+    `${query}【${year}年${month}月版】FANZAで今すぐ視聴 | VERITY`,
+    `${query} | VERITYが厳選した神作品 | VERITY`,
+  ]
+}
+
+/** 後方互換 — 最優先候補を1件返す */
+export function suggestTitle(
+  query:       string,
+  page:        string,
+  actressName?: string,
+): string {
+  return suggestTitles(query, page, actressName)[0]
 }

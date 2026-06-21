@@ -4,14 +4,17 @@ export const revalidate = 0
 import type { Metadata } from 'next'
 import { ExternalLink, Search, TrendingUp, AlertTriangle, CheckCircle, Copy, Edit3, Eye } from 'lucide-react'
 import {
-  getSearchConsoleData,
+  getSearchConsoleDataCached,
   getImprovementBadges,
   isTreasure,
   opportunityScore,
   suggestTitle,
+  suggestTitles,
   TREASURE_CONFIG,
   type SearchConsoleRow,
 } from '@/lib/googleSearchConsole'
+import { RefreshButton } from './RefreshButton'
+import { ApplyButton }   from './ApplyButton'
 
 export const metadata: Metadata = { title: 'SEO改善ボード — VERITY Admin' }
 
@@ -79,7 +82,15 @@ function posColor(pos: number): string {
 
 // ── ページ ────────────────────────────────────────────────────────────────────
 export default async function SeoPage() {
-  const { rows, isMock } = await getSearchConsoleData()
+  const { rows, isMock, cachedAt } = await getSearchConsoleDataCached()
+
+  // ① isMockバッジ修正: 環境変数が設定済みなら接続済みとして扱う
+  // キャッシュが古い is_real=false を持っていても、認証情報があれば接続済みと判定する
+  const isApiConfigured = !!(
+    process.env.GOOGLE_OAUTH_REFRESH_TOKEN ||
+    process.env.GOOGLE_SC_SERVICE_ACCOUNT_JSON
+  )
+  const effectiveIsMock = isMock && !isApiConfigured
 
   // 穴場フィルタ → 機会スコア順
   const treasureRows: SearchConsoleRow[] = rows
@@ -116,7 +127,7 @@ export default async function SeoPage() {
                 <span className="rounded px-1.5 py-0.5 text-[8px] font-black tracking-widest uppercase" style={{ background: 'rgba(34,204,255,0.15)', color: '#22ccff', border: '1px solid rgba(34,204,255,0.3)' }}>
                   Search Console
                 </span>
-                {isMock && (
+                {effectiveIsMock && (
                   <span className="rounded-full px-2 py-0.5 text-[9px] font-bold" style={{ background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }}>
                     デモデータ（API未接続）
                   </span>
@@ -125,30 +136,68 @@ export default async function SeoPage() {
               <p className="text-[10px] text-[var(--text-muted)]">Google Search Console 直近30日 — 穴場キーワード抽出</p>
             </div>
           </div>
-          {/* 接続状態バッジ */}
-          <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: isMock ? 'rgba(251,191,36,0.06)' : 'rgba(170,255,0,0.06)', border: `1px solid ${isMock ? 'rgba(251,191,36,0.2)' : 'rgba(170,255,0,0.2)'}` }}>
-            {isMock
-              ? <AlertTriangle size={13} style={{ color: '#fbbf24' }} />
-              : <CheckCircle  size={13} style={{ color: '#aaff00' }} />}
-            <span className="text-[10px] font-bold" style={{ color: isMock ? '#fbbf24' : '#aaff00' }}>
-              {isMock ? 'モック（API Key未設定）' : 'Search Console 接続済み'}
-            </span>
+          {/* 接続状態バッジ + 更新ボタン */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 rounded-lg px-3 py-2" style={{ background: effectiveIsMock ? 'rgba(251,191,36,0.06)' : 'rgba(170,255,0,0.06)', border: `1px solid ${effectiveIsMock ? 'rgba(251,191,36,0.2)' : 'rgba(170,255,0,0.2)'}` }}>
+              {effectiveIsMock
+                ? <AlertTriangle size={13} style={{ color: '#fbbf24' }} />
+                : <CheckCircle  size={13} style={{ color: '#aaff00' }} />}
+              <div>
+                <span className="block text-[10px] font-bold" style={{ color: effectiveIsMock ? '#fbbf24' : '#aaff00' }}>
+                  {effectiveIsMock ? 'モック（API Key未設定）' : 'Search Console 接続済み'}
+                </span>
+                {cachedAt && (
+                  <span className="block text-[9px] text-[var(--text-muted)]">
+                    最終更新: {new Date(cachedAt).toLocaleString('ja-JP', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                  </span>
+                )}
+              </div>
+            </div>
+            <RefreshButton />
           </div>
         </div>
         <div className="h-px w-full" style={{ background: 'linear-gradient(to right, #22ccff 0%, rgba(34,204,255,0.4) 25%, rgba(34,204,255,0.1) 60%, transparent 100%)' }} />
       </div>
 
       {/* ── API接続ガイド（モック時のみ） ─────────────────────────────────── */}
-      {isMock && (
-        <div className="rounded-xl p-5 space-y-3" style={{ border: '1px solid rgba(251,191,36,0.25)', background: 'rgba(251,191,36,0.04)' }}>
-          <p className="text-xs font-bold" style={{ color: '#fbbf24' }}>Google Search Console API を接続するには</p>
-          <ol className="space-y-1.5 text-[11px] text-[var(--text-muted)] list-decimal list-inside">
-            <li>Google Cloud Console でサービスアカウントを作成し、JSONキーをダウンロード</li>
-            <li>Search Console でそのサービスアカウントのメールアドレスを「閲覧者」として追加</li>
-            <li>.env.local に以下の2変数を設定して再起動</li>
-          </ol>
-          <pre className="rounded-lg p-3 text-[10px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.5)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.15)' }}>{`GOOGLE_SC_SERVICE_ACCOUNT_JSON='{"type":"service_account","client_email":"...","private_key":"-----BEGIN PRIVATE KEY-----\\n...\\n-----END PRIVATE KEY-----\\n",...}'
+      {effectiveIsMock && (
+        <div className="rounded-xl p-5 space-y-4" style={{ border: '1px solid rgba(251,191,36,0.25)', background: 'rgba(251,191,36,0.04)' }}>
+          <div className="flex items-center gap-2">
+            <AlertTriangle size={14} style={{ color: '#fbbf24' }} />
+            <p className="text-xs font-bold" style={{ color: '#fbbf24' }}>Search Console API を接続するには（OAuth2方式・SA登録不要）</p>
+          </div>
+
+          {/* Step 1 */}
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-bold text-[var(--text)]">Step 1 — Google Cloud Console でOAuth2クライアントを作成</p>
+            <ol className="space-y-1 text-[10px] text-[var(--text-muted)] list-decimal list-inside leading-relaxed">
+              <li><a href="https://console.cloud.google.com/apis/library/searchconsole.googleapis.com" target="_blank" rel="noopener" className="underline" style={{ color: '#22ccff' }}>Search Console API</a> を有効化</li>
+              <li>「認証情報」→「OAuth 2.0 クライアント ID を作成」→ 種類: <strong className="text-[var(--text)]">ウェブアプリケーション</strong></li>
+              <li>承認済みリダイレクト URI に <code className="rounded px-1" style={{ background: 'rgba(0,0,0,0.4)', color: '#aaff00' }}>http://localhost:4000/callback</code> を追加して保存</li>
+              <li>「OAuth 同意画面」→ テストユーザーに自分のGmailを追加（未公開アプリの場合）</li>
+            </ol>
+          </div>
+
+          {/* Step 2 */}
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-bold text-[var(--text)]">Step 2 — スクリプトを実行してリフレッシュトークンを取得</p>
+            <p className="text-[10px] text-[var(--text-muted)]">PowerShell で以下を実行すると、ブラウザが開いてGoogleログイン画面が表示されます:</p>
+            <pre className="overflow-x-auto rounded-lg p-3 text-[10px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.5)', color: '#aaff00', border: '1px solid rgba(170,255,0,0.15)' }}>{`# PowerShell
+$env:GOOGLE_OAUTH_CLIENT_ID="xxxxxxxxxx.apps.googleusercontent.com"
+$env:GOOGLE_OAUTH_CLIENT_SECRET="GOCSPX-xxxxxxxxxxxx"
+node scripts/get-gsc-token.mjs`}</pre>
+            <p className="text-[10px] text-[var(--text-muted)]">Search Console のオーナーアカウントでログインすると、<strong className="text-[var(--text)]">4行の環境変数がターミナルとブラウザに表示</strong>されます。</p>
+          </div>
+
+          {/* Step 3 */}
+          <div className="space-y-1.5">
+            <p className="text-[11px] font-bold text-[var(--text)]">Step 3 — .env.local に貼り付けて再起動</p>
+            <pre className="overflow-x-auto rounded-lg p-3 text-[10px] leading-relaxed" style={{ background: 'rgba(0,0,0,0.5)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.15)' }}>{`GOOGLE_OAUTH_CLIENT_ID=xxxxxxxxxx.apps.googleusercontent.com
+GOOGLE_OAUTH_CLIENT_SECRET=GOCSPX-xxxxxxxxxxxx
+GOOGLE_OAUTH_REFRESH_TOKEN=1//xxxxxxxxxxxxxxxx
 GOOGLE_SC_SITE_URL=https://verity-official.com/`}</pre>
+            <p className="text-[10px] text-[var(--text-muted)]">貼り付け後 <code className="rounded px-1" style={{ background: 'rgba(0,0,0,0.4)' }}>npm run dev</code> を再起動 → このページを再読み込み → 「データ更新」ボタンを押す</p>
+          </div>
         </div>
       )}
 
@@ -204,13 +253,18 @@ GOOGLE_SC_SITE_URL=https://verity-official.com/`}</pre>
         ) : (
           <div className="space-y-2">
             {treasureRows.map((row, i) => {
-              const badges   = getImprovementBadges(row)
-              const oScore   = opportunityScore(row)
-              const pageInfo = classifyPage(row.page)
-              const editUrl  = buildEditUrl(row.page)
-              const pageUrl  = buildPageUrl(row.page)
-              const suggest  = suggestTitle(row.query, row.page)
-              const isTop3   = i < 3
+              const badges    = getImprovementBadges(row)
+              const oScore    = opportunityScore(row)
+              const pageInfo  = classifyPage(row.page)
+              const editUrl   = buildEditUrl(row.page)
+              const pageUrl   = buildPageUrl(row.page)
+              // ② 3バリアント保証: キャッシュにaltTitlesがあればそれを使い、なければ都度生成
+              const allVariants = (row.altTitles && row.altTitles.length > 0)
+                ? [row.suggestedTitle ?? suggestTitle(row.query, row.page, row.actressName), ...row.altTitles]
+                : suggestTitles(row.query, row.page, row.actressName)
+              const suggest   = allVariants[0]
+              const altTitles = allVariants.slice(1)
+              const isTop3    = i < 3
 
               return (
                 <div
@@ -288,21 +342,53 @@ GOOGLE_SC_SITE_URL=https://verity-official.com/`}</pre>
                   </div>
 
                   {/* タイトル改善提案 + アクションバー */}
-                  <div className="px-5 py-3 flex flex-wrap items-start gap-3 border-t border-[var(--border)]"
+                  <div className="px-5 py-3 space-y-3 border-t border-[var(--border)]"
                     style={{ background: 'rgba(0,0,0,0.2)' }}>
 
-                    {/* 改善提案タイトル */}
-                    <div className="flex-1 min-w-0 space-y-1">
+                    {/* タイトル候補リスト（各バリアントにインライン適用ボタン） */}
+                    <div className="space-y-2">
                       <p className="text-[8px] font-bold uppercase tracking-widest" style={{ color: '#22ccff' }}>
                         タイトル改善案
+                        {row.actressName && (
+                          <span className="ml-2 normal-case font-normal opacity-60">
+                            女優名: {row.actressName}
+                          </span>
+                        )}
                       </p>
-                      <p className="text-[11px] leading-snug text-[var(--text-muted)] italic">
-                        「{suggest}」
-                      </p>
+                      {allVariants.map((variantTitle, vi) => (
+                        <div key={vi} className="flex items-start gap-2">
+                          <span className="shrink-0 w-4 text-[10px] font-bold leading-snug mt-0.5" style={{ color: '#22ccff' }}>
+                            {['①', '②', '③'][vi]}
+                          </span>
+                          <p
+                            className="flex-1 min-w-0 leading-snug"
+                            style={{
+                              fontSize:   vi === 0 ? '11px' : '10px',
+                              fontWeight: vi === 0 ? 500 : 400,
+                              color:      vi === 0 ? '#f0f0f8' : 'var(--text-muted)',
+                              fontStyle:  vi > 0 ? 'italic' : 'normal',
+                            }}
+                          >
+                            {variantTitle}
+                          </p>
+                          {/* actressId があればキャッシュ有無に関わらずボタンを表示 */}
+                          {pageInfo.type === 'actress' && pageInfo.actressId && (
+                            <div className="shrink-0">
+                              <ApplyButton
+                                suggestionId={row.suggestionId}
+                                actressId={pageInfo.actressId!}
+                                title={variantTitle}
+                                isApplied={row.isApplied && vi === 0}
+                              />
+                            </div>
+                          )}
+                        </div>
+                      ))}
                     </div>
 
-                    {/* アクションリンク群 */}
-                    <div className="flex items-center gap-2 shrink-0">
+                    {/* アクションバー */}
+                    <div className="flex flex-wrap items-center gap-2">
+
                       {/* ページを開く */}
                       <a
                         href={pageUrl}
@@ -323,25 +409,11 @@ GOOGLE_SC_SITE_URL=https://verity-official.com/`}</pre>
                           style={{ background: 'rgba(170,255,0,0.1)', border: '1px solid rgba(170,255,0,0.25)', color: '#aaff00' }}
                         >
                           <Edit3 size={11} />
-                          タイトルを最適化
+                          記事タイトル編集
                         </a>
                       )}
 
-                      {/* 女優ページ向け（DB編集が必要な旨を示す） */}
-                      {pageInfo.type === 'actress' && !editUrl && (
-                        <a
-                          href={`/verity/actresses/${pageInfo.actressId}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-[10px] font-bold transition-all hover:brightness-110"
-                          style={{ background: 'rgba(251,191,36,0.08)', border: '1px solid rgba(251,191,36,0.2)', color: '#fbbf24' }}
-                        >
-                          <Copy size={11} />
-                          SEOメタをSupabaseで編集
-                        </a>
-                      )}
-
-                      {/* Google Search Console へのリンク */}
+                      {/* Google Search Console */}
                       <a
                         href={`https://search.google.com/search-console/performance/search-analytics?resource_id=${encodeURIComponent(SITE_ORIGIN + '/')}&query=${encodeURIComponent(row.query)}`}
                         target="_blank"
