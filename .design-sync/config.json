@@ -1,0 +1,7 @@
+{
+  "projectId": "52dfaeb4-fb3c-47b0-8c5b-648fdf95eca3",
+  "projectName": "VERITY Design System",
+  "shape": "tokens-only",
+  "scope": "tokens + conventions (Next.js app, off-script layout — no component bundle)",
+  "readmeHeader": ".design-sync/conventions.md"
+}

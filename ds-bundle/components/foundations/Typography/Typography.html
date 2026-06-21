@@ -1,0 +1,27 @@
+<!-- @dsCard group="Foundations" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VERITY — Typography</title>
+<style>
+  :root{--bg:#0a0a0f;--surface:#12121a;--border:#2a2a3a;--text:#f0f0f8;--text-muted:#8888aa;--magenta:#E20074}
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:'Geist',system-ui,sans-serif;padding:28px}
+  h1{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-muted);margin-bottom:20px}
+  .row{border-bottom:1px solid var(--border);padding:14px 0;display:flex;align-items:baseline;gap:16px}
+  .row:last-child{border:0}
+  .tag{font-size:11px;color:var(--text-muted);font-family:'Geist Mono',monospace;width:130px;flex:none}
+  .badge{display:inline-flex;align-items:center;border:1px solid color-mix(in srgb,var(--magenta) 30%,transparent);background:color-mix(in srgb,var(--magenta) 10%,transparent);color:var(--magenta);border-radius:999px;padding:4px 12px;font-size:10px;font-weight:900;letter-spacing:.18em;text-transform:uppercase}
+</style>
+</head>
+<body>
+  <h1>VERITY · Type Scale (Geist)</h1>
+  <div class="row"><span class="tag">badge / 10px 900</span><span class="badge">Today's Hero</span></div>
+  <div class="row"><span class="tag">title / 17px 700</span><span style="font-size:17px;font-weight:700;line-height:1.6">作品タイトルはここに入ります（最大3行で省略）</span></div>
+  <div class="row"><span class="tag">body / 14px 700</span><span style="font-size:14px;font-weight:700;color:var(--magenta)">女優名（リンク・マゼンタ）</span></div>
+  <div class="row"><span class="tag">meta / 10–11px</span><span style="font-size:11px;color:var(--text-muted)">ジャンルタグ・メタ情報・キャプション</span></div>
+  <div class="row"><span class="tag">mono</span><span style="font-family:'Geist Mono',monospace;font-size:13px;color:var(--text-muted)">2026-06-21 · #E20074</span></div>
+</body>
+</html>

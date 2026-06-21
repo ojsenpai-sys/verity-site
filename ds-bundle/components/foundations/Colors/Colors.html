@@ -1,0 +1,38 @@
+<!-- @dsCard group="Foundations" -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VERITY — Colors</title>
+<style>
+  :root{
+    --magenta:#E20074;--magenta-dim:#b30059;--bg:#0a0a0f;--surface:#12121a;
+    --surface-2:#1a1a26;--border:#2a2a3a;--text:#f0f0f8;--text-muted:#8888aa;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:'Geist',system-ui,sans-serif;padding:28px}
+  h1{font-size:13px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-muted);margin-bottom:18px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));gap:14px}
+  .sw{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:var(--surface)}
+  .chip{height:72px}
+  .meta{padding:10px 12px}
+  .name{font-size:12px;font-weight:700}
+  .hex{font-size:11px;color:var(--text-muted);font-family:'Geist Mono',monospace;margin-top:2px}
+  .var{font-size:10px;color:var(--text-muted);font-family:'Geist Mono',monospace;margin-top:1px}
+</style>
+</head>
+<body>
+  <h1>VERITY · Color Tokens</h1>
+  <div class="grid">
+    <div class="sw"><div class="chip" style="background:#E20074"></div><div class="meta"><div class="name">Magenta</div><div class="hex">#E20074</div><div class="var">--magenta</div></div></div>
+    <div class="sw"><div class="chip" style="background:#b30059"></div><div class="meta"><div class="name">Magenta dim</div><div class="hex">#b30059</div><div class="var">--magenta-dim</div></div></div>
+    <div class="sw"><div class="chip" style="background:#0a0a0f"></div><div class="meta"><div class="name">Background</div><div class="hex">#0a0a0f</div><div class="var">--bg</div></div></div>
+    <div class="sw"><div class="chip" style="background:#12121a"></div><div class="meta"><div class="name">Surface</div><div class="hex">#12121a</div><div class="var">--surface</div></div></div>
+    <div class="sw"><div class="chip" style="background:#1a1a26"></div><div class="meta"><div class="name">Surface 2</div><div class="hex">#1a1a26</div><div class="var">--surface-2</div></div></div>
+    <div class="sw"><div class="chip" style="background:#2a2a3a"></div><div class="meta"><div class="name">Border</div><div class="hex">#2a2a3a</div><div class="var">--border</div></div></div>
+    <div class="sw"><div class="chip" style="background:#f0f0f8"></div><div class="meta"><div class="name">Text</div><div class="hex">#f0f0f8</div><div class="var">--text</div></div></div>
+    <div class="sw"><div class="chip" style="background:#8888aa"></div><div class="meta"><div class="name">Text muted</div><div class="hex">#8888aa</div><div class="var">--text-muted</div></div></div>
+  </div>
+</body>
+</html>

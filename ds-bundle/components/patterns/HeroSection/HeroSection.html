@@ -1,0 +1,82 @@
+<!-- @dsCard group="Patterns" -->
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VERITY — HeroSection (reference)</title>
+<style>
+  :root{
+    --magenta:#E20074;--bg:#0a0a0f;--surface:#12121a;--surface-2:#1a1a26;
+    --border:#2a2a3a;--text:#f0f0f8;--text-muted:#8888aa;
+  }
+  *{box-sizing:border-box;margin:0}
+  body{background:var(--bg);color:var(--text);font-family:'Geist',system-ui,sans-serif;padding:28px;display:flex;flex-direction:column;gap:22px}
+  .label{font-size:11px;letter-spacing:.18em;text-transform:uppercase;color:var(--text-muted)}
+
+  /* Hero card shell — rounded-2xl border surface, top accent line */
+  .hero{position:relative;overflow:hidden;border-radius:16px;border:1px solid var(--border);background:var(--surface)}
+  .accent{position:absolute;inset:0 0 auto 0;height:1px}
+  .hero.magenta .accent{background:linear-gradient(90deg,rgba(226,0,116,.6),rgba(251,191,36,.4),transparent)}
+  .hero.amber   .accent{background:linear-gradient(90deg,rgba(251,191,36,.8),rgba(251,146,60,.5),transparent)}
+  .row{position:relative;display:flex;gap:32px;align-items:center;padding:28px 36px}
+
+  /* Cover placeholder, aspect 2:3 */
+  .cover{flex:none;width:180px;aspect-ratio:2/3;border-radius:12px;border:1px dashed var(--border);
+    background:var(--surface-2);display:flex;align-items:center;justify-content:center;
+    color:var(--text-muted);font-size:12px;letter-spacing:.1em;box-shadow:0 12px 48px rgba(0,0,0,.7)}
+
+  .content{min-width:0;display:flex;flex-direction:column;gap:14px}
+  .badge{width:fit-content;display:inline-flex;align-items:center;gap:6px;border-radius:999px;
+    padding:5px 12px;font-size:10px;font-weight:900;letter-spacing:.18em;text-transform:uppercase}
+  .badge.magenta{border:1px solid rgba(226,0,116,.3);background:rgba(226,0,116,.1);color:var(--magenta)}
+  .badge.amber{border:1px solid rgba(251,191,36,.4);background:rgba(251,191,36,.1);color:#fcd34d}
+  .countdown{font-family:'Geist Mono',monospace;font-size:11px;color:#fcd34d;margin-left:8px}
+  .actress{font-size:14px;font-weight:700;color:var(--magenta)}
+  .title{font-size:17px;font-weight:700;line-height:1.6;max-width:46ch}
+  .tags{display:flex;gap:6px;flex-wrap:wrap}
+  .tag{border-radius:999px;border:1px solid var(--border);padding:2px 10px;font-size:10px;color:var(--text-muted)}
+  .cta{width:fit-content;margin-top:4px;display:inline-flex;align-items:center;gap:8px;border-radius:999px;
+    padding:10px 24px;font-size:14px;font-weight:700;color:#fff;border:0;cursor:default}
+  .cta.magenta{background:linear-gradient(90deg,var(--magenta),#e11d48);box-shadow:0 0 24px rgba(226,0,116,.4)}
+  .cta.amber{background:linear-gradient(90deg,#f59e0b,#f97316);box-shadow:0 0 24px rgba(245,158,11,.4)}
+</style>
+</head>
+<body>
+  <!-- Variant A: Today's Hero (magenta) -->
+  <div>
+    <div class="label" style="margin-bottom:10px">Variant A · Today's Hero</div>
+    <div class="hero magenta">
+      <div class="accent"></div>
+      <div class="row">
+        <div class="cover">COVER 2:3</div>
+        <div class="content">
+          <span class="badge magenta">🔥 Today's Hero</span>
+          <span class="actress">女優名（クリック可）</span>
+          <h2 class="title">作品タイトルはここに入ります。長い場合は3行でクランプされます。</h2>
+          <div class="tags"><span class="tag">ジャンル</span><span class="tag">タグ</span><span class="tag">カテゴリ</span><span class="tag">VR</span></div>
+          <button class="cta magenta">▶ FANZAで今すぐ観る ↗</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Variant B: Today's Flash (amber, time-sensitive) -->
+  <div>
+    <div class="label" style="margin-bottom:10px">Variant B · Today's Flash</div>
+    <div class="hero amber">
+      <div class="accent"></div>
+      <div class="row">
+        <div class="cover">COVER 2:3</div>
+        <div class="content">
+          <span class="badge amber">⚡ Today's Flash <span class="countdown">残り 04:21:09</span></span>
+          <span class="actress">女優名（クリック可）</span>
+          <h2 class="title">24時間限定で注目される作品。深夜0時（JST）にリセット。</h2>
+          <div class="tags"><span class="tag">ジャンル</span><span class="tag">タグ</span><span class="tag">人気急上昇</span></div>
+          <button class="cta amber">▶ FANZAで今すぐ観る ↗</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

@@ -1,0 +1,27 @@
+/* VERITY color tokens — source of truth: src/app/verity/globals.css (:root)
+ * Dark theme, magenta primary accent. Reference these as var(--token) anywhere,
+ * or as Tailwind arbitrary values e.g. bg-[var(--surface)] text-[var(--magenta)].
+ * Opacity modifiers work too: border-[var(--magenta)]/30, bg-[var(--magenta)]/10. */
+:root {
+  /* Brand accent */
+  --magenta:      #E20074;  /* primary accent — CTAs, links, focus, "Today's Hero" */
+  --magenta-dim:  #b30059;  /* pressed / darker accent */
+
+  /* Surfaces (back to front) */
+  --bg:           #0a0a0f;  /* page background */
+  --surface:      #12121a;  /* cards, panels */
+  --surface-2:    #1a1a26;  /* raised / hovered surface */
+  --border:       #2a2a3a;  /* hairline borders, dividers */
+
+  /* Text */
+  --text:         #f0f0f8;  /* primary text */
+  --text-muted:   #8888aa;  /* secondary / meta text */
+}
+
+/* Accent palette used for HeroSection variants (standard Tailwind hues — listed
+ * here so designs know the brand's secondary-accent vocabulary):
+ *   Flash / urgency : amber-400 / orange-500   (e.g. from-amber-500 to-orange-500)
+ *   CTA gradient end: rose-600                 (e.g. from-[var(--magenta)] to-rose-600)
+ *   VR badge        : violet-300/400/500
+ *   DVD badge       : blue-300/400/500
+ *   Ranking crown   : amber-400 (see neon-crown-pulse in effects.css) */
