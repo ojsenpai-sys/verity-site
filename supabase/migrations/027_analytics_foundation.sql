@@ -126,16 +126,44 @@ CREATE INDEX        tag_popularity_30d    ON public.tag_popularity (score_30d DE
 CREATE INDEX        tag_popularity_rising ON public.tag_popularity (rising DESC NULLS LAST);
 GRANT SELECT ON public.tag_popularity TO anon, authenticated, service_role;
 
--- ── 5. content_popularity / actress_popularity（MVを読むVIEW・REFRESH不要） ────────
-CREATE OR REPLACE VIEW public.content_popularity AS
-SELECT s.external_id, a.title, a.slug, a.image_url, s.score_7d, s.score_30d, s.score_all
-FROM public.article_scores s JOIN public.articles a ON a.external_id = s.external_id;
+-- ── 5. content_popularity / actress_popularity（自己完結MV: user_events から直接集計） ──
+-- 023(article_scores/actress_scores)の適用状態に依存しないよう、本ファイル内で自立集計する。
+DROP MATERIALIZED VIEW IF EXISTS public.content_popularity CASCADE;
+CREATE MATERIALIZED VIEW public.content_popularity AS
+WITH agg AS (
+  SELECT target_id AS cid,
+    COALESCE(SUM(CASE event_name WHEN 'favorite_work' THEN 8 WHEN 'fanza_click' THEN 5 WHEN 'video_view' THEN 2 WHEN 'page_view' THEN 1 ELSE 0 END) FILTER (WHERE created_at >= now()-interval '7 days'),0)  AS score_7d,
+    COALESCE(SUM(CASE event_name WHEN 'favorite_work' THEN 8 WHEN 'fanza_click' THEN 5 WHEN 'video_view' THEN 2 WHEN 'page_view' THEN 1 ELSE 0 END) FILTER (WHERE created_at >= now()-interval '30 days'),0) AS score_30d,
+    COALESCE(SUM(CASE event_name WHEN 'favorite_work' THEN 8 WHEN 'fanza_click' THEN 5 WHEN 'video_view' THEN 2 WHEN 'page_view' THEN 1 ELSE 0 END),0) AS score_all
+  FROM public.user_events
+  WHERE target_type='article' AND target_id IS NOT NULL
+    AND event_name IN ('favorite_work','fanza_click','video_view','page_view')
+  GROUP BY target_id
+)
+SELECT g.cid AS external_id, a.title, a.slug, a.image_url, g.score_7d, g.score_30d, g.score_all
+FROM agg g JOIN public.articles a ON a.external_id = g.cid
+WHERE a.is_active = true;
+CREATE UNIQUE INDEX content_popularity_pk  ON public.content_popularity (external_id);
+CREATE INDEX        content_popularity_30d ON public.content_popularity (score_30d DESC NULLS LAST);
 GRANT SELECT ON public.content_popularity TO service_role;
 
-CREATE OR REPLACE VIEW public.actress_popularity AS
-SELECT s.external_id, ac.name, ac.image_url, s.score_7d, s.score_30d, s.score_all
-FROM public.actress_scores s JOIN public.actresses ac ON ac.external_id = s.external_id
-WHERE ac.is_active;
+DROP MATERIALIZED VIEW IF EXISTS public.actress_popularity CASCADE;
+CREATE MATERIALIZED VIEW public.actress_popularity AS
+WITH agg AS (
+  SELECT target_id AS ext_id,
+    COALESCE(SUM(CASE event_name WHEN 'fanza_click' THEN 5 WHEN 'video_view' THEN 2 WHEN 'actress_view' THEN 2 WHEN 'favorite_actress' THEN 8 WHEN 'page_view' THEN 1 ELSE 0 END) FILTER (WHERE created_at >= now()-interval '7 days'),0)  AS score_7d,
+    COALESCE(SUM(CASE event_name WHEN 'fanza_click' THEN 5 WHEN 'video_view' THEN 2 WHEN 'actress_view' THEN 2 WHEN 'favorite_actress' THEN 8 WHEN 'page_view' THEN 1 ELSE 0 END) FILTER (WHERE created_at >= now()-interval '30 days'),0) AS score_30d,
+    COALESCE(SUM(CASE event_name WHEN 'fanza_click' THEN 5 WHEN 'video_view' THEN 2 WHEN 'actress_view' THEN 2 WHEN 'favorite_actress' THEN 8 WHEN 'page_view' THEN 1 ELSE 0 END),0) AS score_all
+  FROM public.user_events
+  WHERE target_type='actress' AND target_id IS NOT NULL
+    AND event_name IN ('fanza_click','video_view','actress_view','favorite_actress','page_view')
+  GROUP BY target_id
+)
+SELECT g.ext_id AS external_id, ac.name, ac.image_url, g.score_7d, g.score_30d, g.score_all
+FROM agg g JOIN public.actresses ac ON ac.external_id = g.ext_id
+WHERE ac.is_active = true;
+CREATE UNIQUE INDEX actress_popularity_pk  ON public.actress_popularity (external_id);
+CREATE INDEX        actress_popularity_30d ON public.actress_popularity (score_30d DESC NULLS LAST);
 GRANT SELECT ON public.actress_popularity TO service_role;
 
 -- ── 6. user_preference_profiles（行動学習・将来reco土台。診断genre_scoresとは別物） ──
@@ -191,6 +219,8 @@ BEGIN
     PERFORM public.upsert_daily_metrics(v_today - 1, v_today);   -- 直近2日のみ（過去不変・低コスト）
     REFRESH MATERIALIZED VIEW public.user_activity_summary;
     REFRESH MATERIALIZED VIEW public.tag_popularity;
+    REFRESH MATERIALIZED VIEW public.content_popularity;
+    REFRESH MATERIALIZED VIEW public.actress_popularity;
     UPDATE cron_status_runs SET finished_at=now(), status='ok',
       duration_ms=EXTRACT(MILLISECONDS FROM clock_timestamp()-t0)::int WHERE id=v_id;
   EXCEPTION WHEN OTHERS THEN
