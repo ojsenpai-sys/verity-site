@@ -1,11 +1,17 @@
 import { Shield } from 'lucide-react'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { isAdminEmail } from '@/lib/adminAuth'
 import AdminNav from './AdminNav'
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
+
+  // 管理者限定（OTPは任意メールに届くため、許可メールで明示ゲート）
+  if (!user) redirect('/verity/login?next=/verity/admin')
+  if (!isAdminEmail(user.email)) redirect('/verity')
 
   return (
     <div className="flex min-h-[calc(100vh-120px)]">

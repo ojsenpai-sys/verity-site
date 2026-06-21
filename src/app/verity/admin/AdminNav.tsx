@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Newspaper, FilePlus, Settings,
-  Activity, ChevronRight, Radio, Search, Zap,
+  Activity, ChevronRight, Radio, Search, Zap, BarChart3,
 } from 'lucide-react'
 
 type NavItem = {
@@ -27,6 +27,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
   {
     title: 'インテリジェンス',
     items: [
+      { href: '/verity/admin/analytics', label: 'Analytics',   Icon: BarChart3, live: true },
       { href: '/verity/admin/dashboard', label: 'データ分析',  Icon: Activity, live: true },
       { href: '/verity/admin/realtime',  label: 'GA4 Debug',    Icon: Zap, live: true },
       { href: '/verity/admin/seo',       label: 'SEO改善ボード', Icon: Search },
