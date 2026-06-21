@@ -25,8 +25,14 @@ import { LpContributionSection } from '@/components/LpContributionSection'
 import { FanzaPointNudge } from '@/components/FanzaPointNudge'
 import { WeekTop3Section } from '@/components/WeekTop3Section'
 import { LpNudgeBar } from '@/components/LpNudgeBar'
-import { LpClickFeedback } from '@/components/LpClickFeedback'
 import { MakerBadgesSection } from '@/components/MakerBadgesSection'
+import { MinamoMemorialBanner } from '@/components/MinamoMemorialBanner'
+import { FastestNewReleases } from '@/components/FastestNewReleases'
+import { SpotlightCard } from '@/components/SpotlightCard'
+import { TopSearchBar } from '@/components/TopSearchBar'
+import { TrendingNowSection } from '@/components/TrendingNowSection'
+import { TrendingWidget } from '@/components/TrendingWidget'
+import { FanzaChijoSaleBanner } from '@/components/FanzaChijoSaleBanner'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -163,9 +169,11 @@ async function getThisWeekArticles(
 async function UpcomingSection({
   filters,
   top100Names,
+  hotTags,
 }: {
   filters: FilterParams
   top100Names: string[]
+  hotTags?: ReadonlySet<string>
 }) {
   const articles = await getUpcomingArticles(filters, top100Names)
   if (!articles.length) return null
@@ -183,7 +191,7 @@ async function UpcomingSection({
       </div>
       <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
         {articles.map((article) => (
-          <ArticleCard key={article.id} article={article} />
+          <ArticleCard key={article.id} article={article} hotTags={hotTags} />
         ))}
       </div>
     </section>
@@ -194,10 +202,12 @@ async function ThisWeekGrid({
   filters,
   page,
   top100Names,
+  hotTags,
 }: {
   filters: FilterParams
   page: number
   top100Names: string[]
+  hotTags?: ReadonlySet<string>
 }) {
   const articles = await getThisWeekArticles(filters, page, top100Names)
 
@@ -213,7 +223,7 @@ async function ThisWeekGrid({
   return (
     <>
       {articles.map((article) => (
-        <ArticleCard key={article.id} article={article} />
+        <ArticleCard key={article.id} article={article} hotTags={hotTags} />
       ))}
     </>
   )
@@ -457,10 +467,16 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
   const { categories, sources, tags, actresses } = await getFilterOptions()
   const top100Names = actresses.slice(0, 100).map((a) => a.name)
+  // ホットタグ: getFilterOptions が出現頻度降順で返す上位 8 件をジャンル熱量シグナルとして
+  // 全 ArticleCard に伝搬し、emerald グロー強調で回遊起点を作る。
+  const hotTags: ReadonlySet<string> = new Set(tags.slice(0, 8))
 
   return (
     <>
     <div className="mx-auto max-w-7xl px-4 py-8 space-y-10">
+
+      {/* ── -1. クイック検索バー ─────────────────────────────────────────── */}
+      <TopSearchBar />
 
       {/* ── 0. Today's Hero（本日の最イチ推し 全幅バナー） ──────────────── */}
       <section id="hero">
@@ -469,7 +485,48 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </Suspense>
       </section>
 
-      {/* ── 0b. LP ナッジバー（未ログイン: 消滅警告 / ログイン: LP残高） */}
+      {/* ── 0b. MINAMOメモリアルバナー（引退発表特設） ────────────────── */}
+      <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+        <MinamoMemorialBanner />
+      </Suspense>
+
+      {/* ── 0b-2. 最新作最速更新情報（本中 新着5作品） ───────────────── */}
+      <section id="fastest-new-releases">
+        <Suspense fallback={
+          <div className="space-y-5">
+            <div className="h-7 w-48 animate-pulse rounded bg-[var(--surface)]" />
+            <div className="flex gap-4 overflow-x-auto sm:grid sm:grid-cols-3 lg:grid-cols-5">
+              {Array.from({ length: 5 }).map((_, i) => (
+                <div key={i} className="shrink-0 w-44 sm:w-auto rounded-xl bg-[var(--surface)] animate-pulse">
+                  <div className="aspect-[3/2]" />
+                  <div className="p-3 space-y-2">
+                    <div className="h-3 w-full rounded bg-[var(--surface-2)]" />
+                    <div className="h-3 w-2/3 rounded bg-[var(--surface-2)]" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        }>
+          <FastestNewReleases />
+        </Suspense>
+      </section>
+
+      {/* ── 0b-3. VERITY Spotlight（最新編集特集バナー 2連） ─────────── */}
+      <section id="spotlight">
+        <Suspense
+          fallback={
+            <div className="space-y-4">
+              <div className="h-52 sm:h-60 animate-pulse rounded-2xl bg-[var(--surface)]" />
+              <div className="h-52 sm:h-60 animate-pulse rounded-2xl bg-[var(--surface)]" />
+            </div>
+          }
+        >
+          <SpotlightCard />
+        </Suspense>
+      </section>
+
+      {/* ── 0c. LP ナッジバー（未ログイン: 消滅警告 / ログイン: LP残高） */}
       <Suspense>
         <LpNudgeBar />
       </Suspense>
@@ -478,6 +535,20 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       <section id="popular-ranking-top">
         <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-[var(--surface)]" />}>
           <PopularActressRankingSection />
+        </Suspense>
+      </section>
+
+      {/* ── 0d. TRENDING NOW — 急上昇ランキング ─────────────────────────── */}
+      <section id="trending-now">
+        <Suspense fallback={<div className="h-56 animate-pulse rounded-xl bg-[var(--surface)]" />}>
+          <TrendingNowSection />
+        </Suspense>
+      </section>
+
+      {/* ── Phase 4-5: 今話題ウィジェット（作品/女優/ジャンル） ──────────── */}
+      <section id="trending-widget-wrap">
+        <Suspense fallback={<div className="h-44 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <TrendingWidget />
         </Suspense>
       </section>
 
@@ -530,10 +601,17 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </Suspense>
       </section>
 
+      {/* ── 4b. 痴女・小悪魔 50%OFFセール特集 ──────────────────────────── */}
+      <section id="fanza-chijo-sale">
+        <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <FanzaChijoSaleBanner />
+        </Suspense>
+      </section>
+
       {/* ── 5. 【最速】予約・先行公開 ──────────────────────────────────── */}
       <section id="pre-orders">
         <Suspense>
-          <UpcomingSection filters={filters} top100Names={top100Names} />
+          <UpcomingSection filters={filters} top100Names={top100Names} hotTags={hotTags} />
         </Suspense>
       </section>
 
@@ -643,7 +721,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
               <div key={i} className="h-72 animate-pulse rounded-xl bg-[var(--surface)]" />
             ))}
           >
-            <ThisWeekGrid filters={filters} page={page} top100Names={top100Names} />
+            <ThisWeekGrid filters={filters} page={page} top100Names={top100Names} hotTags={hotTags} />
           </Suspense>
         </div>
       </section>
@@ -652,8 +730,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
     {/* お気に入り女優の新着通知 — client-side, absolutely positioned */}
     <FavNewReleaseAlert />
-    {/* FANZAリンクのクリック時に +LP アニメーションを表示 */}
-    <LpClickFeedback />
     </>
   )
 }
