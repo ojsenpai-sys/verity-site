@@ -66,3 +66,17 @@ body {
   75%  { opacity: 0.9; }
   100% { opacity: 0; transform: translateX(-50%) translateY(-64px); }
 }
+
+/* Hero: gentle pulse for the Flash badge */
+@keyframes flash-pulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251,191,36,0);       border-color: rgba(251,191,36,0.40); }
+  50%      { box-shadow: 0 0 14px 1px rgba(251,191,36,0.35); border-color: rgba(251,191,36,0.85); }
+}
+.flash-pulse { animation: flash-pulse 2.4s ease-in-out infinite; }
+
+/* Hero: slow atmospheric drift for the glow blobs */
+@keyframes drift {
+  0%, 100% { transform: translate3d(0,0,0) scale(1); }
+  50%      { transform: translate3d(0,-8px,0) scale(1.06); }
+}
+.drift { animation: drift 9s ease-in-out infinite; }

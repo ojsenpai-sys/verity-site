@@ -1,10 +1,10 @@
 import Link from 'next/link'
-import { ExternalLink, Flame, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { FanzaLink } from './FanzaLink'
-import { HeroCountdown } from './HeroCountdown'
+import { HeroCountdown, HeroDayProgress } from './HeroCountdown'
+import { coverPosClass } from '@/lib/cidUtils'
 import type { Article } from '@/lib/types'
 
 type HeroResult = { article: Article; isFlash: boolean }
@@ -125,33 +125,52 @@ export async function HeroSection() {
     ? `/api/proxy/image?url=${encodeURIComponent(article.image_url)}`
     : null
 
+  // ── 色アクセント（Hero=マゼンタ / Flash=アンバー） ───────────────────────────
+  const accentText   = isFlash ? 'text-amber-300' : 'text-[var(--magenta)]'
+  const tagHover     = isFlash ? 'hover:border-amber-400/40' : 'hover:border-[var(--magenta)]/40'
+
   return (
     <section
       id="hero"
-      className="relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]"
+      className={[
+        'group relative overflow-hidden rounded-2xl border bg-[var(--surface)]',
+        isFlash ? 'border-amber-500/25' : 'border-[var(--border)]',
+      ].join(' ')}
     >
-      {/* Atmospheric background blur */}
+      {/* Top accent line — amber for flash, magenta for hero */}
+      <div className={[
+        'pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r',
+        isFlash
+          ? 'from-amber-400/80 via-orange-500/40 to-transparent'
+          : 'from-[var(--magenta)]/70 via-amber-400/30 to-transparent',
+      ].join(' ')} />
+
+      {/* Faint blurred cover for cinematic immersion */}
       {proxyImg && (
         <div className="pointer-events-none absolute inset-0" aria-hidden="true">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={proxyImg}
             alt=""
-            className="h-full w-full scale-150 object-cover object-center blur-3xl opacity-[0.10]"
+            className="h-full w-full scale-150 object-cover object-center blur-3xl opacity-[0.08]"
           />
-          <div className="absolute inset-0 bg-gradient-to-r from-[var(--surface)] via-[var(--surface)]/90 to-[var(--surface)]/50" />
+          <div className="absolute inset-0 bg-gradient-to-r from-[var(--surface)] via-[var(--surface)]/92 to-[var(--surface)]/55" />
         </div>
       )}
 
-      {/* Top accent line — amber for flash, magenta for hero */}
-      <div className={[
-        'pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r',
-        isFlash
-          ? 'from-amber-400/80 via-orange-400/50 to-transparent'
-          : 'from-[var(--magenta)]/60 via-amber-400/40 to-transparent',
-      ].join(' ')} />
+      {/* Atmospheric drifting glow blob — variant-tinted */}
+      <div
+        aria-hidden="true"
+        className={[
+          'drift pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full blur-3xl',
+          isFlash ? 'bg-amber-500/15' : 'bg-[var(--magenta)]/20',
+        ].join(' ')}
+      />
 
-      <div className="relative flex flex-col gap-6 p-5 sm:flex-row sm:items-center sm:gap-8 sm:px-7 sm:py-7 lg:px-9 lg:py-8">
+      {/* Flash: day-progress urgency bar (resets at midnight JST) */}
+      {isFlash && <HeroDayProgress />}
+
+      <div className="relative flex flex-col items-center gap-5 p-5 text-center sm:flex-row sm:items-center sm:gap-9 sm:p-8 sm:text-left">
 
         {/* Cover image */}
         {proxyImg && (
@@ -159,75 +178,76 @@ export async function HeroSection() {
             href={affiliateUrl}
             targetId={article.external_id}
             position="hero_image"
-            className="group/hero-img mx-auto w-full max-w-[150px] shrink-0 sm:mx-0 sm:max-w-[180px] lg:max-w-[200px]"
+            className="relative block shrink-0"
           >
-            <div className="relative aspect-[2/3] overflow-hidden rounded-xl shadow-[0_12px_48px_rgba(0,0,0,0.70)]">
+            {isFlash && (
+              <div className="pointer-events-none absolute -inset-1.5 rounded-2xl bg-amber-500/20 blur-md" aria-hidden="true" />
+            )}
+            <div className={[
+              'relative aspect-[2/3] w-[150px] overflow-hidden rounded-xl shadow-[0_18px_56px_rgba(0,0,0,0.70)] transition-transform duration-300 group-hover:scale-[1.03] sm:w-[200px] lg:w-[208px]',
+              isFlash ? 'border border-amber-400/30' : '',
+            ].join(' ')}>
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={proxyImg}
                 alt={article.title}
-                className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover/hero-img:scale-105"
+                className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(article.image_url)}`}
               />
-              {/* Desktop-only hover overlay */}
-              <div className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/0 transition-all duration-200 group-hover/hero-img:bg-black/55 md:flex">
-                <span className="translate-y-1 scale-95 rounded-full bg-white/90 px-4 py-1.5 text-[11px] font-bold text-gray-900 opacity-0 shadow-lg transition-all duration-200 group-hover/hero-img:translate-y-0 group-hover/hero-img:scale-100 group-hover/hero-img:opacity-100">
-                  ▶ 観る
-                </span>
-              </div>
             </div>
           </FanzaLink>
         )}
 
         {/* Content */}
-        <div className="flex min-w-0 flex-col gap-3.5">
+        <div className="flex min-w-0 flex-col items-center gap-3.5 sm:items-start">
 
           {/* Badge row */}
-          <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-3 sm:justify-start">
             {isFlash ? (
               <>
-                <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-[10px] font-black tracking-[0.18em] uppercase text-amber-300">
-                  <Zap size={10} />
-                  Today&apos;s Flash
+                <span className="flash-pulse inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">
+                  ⚡ Today&apos;s Flash
                 </span>
-                {/* Client-side countdown to midnight JST */}
+                {/* Client-side HH:MM:SS countdown to midnight JST */}
                 <HeroCountdown />
               </>
             ) : (
-              <span className="inline-flex w-fit items-center gap-1.5 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-3 py-1 text-[10px] font-black tracking-[0.18em] uppercase text-[var(--magenta)]">
-                <Flame size={10} />
+              <span className="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--magenta)]">
+                <span className="h-1.5 w-1.5 rounded-full bg-[var(--magenta)] shadow-[0_0_8px_var(--magenta)]" />
                 Today&apos;s Hero
               </span>
             )}
           </div>
 
+          {/* Title */}
+          <h2 className="line-clamp-2 max-w-[44ch] text-lg font-bold leading-snug tracking-tight text-[var(--text)] sm:text-[26px]">
+            {article.title}
+          </h2>
+
           {/* Actress names */}
           {actresses.length > 0 && (
-            <div className="flex flex-wrap gap-2">
-              {actresses.slice(0, 3).map(a => (
-                <Link
-                  key={a.id || a.name}
-                  href={a.id > 0 ? `/verity/actresses/dmm-actress-${a.id}` : '#'}
-                  className="text-sm font-bold text-[var(--magenta)] transition-colors hover:underline"
-                >
-                  {a.name}
-                </Link>
+            <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 sm:justify-start">
+              {actresses.slice(0, 3).map((a, i) => (
+                <span key={a.id || a.name} className="inline-flex items-center gap-1.5">
+                  {i > 0 && <span className="text-[var(--text-muted)]">/</span>}
+                  <Link
+                    href={a.id > 0 ? `/verity/actresses/dmm-actress-${a.id}` : '#'}
+                    className={`text-[15px] font-bold transition-colors hover:underline ${accentText}`}
+                  >
+                    {a.name}
+                  </Link>
+                </span>
               ))}
             </div>
           )}
 
-          {/* Title */}
-          <h2 className="line-clamp-3 text-base font-bold leading-relaxed text-[var(--text)] sm:text-[17px]">
-            {article.title}
-          </h2>
-
           {/* Genre tags */}
           {genreTags.length > 0 && (
-            <div className="flex flex-wrap gap-1.5">
+            <div className="flex flex-wrap justify-center gap-2 sm:justify-start">
               {genreTags.map(tag => (
                 <Link
                   key={tag}
                   href={`/verity/genres/${encodeURIComponent(tag)}`}
-                  className="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)] transition-colors hover:border-[var(--magenta)]/50 hover:text-[var(--magenta)]"
+                  className={`rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] transition-colors hover:text-[var(--text)] ${tagHover}`}
                 >
                   {tag}
                 </Link>
@@ -235,49 +255,46 @@ export async function HeroSection() {
             </div>
           )}
 
-          {/* Primary CTA */}
-          <FanzaLink
-            href={affiliateUrl}
-            targetId={article.external_id}
-            position="hero_cta"
-            className={[
-              'mt-1 inline-flex w-fit items-center gap-2 rounded-full px-6 py-2.5 text-sm font-bold text-white transition-all duration-200 active:scale-[0.97]',
-              isFlash
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 shadow-[0_0_24px_rgba(245,158,11,0.40)] hover:brightness-110 hover:shadow-[0_0_40px_rgba(245,158,11,0.65)]'
-                : 'bg-gradient-to-r from-[var(--magenta)] to-rose-600 shadow-[0_0_24px_rgba(226,0,116,0.40)] hover:brightness-110 hover:shadow-[0_0_40px_rgba(226,0,116,0.65)]',
-            ].join(' ')}
-          >
-            ▶ FANZAで今すぐ観る
-            <ExternalLink size={13} />
-          </FanzaLink>
+          {/* CTA row */}
+          <div className="mt-1 flex flex-wrap items-center justify-center gap-3 sm:justify-start">
+            {/* Primary CTA */}
+            <FanzaLink
+              href={affiliateUrl}
+              targetId={article.external_id}
+              position="hero_cta"
+              className={[
+                'inline-flex items-center gap-2 rounded-full px-7 py-3 text-sm font-bold transition-all duration-200 hover:brightness-110 active:scale-[0.97]',
+                isFlash
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-[#1a1207] shadow-[0_0_24px_rgba(245,158,11,0.45)] hover:shadow-[0_0_40px_rgba(245,158,11,0.65)]'
+                  : 'bg-gradient-to-r from-[var(--magenta)] to-rose-600 text-white shadow-[0_0_24px_rgba(226,0,116,0.42)] hover:shadow-[0_0_40px_rgba(226,0,116,0.65)]',
+              ].join(' ')}
+            >
+              ▶ FANZAで今すぐ観る
+              <span className="opacity-70">↗</span>
+            </FanzaLink>
 
-          {/* Premium secondary CTAs — VR / DVD */}
-          {(isVrHero || isDvdHero) && (
-            <div className="flex flex-wrap gap-2">
-              {isVrHero && (
-                <FanzaLink
-                  href={affiliateUrl}
-                  targetId={article.external_id}
-                  position="card_premium_vr"
-                  className="inline-flex w-fit items-center gap-2 rounded-full border border-violet-400/40 bg-violet-500/15 px-5 py-2 text-sm font-bold text-violet-300 transition-all hover:bg-violet-500/25 active:scale-[0.97]"
-                >
-                  🥽 VRで体感する
-                  <ExternalLink size={12} />
-                </FanzaLink>
-              )}
-              {isDvdHero && (
-                <FanzaLink
-                  href={affiliateUrl}
-                  targetId={article.external_id}
-                  position="card_premium_dvd"
-                  className="inline-flex w-fit items-center gap-2 rounded-full border border-blue-400/40 bg-blue-500/15 px-5 py-2 text-sm font-bold text-blue-300 transition-all hover:bg-blue-500/25 active:scale-[0.97]"
-                >
-                  📀 特典付きDVD版をGET
-                  <ExternalLink size={12} />
-                </FanzaLink>
-              )}
-            </div>
-          )}
+            {/* Premium secondary CTAs — VR / DVD */}
+            {isVrHero && (
+              <FanzaLink
+                href={affiliateUrl}
+                targetId={article.external_id}
+                position="card_premium_vr"
+                className="rounded-full border border-violet-400/40 px-4 py-3 text-[12px] font-semibold text-violet-300 transition-all hover:bg-violet-400/10 active:scale-[0.97]"
+              >
+                🥽 VR
+              </FanzaLink>
+            )}
+            {isDvdHero && (
+              <FanzaLink
+                href={affiliateUrl}
+                targetId={article.external_id}
+                position="card_premium_dvd"
+                className="rounded-full border border-blue-400/40 px-4 py-3 text-[12px] font-semibold text-blue-300 transition-all hover:bg-blue-400/10 active:scale-[0.97]"
+              >
+                📀 DVD
+              </FanzaLink>
+            )}
+          </div>
         </div>
       </div>
     </section>
