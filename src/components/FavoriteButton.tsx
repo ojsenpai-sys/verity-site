@@ -37,6 +37,7 @@ export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: 
 
     toggle(id, meta)
     const action = faved ? 'remove' : 'add'
+    const adding = !faved
 
     if (type === 'actress') {
       fetch('/verity/api/favorites/actress', {
@@ -44,7 +45,7 @@ export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: 
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ external_id: id, action }),
       }).catch(() => {})
-      trackEvent('favorite_actress', { actressId: id, action })
+      trackEvent(adding ? 'favorite_actress' : 'unfavorite_actress', { actressId: id })
     } else {
       // 作品: DB へ永続化（slug|CID は API 側で解決）。news 等で未解決なら 404 → LS のみ
       fetch('/verity/api/favorites/article', {
@@ -52,7 +53,7 @@ export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: 
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ id, action }),
       }).catch(() => {})
-      trackEvent('favorite_work', { cid: cid ?? id, action })
+      trackEvent(adding ? 'favorite_work' : 'unfavorite_work', { cid: cid ?? id })
     }
   }, [toggle, id, cid, meta, user, type, faved])
 

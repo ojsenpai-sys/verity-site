@@ -31,11 +31,31 @@ export async function POST(request: NextRequest) {
   const cids = [...new Set((arts as { external_id: string }[] | null ?? []).map(a => a.external_id))]
   if (cids.length === 0) return NextResponse.json({ ok: true, merged: 0 })
 
+  // 純新規判定（既存お気に入りは除外して二重計上を避ける）
+  const { data: existing } = await supabase
+    .from('favorite_articles')
+    .select('article_external_id')
+    .eq('user_id', user.id)
+    .in('article_external_id', cids)
+  const have = new Set((existing ?? []).map(r => (r as { article_external_id: string }).article_external_id))
+  const newCids = cids.filter(c => !have.has(c))
+
   const rows = cids.map(cid => ({ user_id: user.id, article_external_id: cid }))
   const { error } = await supabase
     .from('favorite_articles')
     .upsert(rows, { onConflict: 'user_id,article_external_id', ignoreDuplicates: true })
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true, merged: cids.length })
+
+  // 行動ログ: 純新規のみ favorite_work として記録
+  if (newCids.length > 0) {
+    await supabase.from('user_events').insert(
+      newCids.map(cid => ({
+        user_id: user.id, event_name: 'favorite_work',
+        target_type: 'article', target_id: cid, metadata: { source: 'login_sync' },
+      }))
+    )
+  }
+
+  return NextResponse.json({ ok: true, merged: newCids.length })
 }

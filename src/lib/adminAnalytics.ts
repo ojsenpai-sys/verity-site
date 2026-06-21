@@ -214,3 +214,15 @@ export async function getPreferenceWeights(): Promise<WeightRow[]> {
     return (data ?? []) as WeightRow[]
   } catch { return [] }
 }
+
+// ── Audience（匿名含む・セッション基準。distinct session_id）──────────────────────
+// 注意: session_id は sessionStorage 由来＝訪問(セッション)単位。ユニーク訪問者ではない。
+export type Audience = { dau: number; wau: number; mau: number }
+export async function getAudience(): Promise<Audience> {
+  const c = db(); if (!c) return { dau: 0, wau: 0, mau: 0 }
+  try {
+    const { data } = await c.rpc('get_audience_counts')
+    const r = (Array.isArray(data) ? data[0] : data) as { dau: number; wau: number; mau: number } | null
+    return { dau: n(r?.dau), wau: n(r?.wau), mau: n(r?.mau) }
+  } catch { return { dau: 0, wau: 0, mau: 0 } }
+}

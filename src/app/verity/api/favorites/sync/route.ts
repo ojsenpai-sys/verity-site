@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
   // external_id → DB UUID に変換（is_activeのみ対象）
   const { data: actresses } = await supabase
     .from('actresses')
-    .select('id')
+    .select('id, external_id')
     .in('external_id', externalIds)
     .eq('is_active', true)
 
@@ -38,7 +38,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, merged: 0 })
   }
 
-  const newUuids = (actresses as { id: string }[]).map(a => a.id)
+  const rows = actresses as { id: string; external_id: string }[]
 
   // 現在のプロフィールを取得
   const { data: profile } = await supabase
@@ -54,17 +54,17 @@ export async function POST(request: NextRequest) {
   const stars    = (profile.stars_count ?? 0) as number
   const maxFavs  = stars >= 6 ? 9 : stars >= 3 ? 6 : 3
 
-  // マージ: 既存を保持したまま、新規のみ上限内で追加
+  // マージ: 既存を保持したまま、新規のみ上限内で追加。追加分の external_id を記録用に保持
   const merged = [...current]
-  let addedCount = 0
-  for (const uuid of newUuids) {
-    if (!merged.includes(uuid) && merged.length < maxFavs) {
-      merged.push(uuid)
-      addedCount++
+  const addedExt: string[] = []
+  for (const a of rows) {
+    if (!merged.includes(a.id) && merged.length < maxFavs) {
+      merged.push(a.id)
+      addedExt.push(a.external_id)
     }
   }
 
-  if (addedCount === 0) return NextResponse.json({ ok: true, merged: 0 })
+  if (addedExt.length === 0) return NextResponse.json({ ok: true, merged: 0 })
 
   const { error } = await supabase
     .from('profiles')
@@ -73,5 +73,14 @@ export async function POST(request: NextRequest) {
     .eq('brand_id', BRAND_ID)
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json({ ok: true, merged: addedCount, total: merged.length })
+
+  // 行動ログ: ログイン時同期で純新規に追加された女優を favorite_actress として記録（純新規のみ）
+  await supabase.from('user_events').insert(
+    addedExt.map(ext => ({
+      user_id: user.id, event_name: 'favorite_actress',
+      target_type: 'actress', target_id: ext, metadata: { source: 'login_sync' },
+    }))
+  )
+
+  return NextResponse.json({ ok: true, merged: addedExt.length, total: merged.length })
 }

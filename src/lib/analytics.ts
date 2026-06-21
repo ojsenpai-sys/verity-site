@@ -21,8 +21,11 @@ export type EventName =
   | 'actress_view'      // = view_work の女優版: view_actress
   | 'video_view'        // = view_work
   | 'fanza_click'       // = click_fanza
+  | 'page_view'         // 主要ページ閲覧（target_typeなし・metadata.pageType）
   | 'favorite_work'
+  | 'unfavorite_work'
   | 'favorite_actress'
+  | 'unfavorite_actress'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -43,8 +46,10 @@ const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' |
   actress_view:     { type: 'actress', idKey: 'actressId' },
   video_view:       { type: 'article', idKey: 'cid'       },
   fanza_click:      { type: 'article', idKey: 'cid'       },
-  favorite_work:    { type: 'article', idKey: 'cid'       },
-  favorite_actress: { type: 'actress', idKey: 'actressId' },
+  favorite_work:      { type: 'article', idKey: 'cid'       },
+  unfavorite_work:    { type: 'article', idKey: 'cid'       },
+  favorite_actress:   { type: 'actress', idKey: 'actressId' },
+  unfavorite_actress: { type: 'actress', idKey: 'actressId' },
 }
 
 // target_id にマップされる構造キーは metadata から除外する

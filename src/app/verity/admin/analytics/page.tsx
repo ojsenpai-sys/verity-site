@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { BarChart3 } from 'lucide-react'
 import {
   getDailyMetrics, getOverview, getEngagement, getFanza, getTags, getPreference, getInvestor,
-  getCronStatus, getPreferenceWeights,
+  getCronStatus, getPreferenceWeights, getAudience,
 } from '@/lib/adminAnalytics'
 import { AnalyticsCharts } from './AnalyticsCharts'
 import { PreferenceWeightsEditor } from './PreferenceWeightsEditor'
@@ -34,10 +34,11 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default async function AnalyticsPage() {
   const daily = await getDailyMetrics()
-  const [overview, engagement, fanza, tags, preference, investor, cron, weights] = await Promise.all([
-    getOverview(daily), getEngagement(daily), getFanza(daily), getTags(), getPreference(), getInvestor(daily),
+  const [overview, audience, engagement, fanza, tags, preference, investor, cron, weights] = await Promise.all([
+    getOverview(daily), getAudience(), getEngagement(daily), getFanza(daily), getTags(), getPreference(), getInvestor(daily),
     getCronStatus(), getPreferenceWeights(),
   ])
+  const audienceStickiness = audience.mau > 0 ? Math.round((audience.dau / audience.mau) * 1000) / 10 : 0
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 space-y-10">
@@ -67,6 +68,30 @@ export default async function AnalyticsPage() {
           <Stat label="Member WAU" value={fmt(overview.wau)} sub="過去7日" />
           <Stat label="Member MAU" value={fmt(overview.mau)} sub="過去30日" />
           <Stat label="Member Stickiness" value={`${overview.stickiness}%`} sub="DAU÷MAU" />
+        </div>
+      </Section>
+
+      {/* Audience（匿名含む・セッション基準） */}
+      <Section title="Audience（匿名含む）">
+        <p className="-mt-1 text-[11px] text-[var(--text-muted)]">
+          ※ <strong className="text-[var(--text)]">session_id（訪問/セッション）単位</strong>の集計。匿名訪問を含みます。日跨ぎは別セッション扱いのため厳密なユニーク訪問者数ではありません。
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat label="Audience DAU" value={fmt(audience.dau)} sub="当日訪問" />
+          <Stat label="Audience WAU" value={fmt(audience.wau)} sub="過去7日" />
+          <Stat label="Audience MAU" value={fmt(audience.mau)} sub="過去30日" />
+          <Stat label="Audience Stickiness" value={`${audienceStickiness}%`} sub="DAU÷MAU" />
+        </div>
+      </Section>
+
+      {/* Funnel（登録転換）— データ検証中のため非公開 */}
+      <Section title="Funnel（登録転換）">
+        <div className="rounded-xl border border-dashed border-[var(--border)] bg-[var(--surface)] p-6 text-center">
+          <p className="text-sm font-bold" style={{ color: '#fbbf24' }}>🚧 Data Validation In Progress</p>
+          <p className="mx-auto mt-2 max-w-2xl text-[11px] leading-relaxed text-[var(--text-muted)]">
+            登録ファネルは現在データ検証中です。<code>signup_start</code> がログイン意図を含む／<code>signup_complete</code> がメール認証のみ計測／OAuth(Google・Twitter)完了が未計測のため、
+            事業指標として不正確です。<strong className="text-[var(--text)]">login/signup の分離・Google/Twitter/Email の完了計測</strong>を実装した次フェーズで公開します。
+          </p>
         </div>
       </Section>
 

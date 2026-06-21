@@ -8,6 +8,7 @@ import { cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
 import { NowPrinting } from '@/components/NowPrinting'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { CROWN_CLICK_THRESHOLD, CROWN_LP_THRESHOLD } from '@/lib/titles'
+import { trackEvent } from '@/lib/analytics'
 
 type Props = {
   favorites:         Actress[]
@@ -355,6 +356,7 @@ export function FavoriteActressSelector({
     setQuery('')
     setResults([])
     setSaving(true)
+    if (actress.external_id) trackEvent('favorite_actress', { actressId: actress.external_id })
     try { await onChange(next.map(a => a.id), next) }
     finally { setSaving(false) }
   }
@@ -366,11 +368,13 @@ export function FavoriteActressSelector({
 
   async function confirmRemove() {
     if (!pendingRemove || saving) return
-    const id   = pendingRemove.id
+    const id  = pendingRemove.id
+    const ext = pendingRemove.external_id
     setPendingRemove(null)
     const next = currentFavs.filter(a => a.id !== id)
     setCurrentFavs(next)
     setSaving(true)
+    if (ext) trackEvent('unfavorite_actress', { actressId: ext })
     try { await onChange(next.map(a => a.id), next) }
     finally { setSaving(false) }
   }

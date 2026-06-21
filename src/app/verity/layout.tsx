@@ -9,6 +9,7 @@ import { AuthProvider } from '@/components/AuthProvider'
 import { FavoritePopup } from '@/components/FavoritePopup'
 import { LoginPromptModal } from '@/components/LoginPromptModal'
 import { LocalFavSync } from '@/components/LocalFavSync'
+import { PageViewTracker } from '@/components/PageViewTracker'
 import { createClient } from '@/lib/supabase/server'
 import './globals.css'
 
@@ -66,6 +67,7 @@ export default async function VerityLayout({ children }: { children: React.React
         <FavoritePopup />
         <LoginPromptModal />
         <LocalFavSync />
+        <PageViewTracker />
       </div>
     </AuthProvider>
   )
