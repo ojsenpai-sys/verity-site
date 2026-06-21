@@ -1,0 +1,39 @@
+/* VERITY effect tokens & utilities — source: src/app/verity/globals.css
+ * Glows, animations, and the focus ring that give VERITY its cinematic feel. */
+
+/* Magenta glow — use on hero cards / featured elements */
+.glow-magenta {
+  box-shadow: 0 0 20px rgba(226, 0, 116, 0.3);
+}
+
+/* Accessible focus ring (matches app) */
+*:focus-visible {
+  outline: 2px solid var(--magenta);
+  outline-offset: 2px;
+}
+
+/* Horizontal marquee (actress strips) — pair with a 2x-width track */
+@keyframes marquee {
+  from { transform: translateX(0); }
+  to   { transform: translateX(-50%); }
+}
+
+/* Pulsing amber "neon crown" frame — ranking #1 highlight */
+@keyframes neon-crown-pulse {
+  0%, 100% {
+    box-shadow: 0 0 6px rgba(251,191,36,0.25), 0 0 16px rgba(251,191,36,0.12);
+    border-color: rgba(251,191,36,0.55);
+  }
+  50% {
+    box-shadow: 0 0 16px rgba(251,191,36,0.65), 0 0 36px rgba(251,191,36,0.3), inset 0 0 8px rgba(251,191,36,0.08);
+    border-color: rgba(251,191,36,0.95);
+  }
+}
+.crown-neon-frame { animation: neon-crown-pulse 2.2s ease-in-out infinite; }
+
+/* Floating fade-up (LP nudge bars) */
+@keyframes lp-float {
+  0%   { opacity: 1;   transform: translateX(-50%) translateY(0); }
+  75%  { opacity: 0.9; }
+  100% { opacity: 0;   transform: translateX(-50%) translateY(-64px); }
+}

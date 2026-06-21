@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>VERITY — Hero Section · 3 variations</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  :root{
+    --magenta:#E20074; --magenta-dim:#b30059;
+    --bg:#0a0a0f; --surface:#12121a; --surface-2:#1a1a26;
+    --border:#2a2a3a; --text:#f0f0f8; --text-muted:#8888aa;
+    --font-sans:'Geist',system-ui,-apple-system,'Segoe UI',sans-serif;
+    --font-mono:'Geist Mono',ui-monospace,'SFMono-Regular',monospace;
+  }
+  @import url('https://fonts.googleapis.com/css2?family=Geist:wght@100..900&family=Geist+Mono:wght@100..900&display=swap');
+  *{box-sizing:border-box}
+  html{scroll-behavior:smooth}
+  body{margin:0;background:var(--bg);color:var(--text);font-family:var(--font-sans);-webkit-font-smoothing:antialiased}
+  .font-mono{font-family:var(--font-mono)}
+
+  /* gentle pulse for the Flash badge */
+  @keyframes flash-pulse{
+    0%,100%{box-shadow:0 0 0 0 rgba(251,191,36,0); border-color:rgba(251,191,36,.4)}
+    50%{box-shadow:0 0 14px 1px rgba(251,191,36,.35); border-color:rgba(251,191,36,.85)}
+  }
+  .flash-pulse{animation:flash-pulse 2.4s ease-in-out infinite}
+
+  /* slow atmospheric drift for the glow blobs */
+  @keyframes drift{0%,100%{transform:translate3d(0,0,0) scale(1)}50%{transform:translate3d(0,-8px,0) scale(1.06)}}
+  .drift{animation:drift 9s ease-in-out infinite}
+
+  /* hairline diagonal texture for cover placeholders (no imagery) */
+  .cover-ph{
+    background:
+      repeating-linear-gradient(135deg, rgba(255,255,255,.025) 0 2px, transparent 2px 11px),
+      var(--surface-2);
+  }
+
+  /* canvas chrome */
+  .frame-label{font-family:var(--font-mono);font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:var(--text-muted)}
+</style>
+</head>
+<body>
+  <!-- ============ CANVAS WRAPPER (scrolls; never centers an overflowing row) ============ -->
+  <div style="width:max-content;min-width:100%;min-height:100vh;padding:56px;box-sizing:border-box">
+
+    <!-- masthead -->
+    <header class="mb-12" style="max-width:760px">
+      <div class="frame-label mb-3">VERITY · Homepage Hero Slot</div>
+      <h1 class="text-[34px] font-black tracking-tight leading-none text-[var(--text)]">Today's Hero — 3 directions</h1>
+      <p class="mt-4 text-[15px] leading-relaxed text-[var(--text-muted)]">
+        One editorial "pick of the day" slot, compact enough to sit among ~15 dense homepage sections (≈280–360px tall).
+        Each direction is shown at <span class="text-[var(--text)]">desktop 1280</span> and <span class="text-[var(--text)]">mobile 375</span>.
+        Variant <span class="text-[var(--magenta)] font-semibold">A · Today's Hero</span> (magenta, calm cinematic) and
+        Variant <span class="font-semibold" style="color:#fcd34d">B · Today's Flash</span> (amber, 24h-limited with live countdown to midnight JST).
+      </p>
+    </header>
+
+    <!-- ===================================================================== -->
+    <!-- VARIATION 1 — EDITORIAL SPLIT -->
+    <!-- ===================================================================== -->
+    <section class="mb-16">
+      <div class="mb-5" style="max-width:680px">
+        <div class="frame-label mb-2">Direction 01</div>
+        <h2 class="text-[20px] font-bold text-[var(--text)]">Editorial Split</h2>
+        <p class="mt-1.5 text-[13px] leading-relaxed text-[var(--text-muted)]">The refined reference idiom — oversized cover as the anchor, content column with strict badge→title→actress→CTA hierarchy. A single soft magenta glow gives atmosphere without flooding the card.</p>
+      </div>
+
+      <div class="flex items-start gap-8">
+        <!-- desktop 1280 -->
+        <div class="shrink-0">
+          <div class="frame-label mb-2.5">Desktop · 1280 — Variant A (Today's Hero)</div>
+          <div class="rounded-[14px] border border-[var(--border)] bg-[var(--bg)] p-9" style="width:1280px">
+            <!-- HERO CARD -->
+            <article class="group relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+              <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-[var(--magenta)]/70 via-amber-400/30 to-transparent"></div>
+              <div class="drift pointer-events-none absolute -left-24 -top-24 h-72 w-72 rounded-full bg-[var(--magenta)]/20 blur-3xl"></div>
+              <div class="relative flex items-center gap-9 p-8">
+                <!-- cover -->
+                <a href="#" class="relative block shrink-0">
+                  <div class="cover-ph flex aspect-[2/3] w-[208px] items-center justify-center rounded-xl border border-dashed border-[var(--border)] shadow-[0_18px_56px_rgba(0,0,0,0.7)] transition-transform duration-300 group-hover:scale-[1.03]">
+                    <span class="font-mono text-[11px] tracking-[0.18em] text-[var(--text-muted)]">COVER 2:3</span>
+                  </div>
+                </a>
+                <!-- content -->
+                <div class="flex min-w-0 flex-col gap-3.5">
+                  <span class="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--magenta)]">
+                    <span class="h-1.5 w-1.5 rounded-full bg-[var(--magenta)] shadow-[0_0_8px_var(--magenta)]"></span> Today's Hero
+                  </span>
+                  <h3 class="line-clamp-2 max-w-[44ch] text-[26px] font-bold leading-snug tracking-tight text-[var(--text)]">完全主観で迫る、深夜0時の特選作品──今日のヒーローはこの一本。</h3>
+                  <a href="#" class="w-fit text-[15px] font-bold text-[var(--magenta)] hover:underline">星野 あかり <span class="text-[var(--text-muted)] font-normal">/ 桜井 みう</span></a>
+                  <div class="flex flex-wrap gap-2">
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--text)]">単体作品</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--text)]">ドラマ</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--text)]">独占配信</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--text)]">4K</a>
+                  </div>
+                  <div class="mt-1 flex items-center gap-3">
+                    <a href="#" class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-7 py-3 text-[14px] font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.42)] transition hover:brightness-110 active:scale-[0.97]">▶ FANZAで今すぐ観る <span class="opacity-70">↗</span></a>
+                    <a href="#" class="rounded-full border border-violet-400/40 px-4 py-3 text-[12px] font-semibold text-violet-300 hover:bg-violet-400/10">VR</a>
+                    <a href="#" class="rounded-full border border-blue-400/40 px-4 py-3 text-[12px] font-semibold text-blue-300 hover:bg-blue-400/10">DVD</a>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <!-- mobile 375 -->
+        <div class="shrink-0">
+          <div class="frame-label mb-2.5">Mobile · 375</div>
+          <div class="rounded-[14px] border border-[var(--border)] bg-[var(--bg)] p-4" style="width:375px">
+            <article class="group relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-[var(--magenta)]/70 via-amber-400/30 to-transparent"></div>
+              <div class="drift pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-[var(--magenta)]/20 blur-3xl"></div>
+              <div class="relative flex flex-col items-center gap-4 text-center">
+                <span class="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--magenta)]">
+                  <span class="h-1.5 w-1.5 rounded-full bg-[var(--magenta)] shadow-[0_0_8px_var(--magenta)]"></span> Today's Hero
+                </span>
+                <div class="cover-ph flex aspect-[2/3] w-[150px] items-center justify-center rounded-xl border border-dashed border-[var(--border)] shadow-[0_14px_40px_rgba(0,0,0,0.7)]">
+                  <span class="font-mono text-[10px] tracking-[0.18em] text-[var(--text-muted)]">COVER 2:3</span>
+                </div>
+                <h3 class="line-clamp-2 text-[17px] font-bold leading-snug text-[var(--text)]">完全主観で迫る、深夜0時の特選作品。</h3>
+                <a href="#" class="text-[13px] font-bold text-[var(--magenta)]">星野 あかり / 桜井 みう</a>
+                <div class="flex flex-wrap justify-center gap-1.5">
+                  <span class="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)]">単体作品</span>
+                  <span class="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)]">ドラマ</span>
+                  <span class="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)]">4K</span>
+                </div>
+                <a href="#" class="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-6 py-3 text-[14px] font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.42)]">▶ FANZAで今すぐ観る ↗</a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VARIATION 2 — CINEMATIC IMMERSION (FLASH) -->
+    <!-- ===================================================================== -->
+    <section class="mb-16">
+      <div class="mb-5" style="max-width:680px">
+        <div class="frame-label mb-2">Direction 02</div>
+        <h2 class="text-[20px] font-bold text-[var(--text)]">Cinematic Immersion</h2>
+        <p class="mt-1.5 text-[13px] leading-relaxed text-[var(--text-muted)]">The 24h-limited Flash mode. Amber atmosphere bleeds from behind the cover, a live countdown to midnight JST sits in the pulsing badge, and a thin urgency bar tracks how much of the day is gone. Time pressure without the tacky.</p>
+      </div>
+
+      <div class="flex items-start gap-8">
+        <!-- desktop 1280 -->
+        <div class="shrink-0">
+          <div class="frame-label mb-2.5">Desktop · 1280 — Variant B (Today's Flash)</div>
+          <div class="rounded-[14px] border border-[var(--border)] bg-[var(--bg)] p-9" style="width:1280px">
+            <article class="group relative overflow-hidden rounded-2xl border border-amber-500/25 bg-[var(--surface)]">
+              <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-amber-400/80 via-orange-500/40 to-transparent"></div>
+              <div class="drift pointer-events-none absolute -left-16 top-1/2 h-80 w-80 -translate-y-1/2 rounded-full bg-amber-500/15 blur-3xl"></div>
+              <!-- urgency bar -->
+              <div class="absolute inset-x-0 bottom-0 h-[3px] bg-amber-500/10">
+                <div class="day-progress h-full bg-gradient-to-r from-amber-400 to-orange-500 shadow-[0_0_10px_rgba(251,191,36,0.6)]" style="width:0%"></div>
+              </div>
+              <div class="relative flex items-center gap-9 p-8 pb-9">
+                <a href="#" class="relative block shrink-0">
+                  <div class="pointer-events-none absolute -inset-1.5 rounded-2xl bg-amber-500/20 blur-md"></div>
+                  <div class="cover-ph relative flex aspect-[2/3] w-[212px] items-center justify-center rounded-xl border border-amber-400/30 shadow-[0_18px_56px_rgba(0,0,0,0.7)] transition-transform duration-300 group-hover:scale-[1.03]">
+                    <span class="font-mono text-[11px] tracking-[0.18em] text-amber-200/70">COVER 2:3</span>
+                  </div>
+                </a>
+                <div class="flex min-w-0 flex-col gap-3.5">
+                  <div class="flex items-center gap-3">
+                    <span class="flash-pulse inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">⚡ Today's Flash</span>
+                    <span class="inline-flex items-center gap-1.5 rounded-full bg-[var(--surface-2)] px-3 py-1">
+                      <span class="text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">残り</span>
+                      <span class="countdown font-mono text-[15px] font-semibold tabular-nums text-amber-300">--:--:--</span>
+                    </span>
+                  </div>
+                  <h3 class="line-clamp-2 max-w-[44ch] text-[26px] font-bold leading-snug tracking-tight text-[var(--text)]">24時間限定で急上昇中──深夜0時（JST）にリセットされる、今この瞬間の注目作。</h3>
+                  <a href="#" class="w-fit text-[15px] font-bold text-amber-300 hover:underline">綾瀬 ひなた</a>
+                  <div class="flex flex-wrap gap-2">
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-amber-400/40 hover:text-[var(--text)]">人気急上昇</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-amber-400/40 hover:text-[var(--text)]">単体作品</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-amber-400/40 hover:text-[var(--text)]">話題作</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-amber-400/40 hover:text-[var(--text)]">VR対応</a>
+                  </div>
+                  <div class="mt-1 flex items-center gap-3">
+                    <a href="#" class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-7 py-3 text-[14px] font-bold text-[#1a1207] shadow-[0_0_24px_rgba(245,158,11,0.45)] transition hover:brightness-110 active:scale-[0.97]">▶ FANZAで今すぐ観る <span class="opacity-60">↗</span></a>
+                    <a href="#" class="rounded-full border border-violet-400/40 px-4 py-3 text-[12px] font-semibold text-violet-300 hover:bg-violet-400/10">VR</a>
+                  </div>
+                </div>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <!-- mobile 375 -->
+        <div class="shrink-0">
+          <div class="frame-label mb-2.5">Mobile · 375</div>
+          <div class="rounded-[14px] border border-[var(--border)] bg-[var(--bg)] p-4" style="width:375px">
+            <article class="group relative overflow-hidden rounded-2xl border border-amber-500/25 bg-[var(--surface)] p-5">
+              <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-amber-400/80 via-orange-500/40 to-transparent"></div>
+              <div class="drift pointer-events-none absolute -right-16 -top-16 h-48 w-48 rounded-full bg-amber-500/15 blur-3xl"></div>
+              <div class="absolute inset-x-0 bottom-0 h-[3px] bg-amber-500/10">
+                <div class="day-progress h-full bg-gradient-to-r from-amber-400 to-orange-500" style="width:0%"></div>
+              </div>
+              <div class="relative flex flex-col items-center gap-4 text-center">
+                <div class="flex flex-col items-center gap-2">
+                  <span class="flash-pulse inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-400/40 bg-amber-400/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-amber-300">⚡ Today's Flash</span>
+                  <span class="inline-flex items-center gap-1.5">
+                    <span class="text-[9px] font-bold uppercase tracking-[0.14em] text-[var(--text-muted)]">残り</span>
+                    <span class="countdown font-mono text-[15px] font-semibold tabular-nums text-amber-300">--:--:--</span>
+                  </span>
+                </div>
+                <div class="relative">
+                  <div class="pointer-events-none absolute -inset-1.5 rounded-2xl bg-amber-500/20 blur-md"></div>
+                  <div class="cover-ph relative flex aspect-[2/3] w-[150px] items-center justify-center rounded-xl border border-amber-400/30 shadow-[0_14px_40px_rgba(0,0,0,0.7)]">
+                    <span class="font-mono text-[10px] tracking-[0.18em] text-amber-200/70">COVER 2:3</span>
+                  </div>
+                </div>
+                <h3 class="line-clamp-2 text-[17px] font-bold leading-snug text-[var(--text)]">24時間限定で急上昇中の注目作。</h3>
+                <a href="#" class="text-[13px] font-bold text-amber-300">綾瀬 ひなた</a>
+                <div class="flex flex-wrap justify-center gap-1.5">
+                  <span class="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)]">人気急上昇</span>
+                  <span class="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)]">話題作</span>
+                </div>
+                <a href="#" class="mt-1 inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-amber-500 to-orange-500 px-6 py-3 text-[14px] font-bold text-[#1a1207] shadow-[0_0_24px_rgba(245,158,11,0.45)]">▶ FANZAで今すぐ観る ↗</a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===================================================================== -->
+    <!-- VARIATION 3 — SPOTLIGHT INDEX (MAGAZINE) -->
+    <!-- ===================================================================== -->
+    <section class="mb-6">
+      <div class="mb-5" style="max-width:680px">
+        <div class="frame-label mb-2">Direction 03</div>
+        <h2 class="text-[20px] font-bold text-[var(--text)]">Spotlight Index</h2>
+        <p class="mt-1.5 text-[13px] leading-relaxed text-[var(--text-muted)]">A magazine masthead read — cover anchored right, a big mono date and vertical accent rule on the left set the "issue of the day" tone. Same tokens, different rhythm; flips cleanly to amber for Flash days.</p>
+      </div>
+
+      <div class="flex items-start gap-8">
+        <!-- desktop 1280 -->
+        <div class="shrink-0">
+          <div class="frame-label mb-2.5">Desktop · 1280 — Variant A (Today's Hero)</div>
+          <div class="rounded-[14px] border border-[var(--border)] bg-[var(--bg)] p-9" style="width:1280px">
+            <article class="group relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)]">
+              <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-[var(--magenta)]/70 via-amber-400/30 to-transparent"></div>
+              <div class="drift pointer-events-none absolute -right-20 -bottom-24 h-80 w-80 rounded-full bg-[var(--magenta)]/15 blur-3xl"></div>
+              <div class="relative flex items-stretch gap-9 p-8">
+                <!-- left rule + date -->
+                <div class="flex shrink-0 items-stretch gap-5">
+                  <div class="w-[3px] rounded-full bg-gradient-to-b from-[var(--magenta)] to-[var(--magenta)]/0"></div>
+                  <div class="flex flex-col justify-between py-1">
+                    <div>
+                      <div class="font-mono text-[40px] font-bold leading-none tracking-tight text-[var(--text)]">06<span class="text-[var(--magenta)]">.</span>21</div>
+                      <div class="mt-2 font-mono text-[10px] uppercase tracking-[0.2em] text-[var(--text-muted)]">SAT · JST</div>
+                    </div>
+                    <span class="inline-flex w-fit items-center gap-2 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-3 py-1 text-[10px] font-black uppercase tracking-[0.18em] text-[var(--magenta)]">
+                      <span class="h-1.5 w-1.5 rounded-full bg-[var(--magenta)] shadow-[0_0_8px_var(--magenta)]"></span> Today's Hero
+                    </span>
+                  </div>
+                </div>
+                <!-- content -->
+                <div class="flex min-w-0 flex-1 flex-col justify-center gap-3.5">
+                  <div class="font-mono text-[11px] uppercase tracking-[0.22em] text-[var(--text-muted)]">本日の一本 / Editor's Pick</div>
+                  <h3 class="line-clamp-2 max-w-[40ch] text-[28px] font-bold leading-snug tracking-tight text-[var(--text)]">今日のヒーローはこの一本。完全主観で迫る、深夜0時の特選作品。</h3>
+                  <a href="#" class="w-fit text-[15px] font-bold text-[var(--magenta)] hover:underline">白石 こはく</a>
+                  <div class="flex flex-wrap gap-2">
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--text)]">単体作品</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--text)]">独占配信</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--text)]">ドラマ</a>
+                    <a href="#" class="rounded-full border border-[var(--border)] px-3 py-1 text-[11px] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--text)]">4K</a>
+                  </div>
+                  <div class="mt-1 flex items-center gap-3">
+                    <a href="#" class="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-7 py-3 text-[14px] font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.42)] transition hover:brightness-110 active:scale-[0.97]">▶ FANZAで今すぐ観る <span class="opacity-70">↗</span></a>
+                    <a href="#" class="rounded-full border border-blue-400/40 px-4 py-3 text-[12px] font-semibold text-blue-300 hover:bg-blue-400/10">DVD</a>
+                  </div>
+                </div>
+                <!-- cover anchored right -->
+                <a href="#" class="relative block shrink-0 self-center">
+                  <div class="cover-ph flex aspect-[2/3] w-[200px] items-center justify-center rounded-xl border border-dashed border-[var(--border)] shadow-[0_18px_56px_rgba(0,0,0,0.7)] transition-transform duration-300 group-hover:scale-[1.03]">
+                    <span class="font-mono text-[11px] tracking-[0.18em] text-[var(--text-muted)]">COVER 2:3</span>
+                  </div>
+                </a>
+              </div>
+            </article>
+          </div>
+        </div>
+
+        <!-- mobile 375 -->
+        <div class="shrink-0">
+          <div class="frame-label mb-2.5">Mobile · 375</div>
+          <div class="rounded-[14px] border border-[var(--border)] bg-[var(--bg)] p-4" style="width:375px">
+            <article class="group relative overflow-hidden rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-5">
+              <div class="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-[var(--magenta)]/70 via-amber-400/30 to-transparent"></div>
+              <div class="drift pointer-events-none absolute -right-16 -bottom-16 h-48 w-48 rounded-full bg-[var(--magenta)]/15 blur-3xl"></div>
+              <div class="relative flex flex-col gap-4">
+                <div class="flex items-center justify-between">
+                  <div class="flex items-center gap-3">
+                    <div class="h-9 w-[3px] rounded-full bg-gradient-to-b from-[var(--magenta)] to-[var(--magenta)]/0"></div>
+                    <div class="font-mono text-[22px] font-bold leading-none text-[var(--text)]">06<span class="text-[var(--magenta)]">.</span>21</div>
+                  </div>
+                  <span class="inline-flex items-center gap-1.5 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-2.5 py-1 text-[9px] font-black uppercase tracking-[0.16em] text-[var(--magenta)]">Today's Hero</span>
+                </div>
+                <div class="flex items-center gap-4">
+                  <div class="cover-ph flex aspect-[2/3] w-[120px] shrink-0 items-center justify-center rounded-xl border border-dashed border-[var(--border)] shadow-[0_12px_36px_rgba(0,0,0,0.7)]">
+                    <span class="font-mono text-[9px] tracking-[0.16em] text-[var(--text-muted)]">COVER 2:3</span>
+                  </div>
+                  <div class="flex min-w-0 flex-col gap-2">
+                    <div class="font-mono text-[9px] uppercase tracking-[0.2em] text-[var(--text-muted)]">本日の一本</div>
+                    <h3 class="line-clamp-3 text-[15px] font-bold leading-snug text-[var(--text)]">今日のヒーローはこの一本。深夜0時の特選作品。</h3>
+                    <a href="#" class="text-[12px] font-bold text-[var(--magenta)]">白石 こはく</a>
+                  </div>
+                </div>
+                <div class="flex flex-wrap gap-1.5">
+                  <span class="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)]">単体作品</span>
+                  <span class="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)]">独占配信</span>
+                  <span class="rounded-full border border-[var(--border)] px-2.5 py-0.5 text-[10px] text-[var(--text-muted)]">4K</span>
+                </div>
+                <a href="#" class="inline-flex w-full items-center justify-center gap-2 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-6 py-3 text-[14px] font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.42)]">▶ FANZAで今すぐ観る ↗</a>
+              </div>
+            </article>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <script>
+    // Countdown + day-progress to next midnight in JST (UTC+9), regardless of viewer TZ.
+    function jstParts(){
+      const now = Date.now();
+      const jstMs = now + (new Date().getTimezoneOffset() * 60000) + (9 * 3600000);
+      const jst = new Date(jstMs);
+      const secsIntoDay = jst.getHours()*3600 + jst.getMinutes()*60 + jst.getSeconds();
+      const secsLeft = 86400 - secsIntoDay;
+      const h = String(Math.floor(secsLeft/3600)).padStart(2,'0');
+      const m = String(Math.floor((secsLeft%3600)/60)).padStart(2,'0');
+      const s = String(secsLeft%60).padStart(2,'0');
+      return { text:`${h}:${m}:${s}`, progress:(secsIntoDay/86400)*100 };
+    }
+    function tick(){
+      const { text, progress } = jstParts();
+      document.querySelectorAll('.countdown').forEach(el => el.textContent = text);
+      document.querySelectorAll('.day-progress').forEach(el => el.style.width = progress.toFixed(2) + '%');
+    }
+    tick();
+    setInterval(tick, 1000);
+  </script>
+</body>
+</html>

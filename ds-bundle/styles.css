@@ -1,0 +1,20 @@
+/* VERITY Design System — style entry point.
+ * Claude Design gives each rendered design exactly this file's @import closure,
+ * so everything brand-relevant is reachable from here.
+ *
+ * Idiom: Tailwind 4 utilities + CSS-variable arbitrary values.
+ *   bg-[var(--bg)]  text-[var(--text)]  border-[var(--border)]
+ *   text-[var(--magenta)]  bg-[var(--magenta)]/10  border-[var(--magenta)]/30
+ * See README.md for the full conventions. */
+@import "./fonts/fonts.css";
+@import "./tokens/colors.css";
+@import "./tokens/effects.css";
+
+/* Brand defaults — applied to the design root */
+body {
+  background-color: var(--bg);
+  color: var(--text);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+html { scroll-behavior: smooth; }
