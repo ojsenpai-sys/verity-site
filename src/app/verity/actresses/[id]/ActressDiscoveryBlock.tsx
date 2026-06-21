@@ -1,10 +1,13 @@
-import { Building2, ExternalLink, Sparkles, TrendingUp } from 'lucide-react'
+import Link from 'next/link'
+import { Building2, ChevronRight, ExternalLink, Sparkles, Tag, TrendingUp, Users } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { FanzaLink } from '@/components/FanzaLink'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliate } from '@/lib/affiliate'
+import { coverPosClass } from '@/lib/cidUtils'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
+import { getMakerById } from '@/lib/makers'
 import { TrackedLink } from './TrackedLink'
 import type { Article, Actress } from '@/lib/types'
 
@@ -16,15 +19,11 @@ type Props = {
   recentArticles: Article[]
   makerEntry:     MakerEntry | null
   coStarExtIds:   string[]    // frequency-sorted descending
+  topGenres:      { tag: string; count: number }[]
 }
 
 function proxyUrl(src: string) {
   return `/api/proxy/image?url=${encodeURIComponent(src)}`
-}
-
-// pl.jpg / ps.jpg → jp.jpg: プロキシに縦向き正面表紙スキャン(jp)を優先させる
-function actressProxyUrl(src: string): string {
-  return `/api/proxy/image?url=${encodeURIComponent(src.replace(/(?:pl|ps)\.jpg$/, 'jp.jpg'))}`
 }
 
 function isDigitalWork(article: Article): boolean {
@@ -61,7 +60,7 @@ function RecoWorkCard({ article, position }: { article: Article; position: strin
           <ProxiedImage
             src={proxyUrl(imgUrl)}
             alt={article.title}
-            className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover:scale-105"
+            className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(imgUrl)} transition-transform duration-300 group-hover:scale-105`}
           />
         ) : (
           <NowPrinting />
@@ -94,9 +93,9 @@ function RecoWorkCard({ article, position }: { article: Article; position: strin
 }
 
 function RecoHeader({
-  icon, title, subtitle, color,
+  icon, title, subtitle, color, href,
 }: {
-  icon: React.ReactNode; title: string; subtitle: string; color: string
+  icon: React.ReactNode; title: string; subtitle: string; color: string; href?: string
 }) {
   return (
     <div className="flex items-start gap-3">
@@ -112,6 +111,14 @@ function RecoHeader({
           >
             PR
           </span>
+          {href && (
+            <Link
+              href={href}
+              className="ml-auto flex items-center gap-0.5 text-[10px] text-[var(--text-muted)] hover:text-white transition-colors"
+            >
+              もっと見る <ChevronRight size={10} />
+            </Link>
+          )}
         </div>
         <p className="text-[10px] text-[var(--text-muted)]">{subtitle}</p>
       </div>
@@ -120,15 +127,16 @@ function RecoHeader({
 }
 
 export async function ActressDiscoveryBlock({
-  actress, recentArticles, makerEntry, coStarExtIds,
+  actress, recentArticles, makerEntry, coStarExtIds, topGenres,
 }: Props) {
   const supabase = await createClient()
   const now      = new Date().toISOString()
 
-  const articleExtIds = recentArticles.map(a => a.external_id).filter(Boolean)
+  const articleExtIds  = recentArticles.map(a => a.external_id).filter(Boolean)
+  const topGenreNames  = topGenres.slice(0, 3).map(g => g.tag)
 
-  // 3 parallel queries: same-maker (③), related actresses (④), click counts (⑤)
-  const [makerResult, coStarResult, clickResult] = await Promise.all([
+  // 4 parallel queries: same-maker (③), related actresses (④), click counts (⑤), same-genre articles (⑥)
+  const [makerResult, coStarResult, clickResult, sameGenreResult] = await Promise.all([
     makerEntry
       ? supabase
           .from('articles')
@@ -159,6 +167,18 @@ export async function ActressDiscoveryBlock({
           .in('target_id', articleExtIds)
           .limit(2000)
       : Promise.resolve({ data: [] as { target_id: string | null }[] }),
+
+    // ⑥ 同ジャンル記事 — 後でactrессIDを抽出して二次クエリ
+    topGenreNames.length > 0
+      ? supabase
+          .from('articles')
+          .select('metadata')
+          .eq('is_active', true)
+          .overlaps('tags', topGenreNames)
+          .filter('tags', 'not.cs', `{"${actress.name}"}`)
+          .order('published_at', { ascending: false })
+          .limit(80)
+      : Promise.resolve({ data: [] as { metadata: Record<string, unknown> | null }[] }),
   ])
 
   // Build click-count map for popular works ranking
@@ -205,7 +225,66 @@ export async function ActressDiscoveryBlock({
     .sort((a, b) => (clickMap.get(b.external_id) ?? 0) - (clickMap.get(a.external_id) ?? 0))
     .slice(0, 4)
 
-  if (sectionC.length === 0 && sectionD.length === 0 && sectionE.length === 0) return null
+  // ⑥ 同ジャンル女優 — coStarと重複しない女優を周波数順で取得
+  const coStarSet = new Set(coStarExtIds)
+  const sameGenreFreq = new Map<string, number>()
+  for (const row of (sameGenreResult.data ?? []) as { metadata: Record<string, unknown> | null }[]) {
+    const meta = row.metadata?.actress
+    if (Array.isArray(meta)) {
+      for (const a of meta as { id: number; name: string }[]) {
+        if (a.id > 0) {
+          const extId = `dmm-actress-${a.id}`
+          if (extId !== actress.external_id && !coStarSet.has(extId)) {
+            sameGenreFreq.set(extId, (sameGenreFreq.get(extId) ?? 0) + 1)
+          }
+        }
+      }
+    }
+  }
+  const sameGenreExtIds = [...sameGenreFreq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8)
+    .map(([id]) => id)
+
+  let sectionF: SlimActress[] = []
+  if (sameGenreExtIds.length > 0) {
+    const { data: sgRaw } = await supabase
+      .from('actresses')
+      .select('external_id, name, image_url')
+      .in('external_id', sameGenreExtIds)
+      .eq('is_active', true)
+      .limit(6)
+    sectionF = (sgRaw as SlimActress[] | null) ?? []
+
+    // image fallback
+    const nullNamesF = sectionF.filter(a => !a.image_url).map(a => a.name)
+    if (nullNamesF.length > 0) {
+      const { data: fbArts } = await supabase
+        .from('articles')
+        .select('tags, image_url')
+        .overlaps('tags', nullNamesF)
+        .eq('is_active', true)
+        .not('image_url', 'is', null)
+        .order('published_at', { ascending: false })
+        .limit(nullNamesF.length * 4)
+      const fbMap = new Map<string, string>()
+      for (const art of (fbArts ?? []) as { tags: string[] | null; image_url: string | null }[]) {
+        for (const tag of art.tags ?? []) {
+          if (nullNamesF.includes(tag) && !fbMap.has(tag) && art.image_url) {
+            fbMap.set(tag, art.image_url)
+          }
+        }
+      }
+      sectionF = sectionF.map(a => ({
+        ...a,
+        image_url: a.image_url ?? fbMap.get(a.name) ?? null,
+      }))
+    }
+  }
+
+  if (sectionC.length === 0 && sectionD.length === 0 && sectionE.length === 0 && sectionF.length === 0) return null
+
+  const makerHasPage = makerEntry ? getMakerById(makerEntry.id) !== undefined : false
 
   return (
     <div className="space-y-10">
@@ -227,6 +306,7 @@ export async function ActressDiscoveryBlock({
             title={`${makerEntry.name}の最新ラインナップ`}
             subtitle={`${actress.name}と同メーカーのおすすめ作品`}
             color="#22ccff"
+            href={makerHasPage ? `/verity/makers/${makerEntry.id}` : undefined}
           />
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
             {sectionC.map(a => (
@@ -257,9 +337,9 @@ export async function ActressDiscoveryBlock({
                 <div className="relative aspect-[2/3] overflow-hidden bg-[var(--surface-2)]">
                   {a.image_url ? (
                     <ProxiedImage
-                      src={actressProxyUrl(a.image_url)}
+                      src={proxyUrl(a.image_url)}
                       alt={a.name}
-                      className="absolute inset-0 h-full w-full object-cover object-top transition-transform duration-300 group-hover:scale-105"
+                      className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(a.image_url)} transition-transform duration-300 group-hover:scale-105`}
                     />
                   ) : (
                     <NowPrinting />
@@ -275,6 +355,57 @@ export async function ActressDiscoveryBlock({
               </TrackedLink>
             ))}
           </div>
+        </section>
+      )}
+
+      {/* ⑥ 同ジャンル女優 */}
+      {sectionF.length > 0 && topGenres.length > 0 && (
+        <section className="space-y-4">
+          <RecoHeader
+            icon={<Users size={14} color="#4ade80" />}
+            title="同ジャンルの人気女優"
+            subtitle={`${topGenres.slice(0, 2).map(g => g.tag).join('・')} などのジャンルで活躍する女優`}
+            color="#4ade80"
+          />
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {sectionF.map(a => (
+              <TrackedLink
+                key={a.external_id}
+                href={`/verity/actresses/${a.external_id}`}
+                eventName="actress_view"
+                payload={{ actressId: a.external_id, position: 'actress_same_genre' }}
+                className="block rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden group hover:border-green-500/60 hover:shadow-[0_0_20px_rgba(74,222,128,0.15)] hover:-translate-y-1 transition-all duration-200"
+              >
+                <div className="relative aspect-[2/3] overflow-hidden bg-[var(--surface-2)]">
+                  {a.image_url ? (
+                    <ProxiedImage
+                      src={proxyUrl(a.image_url)}
+                      alt={a.name}
+                      className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(a.image_url)} transition-transform duration-300 group-hover:scale-105`}
+                    />
+                  ) : (
+                    <NowPrinting />
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/75 via-transparent to-transparent" />
+                  <div className="absolute bottom-0 left-0 right-0 p-2.5">
+                    <p className="text-xs font-bold text-white drop-shadow-lg line-clamp-1">{a.name}</p>
+                    <p className="flex items-center gap-0.5 text-[10px] text-green-300/80">
+                      プロフィールを見る <ExternalLink size={8} />
+                    </p>
+                  </div>
+                </div>
+              </TrackedLink>
+            ))}
+          </div>
+          {topGenres[0] && (
+            <Link
+              href={`/verity/genres/${encodeURIComponent(topGenres[0].tag)}`}
+              className="inline-flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-green-400 transition-colors"
+            >
+              <Tag size={11} />
+              {topGenres[0].tag}の全作品を見る →
+            </Link>
+          )}
         </section>
       )}
 

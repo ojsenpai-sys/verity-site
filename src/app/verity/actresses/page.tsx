@@ -130,7 +130,7 @@ export default async function ActressesPage({ searchParams }: PageProps) {
   let baseQuery: any = supabase
     .from('actresses')
     .select('external_id, name, ruby, image_url, metadata', { count: 'exact' })
-    .eq('is_active', true)
+    .order('is_active', { ascending: false }) // 現役女優を先頭に
     .order('ruby', { ascending: true, nullsFirst: false })
 
   if (q) {

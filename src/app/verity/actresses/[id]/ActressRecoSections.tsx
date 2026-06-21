@@ -5,6 +5,7 @@ import { FanzaLink } from '@/components/FanzaLink'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliate } from '@/lib/affiliate'
+import { coverPosClass } from '@/lib/cidUtils'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
 import type { Article, Actress } from '@/lib/types'
 
@@ -66,7 +67,7 @@ function RecoWorkCard({
           <ProxiedImage
             src={proxyUrl(imgUrl)}
             alt={article.title}
-            className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover:scale-105"
+            className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(imgUrl)} transition-transform duration-300 group-hover:scale-105`}
           />
         ) : (
           <NowPrinting />
