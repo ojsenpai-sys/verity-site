@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ExternalLink, Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { coverPosClass } from '@/lib/cidUtils'
 import type { Article } from '@/lib/types'
 
 // ─── Data ─────────────────────────────────────────────────────────────────────
@@ -125,7 +126,7 @@ export async function TodaysPickSection() {
                 <img
                   src={`/api/proxy/image?url=${encodeURIComponent(article.image_url)}`}
                   alt={article.title}
-                  className="absolute inset-0 h-full w-full object-cover object-right"
+                  className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(article.image_url)}`}
                 />
               </div>
             </a>

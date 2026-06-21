@@ -6,28 +6,32 @@ import { useAuth } from '@/components/AuthProvider'
 import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliate } from '@/lib/affiliate'
 import { cidToCdnUrl } from '@/lib/cidUtils'
+import { FanzaLink } from '@/components/FanzaLink'
 
-// ── 20タイトルデータ ────────────────────────────────────────────────────────────
+// ── 15タイトルデータ ────────────────────────────────────────────────────────────
 type SaleItem = {
   cid:     string
   actress: string
-  title:   string
+  title?:  string
 }
 
-// ── 2026-06-08 更新: DMM 100円セール最新ラインナップ（DB登録済み女優のみ掲載）──
-// 未登録作品（双葉れぇな / 素人企画）はエリア下部のまとめCTAへ集約
+// ── 2026-06-17 更新 v4: campaign=6565 編集長指定最新15作品 ──
 const SALE_ITEMS: SaleItem[] = [
-  { cid: 'cjod00447', actress: '北岡果林',   title: 'キレカワお姉さんにラブホに呼び出され痴女られた僕' },
-  { cid: 'sone00229', actress: '小宵こなん', title: 'タイトワンピ店員のボディライン丸出し接客' },
-  { cid: 'pppe00296', actress: '春陽モカ',   title: '彼女のお姉さんは巨乳と中出しOKで僕を誘惑' },
-  { cid: 'sone00136', actress: 'miru',       title: '個人撮影AVをネットで拾ったら婚約者でした' },
-  { cid: 'mide00786', actress: '七沢みあ',   title: '放課後ラブホで何度も、何度もセックスしてしまった…' },
-  { cid: 'fpre00038', actress: '橘内ひなた', title: '結婚祝いNTRキャンプ' },
-  { cid: 'hmn00673',  actress: '五日市芽依', title: 'Gcupセラピストの秘密の裏オプ中出し爆ヌキ20発' },
-  { cid: 'dass00412', actress: '月野江すい', title: '媚薬盛られ発汗発情！敏感ホットヨガ教室' },
-  { cid: 'ebwh00081', actress: '高橋ゆら',   title: 'パイズリ女王 10年ぶりの電撃復活' },
-  { cid: 'pbd00446',  actress: '篠田ゆう',   title: '55本番24時間20作品 プレミアム総集編' },
-  { cid: 'ure00109',  actress: '日下部加奈', title: 'イイ湯湧いてます 累計12万DL超え！' },
+  { cid: 'sqte00614',    actress: '天馬ゆい' },
+  { cid: 'mikr00016',   actress: '白岩冬萌' },
+  { cid: 'mida00194',   actress: 'Himari' },
+  { cid: 'mfyd00011',   actress: '佐山愛' },
+  { cid: 'ebwh00223',   actress: '七瀬アリス' },
+  { cid: 'mvsd00645',   actress: '根尾あかり' },
+  { cid: 'mih00018',    actress: '松本いちか' },
+  { cid: 'mngs00002',   actress: '新井リマ' },
+  { cid: 'mngs00004',   actress: '美園和花' },
+  { cid: 'pppe00345',   actress: '逢沢みゆ' },
+  { cid: 'hmn00699',    actress: '五日市芽依' },
+  { cid: 'mida00204',   actress: '三木環奈' },
+  { cid: 'pred00777',   actress: '三好佑香' },
+  { cid: 'urvrsp00451', actress: '小野坂ゆいか' },
+  { cid: 'mikr00023',   actress: '森日向子' },
 ]
 
 function dmmUrl(cid: string): string {
@@ -39,41 +43,41 @@ function proxyUrl(url: string): string {
 }
 
 // ── 多言語テキスト ──────────────────────────────────────────────────────────────
-const MORE_SALE_URL = 'https://video.dmm.co.jp/list/?key=100%E5%86%86%E3%82%BB%E3%83%BC%E3%83%AB&sort=suggest&i3_ref=sale_100yen_2026_06-banner&dmmref=detail'
+const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=6565&sort=review_rank'
 
 const TEXTS = {
   ja: {
     badge:   '期間限定セール',
-    tag:     '100円',
-    title:   'FANZA 100円セール大特集',
-    sub:     '大手エンタメプラットフォームで実施中の異例の超低価格セール対象タイトルはこちら！',
+    tag:     'キャンペーン中',
+    title:   'FANZA 期間限定セール特集',
+    sub:     '大手エンタメプラットフォームで現在実施中！人気女優・話題作が期間限定の特別価格でラインナップ！',
     cta:     '対象作品をすべてチェック →',
     lock:    '会員登録で完全リストを見る',
     pr:      '※本バナーはアフィリエイトリンクを含むプロモーションです',
     viewBtn: 'FANZAで観る',
-    moreBtn: 'その他の100円セール対象作品はこちらから（FANZA公式へ）',
+    moreBtn: '🔥 セール対象作品をもっと見る',
   },
   en: {
     badge:   'Limited-time Sale',
-    tag:     '¥100',
-    title:   'FANZA ¥100 Mega Sale',
-    sub:     "Check out the titles eligible for this exceptionally low-price sale now running on a major Japanese entertainment platform!",
+    tag:     'Campaign On',
+    title:   'FANZA Limited-time Sale',
+    sub:     "Now running on a major Japanese entertainment platform! Popular actresses and trending titles at special campaign prices!",
     cta:     'View All Eligible Titles →',
     lock:    'Register free to see the full list',
     pr:      '* This banner contains affiliate / promotional links.',
     viewBtn: 'Watch on FANZA',
-    moreBtn: 'Browse all ¥100 sale titles on FANZA',
+    moreBtn: '🔥 View More Sale Titles',
   },
   th: {
     badge:   'เซลล์ช่วงเวลาจำกัด',
-    tag:     '100 เยน',
-    title:   'FANZA เซลล์ 100 เยน',
-    sub:     'ดูผลงานที่ร่วมเซลล์ราคาพิเศษสุดๆ บนแพลตฟอร์มบันเทิงชั้นนำได้เลยที่นี่!',
+    tag:     'แคมเปญ',
+    title:   'FANZA เซลล์ช่วงเวลาจำกัด',
+    sub:     'กำลังจัดอยู่ตอนนี้! นักแสดงยอดนิยมและผลงานที่กำลังมาแรงในราคาพิเศษ!',
     cta:     'ดูผลงานทั้งหมด →',
     lock:    'สมัครสมาชิกฟรีเพื่อดูรายการเต็ม',
     pr:      '* แบนเนอร์นี้มีลิงก์พันธมิตร (affiliate)',
     viewBtn: 'ดูบน FANZA',
-    moreBtn: 'ดูผลงานเซลล์ 100 เยนทั้งหมดบน FANZA',
+    moreBtn: '🔥 ดูผลงานเซลล์ทั้งหมด',
   },
 } as const
 
@@ -112,10 +116,12 @@ function SaleImage({ cid, alt }: { cid: string; alt: string }) {
 }
 
 function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
-  const href = withAffiliate(dmmUrl(item.cid)) ?? dmmUrl(item.cid)
-  const alt  = item.actress ? `${item.actress}「${item.title}」` : item.title
+  const dmmHref = withAffiliate(dmmUrl(item.cid)) ?? dmmUrl(item.cid)
+  const alt     = item.actress
+    ? `${item.actress}${item.title ? `「${item.title}」` : ''}`
+    : (item.title ?? '')
 
-  function handleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+  function handleCtaClick(e: React.MouseEvent<HTMLAnchorElement>) {
     if (!isAuthed) {
       e.preventDefault()
       onLock()
@@ -124,33 +130,28 @@ function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
 
   return (
     <article className="group relative flex flex-col rounded-xl border border-[var(--border)] bg-[var(--surface)] overflow-hidden transition-all duration-200 hover:border-amber-500/50 hover:shadow-[0_0_20px_rgba(251,191,36,0.12)] hover:-translate-y-0.5">
-      {/* パッケージ画像 */}
-      <a
-        href={href}
-        target={isAuthed ? '_blank' : undefined}
-        rel="noopener noreferrer sponsored"
-        onClick={handleClick}
+      {/* パッケージ画像 — FanzaLink でラップ、常にFANZA直行 */}
+      <FanzaLink
+        href={dmmHref}
+        targetId={item.cid}
+        position="sale_banner"
         className="relative block w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]"
       >
         <SaleImage cid={item.cid} alt={alt} />
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
 
-        {/* 100円バッジ */}
+        {/* セールバッジ */}
         <span
           className="absolute left-0 top-3 rounded-r-full px-3 py-0.5 text-[10px] font-black text-white shadow-md"
           style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)' }}
         >
-          100円
+          セール中
         </span>
 
-        {/* 鍵アイコン（未ログイン） */}
-        {!isAuthed && (
-          <div className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
-            style={{ background: 'rgba(0,0,0,0.5)' }}>
-            <Lock size={28} className="text-amber-400 drop-shadow-lg" />
-          </div>
-        )}
-      </a>
+        {/* ホバーオーバーレイ（1.05倍ズーム補助） */}
+        <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ background: 'rgba(0,0,0,0.15)' }} />
+      </FanzaLink>
 
       {/* テキスト情報 */}
       <div className="flex flex-1 flex-col gap-1.5 p-3">
@@ -159,16 +160,18 @@ function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
             {item.actress}
           </p>
         )}
-        <h3 className="text-xs font-medium text-[var(--text)] line-clamp-2 leading-snug">
-          {item.title}
-        </h3>
+        {item.title && (
+          <h3 className="text-xs font-medium text-[var(--text)] line-clamp-2 leading-snug">
+            {item.title}
+          </h3>
+        )}
 
         {/* CTA */}
         <a
-          href={href}
+          href={dmmHref}
           target={isAuthed ? '_blank' : undefined}
           rel="noopener noreferrer sponsored"
-          onClick={handleClick}
+          onClick={handleCtaClick}
           className="mt-auto flex items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-bold text-white transition-all active:scale-95"
           style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)' }}
         >
@@ -204,13 +207,13 @@ export function Fanza100SaleBanner() {
   const moreSaleHref = withAffiliate(MORE_SALE_URL) ?? MORE_SALE_URL
 
   function fireLock() {
-    window.dispatchEvent(new CustomEvent('verity:auth-required', { detail: { ctx: 'sale100' } }))
+    window.dispatchEvent(new CustomEvent('verity:auth-required', { detail: { ctx: 'sale' } }))
   }
 
   return (
     <section
-      id="fanza-100-sale"
-      aria-label="FANZA 100円セール特集"
+      id="fanza-sale"
+      aria-label="FANZA 期間限定セール特集"
       className="relative overflow-hidden rounded-2xl space-y-5"
       style={{
         background: 'linear-gradient(135deg, #1c1000 0%, #201500 40%, #1a0c00 100%)',
@@ -256,7 +259,7 @@ export function Fanza100SaleBanner() {
         </p>
       </div>
 
-      {/* 20タイトル カードグリッド */}
+      {/* 15タイトル カードグリッド */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {SALE_ITEMS.map((item) => (
           <SaleCard
@@ -269,30 +272,36 @@ export function Fanza100SaleBanner() {
         ))}
       </div>
 
-      {/* その他の作品リンク */}
-      <div className="flex justify-center">
+      {/* セール総合ページ プレミアムリンクボタン */}
+      <div className="flex justify-center pt-2">
         <a
           href={moreSaleHref}
           target="_blank"
           rel="noopener noreferrer sponsored"
-          className="group relative inline-flex items-center gap-2.5 overflow-hidden rounded-full
-                     px-6 py-3 text-sm font-black text-white transition-all duration-200
-                     hover:-translate-y-0.5 hover:shadow-[0_0_28px_rgba(251,191,36,0.45)]
+          className="group relative inline-flex items-center gap-3 overflow-hidden rounded-full
+                     px-8 py-3.5 text-sm font-black tracking-wide transition-all duration-300
+                     hover:-translate-y-0.5 hover:shadow-[0_0_32px_rgba(197,160,89,0.5)]
                      active:scale-95"
           style={{
-            background: 'linear-gradient(135deg, #f59e0b 0%, #ea580c 60%, #d97706 100%)',
-            border:     '1px solid rgba(251,191,36,0.5)',
+            background: '#0a0a0a',
+            border:     '1px solid #c5a059',
+            color:      '#c5a059',
           }}
         >
-          <span className="relative z-10 tracking-wide">{t.moreBtn}</span>
-          <ExternalLink
-            size={15}
-            className="relative z-10 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
-          />
-          {/* ホバー時インナーグロー */}
+          {/* ホバー時ゴールドグラデーション背景 */}
           <span
-            className="absolute inset-0 opacity-0 transition-opacity duration-200 group-hover:opacity-100"
-            style={{ background: 'linear-gradient(135deg, rgba(255,255,255,0.12) 0%, transparent 60%)' }}
+            className="absolute inset-0 opacity-0 transition-opacity duration-300 group-hover:opacity-100 rounded-full"
+            style={{ background: 'linear-gradient(135deg, rgba(197,160,89,0.15) 0%, rgba(197,160,89,0.05) 100%)' }}
+          />
+          {/* 上ラインゴールドグロー */}
+          <span
+            className="absolute inset-x-0 top-0 h-px opacity-60 transition-opacity duration-300 group-hover:opacity-100"
+            style={{ background: 'linear-gradient(90deg, transparent, #c5a059, transparent)' }}
+          />
+          <span className="relative z-10">{t.moreBtn}</span>
+          <ExternalLink
+            size={14}
+            className="relative z-10 shrink-0 transition-transform duration-200 group-hover:translate-x-0.5 group-hover:-translate-y-0.5"
           />
         </a>
       </div>

@@ -47,12 +47,48 @@ function pickAny(
 export async function ActressMarquee({ actresses }: Props) {
   const supabase = await createClient()
 
-  // ── Step 1: ランキングTop10 を RPC で取得 ──────────────────────────
-  const { data: rankRows } = await supabase
-    .rpc('get_actress_ranking', { p_brand_id: BRAND_ID, p_limit: 10 })
+  // ── Step 1: キャッシュからランキング Top10 を取得 ──────────────────
+  // RPC はフルスキャンで重い。キャッシュが空の場合のみ RPC へフォールバック
+  let rankedOrder: string[] = []
+  {
+    const { data: latest } = await supabase
+      .from('actress_ranking_cache')
+      .select('snapshot_date')
+      .eq('brand_id', BRAND_ID)
+      .order('snapshot_date', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-  const rankedOrder: string[] = (rankRows as { actress_external_id: string }[] ?? [])
-    .map(r => r.actress_external_id)
+    if (latest) {
+      const { data: cacheRows } = await supabase
+        .from('actress_ranking_cache')
+        .select('actress_id')
+        .eq('brand_id', BRAND_ID)
+        .eq('snapshot_date', latest.snapshot_date)
+        .order('rank', { ascending: true })
+        .limit(10)
+
+      if (cacheRows && cacheRows.length > 0) {
+        // actress_ranking_cache.actress_id is uuid → map to external_id via the provided actress list
+        const idToExtId = new Map(actresses.map(a => [a.id, a.external_id]))
+        rankedOrder = (cacheRows as { actress_id: string }[])
+          .map(r => idToExtId.get(r.actress_id))
+          .filter((id): id is string => id != null)
+      }
+    }
+
+    // キャッシュが空の場合のみ RPC 呼び出し（4s タイムアウト付き）
+    if (rankedOrder.length === 0) {
+      const rpcResult = await Promise.race([
+        supabase.rpc('get_actress_ranking', { p_brand_id: BRAND_ID, p_limit: 10 }),
+        new Promise<{ data: null; error: string }>(resolve =>
+          setTimeout(() => resolve({ data: null, error: 'timeout' }), 4000)
+        ),
+      ])
+      rankedOrder = ((rpcResult?.data ?? []) as { actress_external_id: string }[])
+        .map(r => r.actress_external_id)
+    }
+  }
 
   // ── Step 2: 3グループ構成で最大50名を選定 ─────────────────────────
   const extIdToActress = new Map(actresses.map(a => [a.external_id, a]))
@@ -105,9 +141,7 @@ export async function ActressMarquee({ actresses }: Props) {
         const cid = cidByName.get(a.name)
         if (cid && artMap.has(cid)) imageMap.set(a.name, artMap.get(cid)!)
       }
-    }
-    console.log(`[marquee] after pass 0 (latest_cid): ${imageMap.size}/${top.length}`)
-  }
+    }  }
 
   // ── Passes 1 + 2: solo / any within 14 days ──────────────────────
   const cutoff14 = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000).toISOString()
@@ -123,8 +157,6 @@ export async function ActressMarquee({ actresses }: Props) {
 
   pickSolo(recent14 ?? [], actressNameSet, imageMap, top.length)
   pickAny(recent14 ?? [], actressNameSet, imageMap, top.length)
-  console.log(`[marquee] after pass 1+2 (14d): ${imageMap.size}/${top.length}`)
-
   // ── Pass 3: solo within 180 days ─────────────────────────────────
   if (imageMap.size < top.length) {
     const cutoff180 = new Date(Date.now() - 180 * 24 * 60 * 60 * 1000).toISOString()
@@ -139,26 +171,20 @@ export async function ActressMarquee({ actresses }: Props) {
       .order('published_at', { ascending: false })
       .limit(1000)
 
-    pickSolo(recent180 ?? [], actressNameSet, imageMap, top.length)
-    console.log(`[marquee] after pass 3 (180d solo): ${imageMap.size}/${top.length}`)
-  }
+    pickSolo(recent180 ?? [], actressNameSet, imageMap, top.length)  }
 
   // ── Pass 4: actress profile image from actresses table ────────────
   if (imageMap.size < top.length) {
     for (const a of top) {
       if (!imageMap.has(a.name) && a.image_url)
         imageMap.set(a.name, a.image_url)
-    }
-    console.log(`[marquee] after pass 4 (actress.image_url): ${imageMap.size}/${top.length}`)
-  }
+    }  }
 
   // ── Pass 5: unlimited time range — any article ever synced ───────
   if (imageMap.size < top.length) {
     const stillMissing = top
       .filter(a => !imageMap.has(a.name))
       .map(a => a.name)
-
-    console.log(`[marquee] pass 5 needed for: ${stillMissing.join(', ')}`)
 
     const { data: anytime } = await supabase
       .from('articles')
@@ -170,27 +196,17 @@ export async function ActressMarquee({ actresses }: Props) {
       .limit(500)
 
     pickSolo(anytime ?? [], actressNameSet, imageMap, top.length)
-    pickAny(anytime ?? [], actressNameSet, imageMap, top.length)
-    console.log(`[marquee] after pass 5 (unlimited): ${imageMap.size}/${top.length}`)
-  }
+    pickAny(anytime ?? [], actressNameSet, imageMap, top.length)  }
 
   // ── Pass 6: DMM ActressSearch by name — last-resort API call ─────
   // Capped at 10 names (up from 5) to reduce chance of missing actresses.
   if (imageMap.size < top.length) {
     const finalMissing = top.filter(a => !imageMap.has(a.name)).map(a => a.name)
-    console.log(`[marquee] pass 6 DMM name API for: ${finalMissing.join(', ')}`)
-
     const nameMap = await fetchActressImagesByName(finalMissing, 10)
-    for (const [name, url] of nameMap) imageMap.set(name, url)
-    console.log(`[marquee] after pass 6 (DMM API): ${imageMap.size}/${top.length}`)
-  }
+    for (const [name, url] of nameMap) imageMap.set(name, url)  }
 
   // ── Safety valve: 画像未取得の女優をカルーセルから除外 ────────────
   // NowPrinting を表示するのではなく、完全にスキップして景観を保つ。
-  const skipped = top.filter(a => !imageMap.has(a.name)).map(a => a.name)
-  if (skipped.length > 0) {
-    console.log(`[marquee] skipped (no image): ${skipped.join(', ')}`)
-  }
 
   const tiles: MarqueeTile[] = top
     .filter(a => imageMap.has(a.name))

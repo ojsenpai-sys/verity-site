@@ -58,9 +58,9 @@ const TEXTS = {
 type Lang = keyof typeof TEXTS
 
 const SALE_TEXTS = {
-  ja: { label: '100円セール対象作品リストを今すぐチェック！', tag: '100円セール中' },
-  en: { label: 'Unlock the ¥100 Sale full list right now!',  tag: '¥100 Sale' },
-  th: { label: 'ดูรายการเซลล์ 100 เยนได้ทันที!',           tag: 'เซลล์ 100 เยน' },
+  ja: { label: '期間限定セール対象作品リストを今すぐチェック！', tag: '期間限定セール中' },
+  en: { label: 'Unlock the Limited-time Sale full list right now!', tag: 'Sale On Now' },
+  th: { label: 'ดูรายการเซลล์ช่วงเวลาจำกัดได้ทันที!',    tag: 'เซลล์ช่วงเวลาจำกัด' },
 } as const
 
 export function LoginPromptModal() {

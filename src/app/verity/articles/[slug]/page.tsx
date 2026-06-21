@@ -4,11 +4,16 @@ export const revalidate = 0
 import type { ReactNode } from 'react'
 import { notFound } from 'next/navigation'
 import Link from 'next/link'
-import { ArrowLeft, Calendar, ExternalLink, Play, Star } from 'lucide-react'
+import { Calendar, ExternalLink, Play, Star } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { AffiliateLinkBlock } from '@/components/AffiliateLink'
 import { LogView } from '@/components/LogView'
+import { GenreScoreTracker } from '@/components/GenreScoreTracker'
 import { FanzaLink } from '@/components/FanzaLink'
+import { RelatedWorksScored } from '@/components/RelatedWorksScored'
+import { GenreDiscoveryBlock } from '@/components/GenreDiscoveryBlock'
+import { PopularityBadge } from '@/components/PopularityBadge'
+import { PositioningBlock } from '@/components/PositioningBlock'
 import { withAffiliate } from '@/lib/affiliate'
 import type { Article, AffiliateLink } from '@/lib/types'
 
@@ -207,6 +212,36 @@ export async function generateMetadata({
   }
 }
 
+// ── Breadcrumb ────────────────────────────────────────────────────────────────
+
+type BreadcrumbItem = { label: string; href?: string }
+
+function Breadcrumb({ items }: { items: BreadcrumbItem[] }) {
+  return (
+    <nav aria-label="パンくずリスト">
+      <ol className="flex flex-wrap items-center gap-1 text-xs text-[var(--text-muted)]">
+        {items.map((item, i) => (
+          <li key={i} className="flex items-center gap-1">
+            {i > 0 && <span className="opacity-40">›</span>}
+            {item.href ? (
+              <Link
+                href={item.href}
+                className="transition-colors hover:text-[var(--magenta)]"
+              >
+                {item.label}
+              </Link>
+            ) : (
+              <span className="max-w-[180px] truncate font-medium text-[var(--text)] sm:max-w-xs">
+                {item.label}
+              </span>
+            )}
+          </li>
+        ))}
+      </ol>
+    </nav>
+  )
+}
+
 // ── MetaRow ───────────────────────────────────────────────────────────────────
 
 type DmmInfoEntry = { id: number; name: string; ruby?: string }
@@ -329,19 +364,50 @@ export default async function ArticlePage({
   const actressNameSet = new Set(actresses.map((ac) => ac.name))
   const genreTags = (a.tags ?? []).filter((t2) => !actressNameSet.has(t2))
 
+  // ── Breadcrumb data ─────────────────────────────────────────────────────────
+
+  const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
+  const firstActress = actresses[0] ?? null
+
+  const breadcrumbItems: BreadcrumbItem[] = [
+    { label: 'VERITY', href: '/verity' },
+    { label: '女優一覧', href: '/verity/actresses' },
+    ...(firstActress
+      ? [{
+          label: firstActress.name,
+          href: firstActress.id > 0
+            ? `/verity/actresses/dmm-actress-${firstActress.id}`
+            : '/verity/actresses',
+        }]
+      : []),
+    { label: a.title },
+  ]
+
+  const breadcrumbJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    itemListElement: breadcrumbItems.map((item, i) => ({
+      '@type': 'ListItem',
+      position: i + 1,
+      name: item.label,
+      ...(item.href ? { item: `${BASE_URL}${item.href}` } : {}),
+    })),
+  }
+
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 space-y-8">
       <LogView targetType="article" targetId={a.external_id} />
+      <GenreScoreTracker genreTags={genreTags} weight={1} />
 
-      {/* Back + LangSwitch */}
+      {/* BreadcrumbList 構造化データ */}
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(breadcrumbJsonLd) }}
+      />
+
+      {/* Breadcrumb + LangSwitch */}
       <div className="flex items-center justify-between flex-wrap gap-3">
-        <Link
-          href="/"
-          className="inline-flex items-center gap-2 text-sm text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
-        >
-          <ArrowLeft size={15} />
-          {t.back}
-        </Link>
+        <Breadcrumb items={breadcrumbItems} />
         <LangSwitch lang={lang} />
       </div>
 
@@ -354,6 +420,9 @@ export default async function ArticlePage({
         )}
         <span className="text-[var(--text-muted)]">{a.source}</span>
       </div>
+
+      {/* Phase 4-1: 人気シグナル — user_events ベース、最大2バッジ */}
+      <PopularityBadge article={a} />
 
       {/* Title */}
       <h1 className="text-2xl font-bold leading-snug tracking-tight text-[var(--text)] sm:text-3xl">
@@ -585,9 +654,17 @@ export default async function ArticlePage({
       {/* Body */}
       {a.content && (
         <div className="prose prose-invert prose-sm max-w-none text-[var(--text)] leading-relaxed space-y-4">
-          {a.content.split('\n').map((line, i) =>
-            line.trim() ? <p key={i}>{line}</p> : <br key={i} />
-          )}
+          {a.content.split('\n').map((line, i) => {
+            if (!line.trim()) return <br key={i} />
+            if (line.startsWith('◆')) {
+              return (
+                <h3 key={i} className="text-base font-bold text-[var(--text)] border-l-4 border-[var(--magenta)] pl-3 mt-8 mb-2 leading-snug">
+                  {line.slice(1).trim()}
+                </h3>
+              )
+            }
+            return <p key={i}>{line}</p>
+          })}
         </div>
       )}
 
@@ -605,6 +682,18 @@ export default async function ArticlePage({
           </pre>
         </details>
       )}
+
+      {/* Phase 4-2: この作品の立ち位置 (同女優・同ジャンル・同メーカー内パーセンタイル) */}
+      <PositioningBlock article={a} />
+
+      {/* スコアベース関連作品（女優+10/シリーズ+8/メーカー+5/ジャンル+3/発売日近い+1） */}
+      <RelatedWorksScored article={a} />
+
+      {/* ジャンル発見ブロック — 人気/急上昇タグから他作品へ */}
+      <GenreDiscoveryBlock
+        currentTags={genreTags}
+        excludeNames={new Set(actresses.map(act => act.name))}
+      />
     </div>
   )
 }

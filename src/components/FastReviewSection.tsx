@@ -1,6 +1,8 @@
+import Link from 'next/link'
 import { ExternalLink, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { MarkdownBody } from '@/components/MarkdownBody'
+import { coverPosClass } from '@/lib/cidUtils'
 import type { SnNewsWithActress } from '@/lib/types'
 
 const SITE_KEY = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
@@ -102,15 +104,19 @@ export async function FastReviewSection() {
         {/* Package image */}
         <div className="mx-auto w-full max-w-[220px] shrink-0 md:mx-0 md:w-[200px] md:max-w-none">
           {imgSrc ? (
-            <div className="relative aspect-[2/3] overflow-hidden rounded-xl
-                            bg-[var(--surface-2)] shadow-[0_8px_32px_rgba(0,0,0,0.65)]">
+            <Link
+              href={`/verity/articles/${review.slug}`}
+              className="block relative aspect-[2/3] overflow-hidden rounded-xl
+                         bg-[var(--surface-2)] shadow-[0_8px_32px_rgba(0,0,0,0.65)]
+                         hover:shadow-[0_8px_48px_rgba(226,0,116,0.35)] transition-shadow duration-300"
+            >
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={imgSrc}
                 alt={review.title}
-                className="absolute inset-0 h-full w-full object-cover object-center"
+                className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(review.thumbnail_url)}`}
               />
-            </div>
+            </Link>
           ) : (
             <div className="aspect-[2/3] rounded-xl bg-[var(--surface-2)]" />
           )}

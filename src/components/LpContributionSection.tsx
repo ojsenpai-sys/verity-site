@@ -3,6 +3,7 @@ import { Crown, Heart, ExternalLink } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { withAffiliateForRegion } from '@/lib/affiliate'
+import { coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from './FanzaLink'
 import type { Article, Actress } from '@/lib/types'
 
@@ -231,7 +232,7 @@ export async function LpContributionSection() {
                     <img
                       src={`/api/proxy/image?url=${encodeURIComponent(featuredArticle.image_url)}`}
                       alt={featuredArticle.title}
-                      className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover/lp:scale-105"
+                      className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(featuredArticle.image_url)} transition-transform duration-300 group-hover/lp:scale-105`}
                     />
                     <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent" />
                     <span className="absolute bottom-2 right-2 rounded-full bg-[var(--magenta)] px-2 py-0.5 text-[9px] font-bold text-white">

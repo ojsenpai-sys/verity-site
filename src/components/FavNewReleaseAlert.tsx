@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { X } from 'lucide-react'
 import { createClient } from '@/lib/supabase/client'
 import { withAffiliate } from '@/lib/affiliate'
+import { coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from './FanzaLink'
 
 interface AlertPayload {
@@ -30,10 +31,12 @@ export function FavNewReleaseAlert() {
       const { data: { user } } = await supabase.auth.getUser()
       if (!user) return
 
+      const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
       const { data: profile } = await supabase
         .from('profiles')
         .select('favorite_actress_ids')
-        .eq('id', user.id)
+        .eq('user_id', user.id)
+        .eq('brand_id', BRAND_ID)
         .maybeSingle()
 
       const ids: string[] = profile?.favorite_actress_ids ?? []
@@ -123,7 +126,7 @@ export function FavNewReleaseAlert() {
         {proxyImg && (
           <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded-md">
             {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img src={proxyImg} alt={payload.title} className="absolute inset-0 h-full w-full object-cover object-right" />
+            <img src={proxyImg} alt={payload.title} className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(payload.imageUrl)}`} />
           </div>
         )}
         <div className="flex min-w-0 flex-col gap-1">

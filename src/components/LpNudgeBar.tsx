@@ -45,10 +45,12 @@ export async function LpNudgeBar() {
     )
   }
 
+  const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
   const { data: profile } = await supabase
     .from('profiles')
     .select('lp_balance, login_streak')
-    .eq('id', user.id)
+    .eq('user_id', user.id)
+    .eq('brand_id', BRAND_ID)
     .maybeSingle()
 
   if (!profile) return null
@@ -68,7 +70,7 @@ export async function LpNudgeBar() {
         </span>
       )}
       <span className="ml-auto text-[10px] text-[var(--text-muted)]">
-        FANZAリンクをクリックするとLPが貯まります
+        毎日ログインするとLPが貯まります
       </span>
     </div>
   )

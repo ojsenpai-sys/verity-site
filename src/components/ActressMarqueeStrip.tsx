@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { NowPrinting } from './NowPrinting'
 import { ProxiedImage } from './ProxiedImage'
-import { isBadImageUrl } from '@/lib/cidUtils'
+import { isBadImageUrl, coverPosClass } from '@/lib/cidUtils'
 
 export type MarqueeTile = {
   name: string
@@ -82,7 +82,7 @@ export function ActressMarqueeStrip({ tiles }: { tiles: MarqueeTile[] }) {
                     <ProxiedImage
                       src={proxyUrl(imgUrl)}
                       alt={tile.name}
-                      className="h-full w-full object-cover object-right"
+                      className={`h-full w-full object-cover ${coverPosClass(imgUrl)}`}
                     />
                   ) : (
                     <NowPrinting />
@@ -138,7 +138,7 @@ export function ActressMarqueeStrip({ tiles }: { tiles: MarqueeTile[] }) {
                     <ProxiedImage
                       src={proxyUrl(imgUrl)}
                       alt={tile.name}
-                      className="h-full w-full object-cover object-right"
+                      className={`h-full w-full object-cover ${coverPosClass(imgUrl)}`}
                     />
                   ) : (
                     <NowPrinting />

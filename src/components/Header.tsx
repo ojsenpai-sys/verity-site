@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Building2, LayoutGrid } from 'lucide-react'
+import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Building2, LayoutGrid, Sparkles, Zap, Trophy, Search } from 'lucide-react'
 import { LoginButton } from './LoginButton'
 import { withAffiliate } from '@/lib/affiliate'
 
@@ -25,6 +25,13 @@ const NAV_LINKS = [
   { href: '/verity/makers',  label: 'MAKERS',           icon: Building2 },
   { href: '/verity/genres',  label: 'GENRES',           icon: LayoutGrid },
   { href: '/verity/guide',   label: 'VERITYの遊び方',  icon: Map },
+]
+
+const VERITY_CORNER_LINKS = [
+  { href: '/verity/features',            label: '特集一覧',       sub: 'Spotlight',       icon: Sparkles },
+  { href: '/verity#fastest-new-releases', label: '最新作最速更新', sub: 'New Releases',    icon: Zap },
+  { href: '/verity/ranking',             label: '人気女優ランキング', sub: 'Ranking',      icon: Trophy },
+  { href: '/verity/search',              label: '超高速検索',     sub: 'Quick Search',    icon: Search },
 ]
 
 export function Header() {
@@ -136,6 +143,35 @@ export function Header() {
                 </Link>
               )
             })}
+            {/* ── VERITY コーナー ── */}
+            <div className="mt-3 mb-1">
+              <div className="flex items-center gap-2 px-1 mb-2">
+                <div
+                  className="h-px flex-1"
+                  style={{ background: 'linear-gradient(to right, rgba(197,160,89,0.5), transparent)' }}
+                />
+                <span className="text-[9px] font-bold tracking-widest uppercase text-[#c5a059]/60">
+                  VERITY コーナー
+                </span>
+                <div
+                  className="h-px flex-1"
+                  style={{ background: 'linear-gradient(to left, rgba(197,160,89,0.5), transparent)' }}
+                />
+              </div>
+              {VERITY_CORNER_LINKS.map(({ href, label, sub, icon: Icon }) => (
+                <Link
+                  key={href}
+                  href={href}
+                  onClick={() => setIsOpen(false)}
+                  className="flex items-center gap-3 rounded-xl border border-[#c5a059]/20 bg-[#c5a059]/5 px-4 py-3 text-sm font-bold text-[#c5a059]/70 transition-all duration-200 hover:border-[#c5a059]/55 hover:bg-[#c5a059]/12 hover:text-[#c5a059] hover:shadow-[0_0_16px_rgba(197,160,89,0.15)] mb-1.5"
+                >
+                  <Icon size={15} className="shrink-0 text-[#c5a059]/60 transition-colors group-hover:text-[#c5a059]" />
+                  <span className="flex-1">{label}</span>
+                  <span className="text-[9px] font-normal tracking-wider text-[#c5a059]/35 uppercase">{sub}</span>
+                </Link>
+              ))}
+            </div>
+
             {/* FANZA affiliate shortcuts */}
             <a
               href={withAffiliate(DMM_RANKING_URL) ?? DMM_RANKING_URL}

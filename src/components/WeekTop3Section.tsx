@@ -4,6 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
+import { coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from './FanzaLink'
 import type { Article } from '@/lib/types'
 
@@ -124,7 +125,7 @@ export async function WeekTop3Section() {
                   <img
                     src={imgUrl}
                     alt={article.title}
-                    className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover/t3:scale-105"
+                    className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(article.image_url)} transition-transform duration-300 group-hover/t3:scale-105`}
                   />
                   <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-transparent to-transparent" />
                   <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between">
@@ -142,7 +143,7 @@ export async function WeekTop3Section() {
               ) : imgUrl ? (
                 <div className="relative aspect-[2/3] overflow-hidden bg-[var(--surface-2)]">
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={imgUrl} alt={article.title} className="absolute inset-0 h-full w-full object-cover object-right" />
+                  <img src={imgUrl} alt={article.title} className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(article.image_url)}`} />
                 </div>
               ) : null}
 

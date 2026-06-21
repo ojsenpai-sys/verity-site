@@ -1,8 +1,8 @@
 import Link from 'next/link'
-import { Tag, Clock, ExternalLink } from 'lucide-react'
+import { Tag, Clock, ExternalLink, Play } from 'lucide-react'
 import { NowPrinting } from './NowPrinting'
 import { ProxiedImage } from './ProxiedImage'
-import { cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
+import { cidToCdnUrl, coverPosClass, isBadImageUrl } from '@/lib/cidUtils'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { FavoriteButton } from '@/components/FavoriteButton'
@@ -41,6 +41,8 @@ type MetaActress = { id: number; name: string }
 
 type ArticleCardProps = {
   article: Article
+  /** 現在トレンドのジャンル名集合。マッチするタグピルを emerald 強調表示する。 */
+  hotTags?: ReadonlySet<string>
 }
 
 function timeAgo(dateStr: string | null): string {
@@ -67,7 +69,7 @@ function actressHref(a: MetaActress): string {
   return a.id > 0 ? `/actresses/dmm-actress-${a.id}` : `/?tag=${encodeURIComponent(a.name)}`
 }
 
-export async function ArticleCard({ article }: ArticleCardProps) {
+export async function ArticleCard({ article, hotTags }: ArticleCardProps) {
   const isOverseas = await getIsOverseasUser()
 
   // Preserve full { id, name } objects for linking to actress pages
@@ -112,7 +114,7 @@ export async function ArticleCard({ article }: ArticleCardProps) {
       <ProxiedImage
         src={proxyUrl(imgUrl)}
         alt={article.title}
-        className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-200 group-hover:scale-105"
+        className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(imgUrl)} transition-transform duration-300 ease-out group-hover:scale-105 group-active:scale-105`}
       />
       <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
     </>
@@ -122,6 +124,18 @@ export async function ArticleCard({ article }: ArticleCardProps) {
 
   const imageBadges = (
     <>
+      {/* 永続 FANZA バッジ — モバイル/PC 両対応の常時アフォーダンス */}
+      {affiliateUrl && (
+        <span
+          className="pointer-events-none absolute bottom-2 left-2 z-[5] inline-flex items-center gap-1
+                     rounded-full bg-black/55 backdrop-blur-sm px-2 py-0.5 text-[10px] font-bold text-white
+                     ring-1 ring-white/15 shadow-[0_2px_6px_rgba(0,0,0,0.4)]
+                     transition-all duration-200
+                     group-hover/img:bg-[var(--magenta)]/90 group-hover/img:ring-[var(--magenta)]/40"
+        >
+          <Play size={9} className="fill-white" /> FANZA
+        </span>
+      )}
       {/* お気に入りボタン — metaにタイトルとhrefを渡してLocalFavArticlesで正しく表示 */}
       <div className="absolute bottom-2 right-2 z-10">
         <FavoriteButton
@@ -252,16 +266,24 @@ export async function ArticleCard({ article }: ArticleCardProps) {
             {article.tags
               .filter((t) => !actressNameSet.has(t))
               .slice(0, 4)
-              .map((tag) => (
-                <Link
-                  key={tag}
-                  href={`/verity/genres/${encodeURIComponent(tag)}`}
-                  className="flex items-center gap-1 rounded-full border border-[var(--border)] px-2 py-0.5 text-[10px] text-[var(--text-muted)] transition-colors hover:border-[var(--magenta)]/40 hover:text-[var(--magenta)]"
-                >
-                  <Tag size={9} />
-                  {tag}
-                </Link>
-              ))}
+              .map((tag) => {
+                const hot = hotTags?.has(tag) ?? false
+                return (
+                  <Link
+                    key={tag}
+                    href={`/verity/genres/${encodeURIComponent(tag)}`}
+                    className={[
+                      'flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors',
+                      hot
+                        ? 'border-emerald-500/60 bg-emerald-500/12 text-emerald-300 shadow-[0_0_8px_rgba(16,185,129,0.25)] hover:bg-emerald-500/22'
+                        : 'border-[var(--border)] text-[var(--text-muted)] hover:border-[var(--magenta)]/40 hover:text-[var(--magenta)]',
+                    ].join(' ')}
+                  >
+                    <Tag size={9} />
+                    {tag}
+                  </Link>
+                )
+              })}
           </div>
         )}
 

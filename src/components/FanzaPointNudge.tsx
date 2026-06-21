@@ -26,7 +26,7 @@ export function FanzaPointNudge() {
             <p className="mt-0.5 text-[11px] leading-relaxed text-white/50">
               ポイントの有効期限を確認して、余ったポイントは
               <a href="#fanza-100-sale" className="mx-0.5 font-bold text-orange-300 hover:underline">
-                100円セール
+                期間限定セール
               </a>
               や今週のおすすめ作品に使いましょう。
             </p>
@@ -40,7 +40,7 @@ export function FanzaPointNudge() {
             className="flex items-center gap-1.5 rounded-full border border-orange-400/40 bg-orange-500/10 px-3.5 py-1.5 text-[11px] font-bold text-orange-300 transition-colors hover:bg-orange-500/20"
           >
             <ArrowRight size={11} />
-            100円セールを見る
+            期間限定セールを見る
           </a>
 
           <FanzaLink
