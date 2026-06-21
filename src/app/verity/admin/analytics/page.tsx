@@ -2,8 +2,10 @@ import type { Metadata } from 'next'
 import { BarChart3 } from 'lucide-react'
 import {
   getDailyMetrics, getOverview, getEngagement, getFanza, getTags, getPreference, getInvestor,
+  getCronStatus, getPreferenceWeights,
 } from '@/lib/adminAnalytics'
 import { AnalyticsCharts } from './AnalyticsCharts'
+import { PreferenceWeightsEditor } from './PreferenceWeightsEditor'
 
 export const metadata: Metadata = { title: 'Analytics — VERITY Admin' }
 export const dynamic = 'force-dynamic'
@@ -32,8 +34,9 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 
 export default async function AnalyticsPage() {
   const daily = await getDailyMetrics()
-  const [overview, engagement, fanza, tags, preference, investor] = await Promise.all([
+  const [overview, engagement, fanza, tags, preference, investor, cron, weights] = await Promise.all([
     getOverview(daily), getEngagement(daily), getFanza(daily), getTags(), getPreference(), getInvestor(daily),
+    getCronStatus(), getPreferenceWeights(),
   ])
 
   return (
@@ -51,16 +54,19 @@ export default async function AnalyticsPage() {
 
       {/* Overview */}
       <Section title="Overview">
+        <p className="-mt-1 text-[11px] text-[var(--text-muted)]">
+          ※ DAU/WAU/MAU は<strong className="text-[var(--text)]">会員ベース（ログイン済み・JSTカレンダー）</strong>指標。匿名訪問は含みません。
+        </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-5">
           <Stat label="総会員数" value={fmt(overview.totalMembers)} />
           <Stat label="新規(今日)" value={fmt(overview.newToday)} />
           <Stat label="新規(7日)" value={fmt(overview.new7d)} />
           <Stat label="新規(30日)" value={fmt(overview.new30d)} />
-          <Stat label="ログイン率" value={`${overview.loginRate}%`} sub="DAU÷総会員" />
-          <Stat label="DAU" value={fmt(overview.dau)} />
-          <Stat label="WAU" value={fmt(overview.wau)} />
-          <Stat label="MAU" value={fmt(overview.mau)} />
-          <Stat label="Stickiness" value={`${overview.stickiness}%`} sub="DAU÷MAU" />
+          <Stat label="ログイン率" value={`${overview.loginRate}%`} sub="Member DAU÷総会員" />
+          <Stat label="Member DAU" value={fmt(overview.dau)} sub="当日活動会員" />
+          <Stat label="Member WAU" value={fmt(overview.wau)} sub="過去7日" />
+          <Stat label="Member MAU" value={fmt(overview.mau)} sub="過去30日" />
+          <Stat label="Member Stickiness" value={`${overview.stickiness}%`} sub="DAU÷MAU" />
         </div>
       </Section>
 
@@ -172,8 +178,8 @@ export default async function AnalyticsPage() {
       <Section title="Investor Metrics">
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-4">
           <Stat label="登録会員数" value={fmt(investor.registeredMembers)} />
-          <Stat label="MAU" value={fmt(investor.mau)} />
-          <Stat label="Stickiness" value={`${investor.stickiness}%`} sub="DAU÷MAU" />
+          <Stat label="Member MAU" value={fmt(investor.mau)} />
+          <Stat label="Member Stickiness" value={`${investor.stickiness}%`} sub="DAU÷MAU" />
           <Stat label="7日継続率" value={`${investor.retention7d}%`} sub="出戻り率" />
           <Stat label="お気に入り総数" value={fmt(investor.favoriteTotal)} />
           <Stat label="Favorite Utilization" value={`${investor.favoriteUtilization}%`} sub="行動会員比率" />
@@ -182,8 +188,48 @@ export default async function AnalyticsPage() {
           <Stat label="月間イベント数" value={fmt(investor.monthlyEvents)} />
           <Stat label="平均閲覧深度" value={fmt(investor.avgDepth)} sub="events÷MAU" />
           <Stat label="FANZA送客数" value={fmt(investor.fanzaReferrals)} sub="累計" />
+          <Stat label="FANZA送客率" value={`${investor.fanzaCtr}%`} sub="clicks÷作品閲覧" />
           <Stat label="Content Coverage" value={`${fmt(investor.coverage.works)}作品`} sub={`女優${fmt(investor.coverage.actresses)} / タグ${fmt(investor.coverage.tags)}`} />
         </div>
+      </Section>
+
+      {/* Cron Status */}
+      <Section title="Cron Status（集計鮮度）">
+        <div className="overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface)]">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-[var(--border)] text-[var(--text-muted)]">
+                <th className="px-3 py-2 text-left font-semibold">Job</th>
+                <th className="px-3 py-2 text-left font-semibold">最終実行</th>
+                <th className="px-3 py-2 text-left font-semibold">状態</th>
+                <th className="px-3 py-2 text-right font-semibold">実行時間</th>
+              </tr>
+            </thead>
+            <tbody>
+              {cron.map(j => (
+                <tr key={j.job_name} className="border-b border-[var(--border)] last:border-0">
+                  <td className="px-3 py-2 font-mono text-[var(--text)]">{j.job_name}</td>
+                  <td className="px-3 py-2 text-[var(--text-muted)]">{j.started_at ? new Date(j.started_at).toLocaleString('ja-JP') : '—'}</td>
+                  <td className="px-3 py-2">
+                    <span style={{ color: j.status === 'ok' ? '#aaff00' : j.status === 'error' ? '#ff5533' : 'var(--text-muted)' }}>
+                      {j.status === 'ok' ? '✓ 成功' : j.status === 'error' ? '✗ 失敗' : (j.status ?? '実行中')}
+                    </span>
+                    {j.error && <span className="ml-2 text-[10px] text-[#ff5533]">{j.error.slice(0, 60)}</span>}
+                  </td>
+                  <td className="px-3 py-2 text-right tabular-nums text-[var(--text-muted)]">{j.duration_ms != null ? `${fmt(j.duration_ms)}ms` : '—'}</td>
+                </tr>
+              ))}
+              {cron.length === 0 && (
+                <tr><td colSpan={4} className="px-3 py-3 text-[var(--text-muted)]">実行履歴なし（refresh_* 実行後に表示）</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      </Section>
+
+      {/* Preference Weights（嗜好スコアの重み調整） */}
+      <Section title="Preference Weights（嗜好スコア重み）">
+        <PreferenceWeightsEditor initial={weights} />
       </Section>
     </div>
   )

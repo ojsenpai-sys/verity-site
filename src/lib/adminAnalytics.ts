@@ -18,6 +18,13 @@ function db(): SupabaseClient | null {
 const isoDaysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString()
 const jstDate    = (offsetDays = 0) =>
   new Date(Date.now() + 9 * 3_600_000 - offsetDays * 86_400_000).toISOString().slice(0, 10)
+// JST カレンダー日の 00:00 を UTC ISO で返す（DAU/WAU/MAU をカレンダー基準に統一するため）
+// offsetDays=0: 当日, 6: 7日前の00:00（過去7日窓）, 29: 30日前（過去30日窓）
+const jstDayStartIso = (offsetDays = 0) => {
+  const j = new Date(Date.now() + 9 * 3_600_000)
+  const utcMidnightJst = Date.UTC(j.getUTCFullYear(), j.getUTCMonth(), j.getUTCDate() - offsetDays)
+  return new Date(utcMidnightJst - 9 * 3_600_000).toISOString()
+}
 const n   = (v: unknown) => Number(v ?? 0) || 0
 const pct = (a: number, b: number) => (b > 0 ? Math.round((a / b) * 1000) / 10 : 0)
 const r1  = (x: number) => Math.round(x * 10) / 10
@@ -49,9 +56,10 @@ export async function getDailyMetrics(): Promise<DailyRow[]> {
 export async function getOverview(daily: DailyRow[]) {
   const c = db()
   const totalMembers = c ? await toCount(c.from('profiles').select('*', { count: 'exact', head: true }).eq('brand_id', BRAND)) : 0
-  const active = (d: number) =>
-    c ? toCount(c.from('user_activity_summary').select('*', { count: 'exact', head: true }).gte('last_event_at', isoDaysAgo(d))) : Promise.resolve(0)
-  const [dau, wau, mau] = await Promise.all([active(1), active(7), active(30)])
+  // JSTカレンダー基準・会員(user_id NOT NULL=UAS)ベース。daily_metrics.dau と同一定義に統一。
+  const activeSince = (offsetDays: number) =>
+    c ? toCount(c.from('user_activity_summary').select('*', { count: 'exact', head: true }).gte('last_event_at', jstDayStartIso(offsetDays))) : Promise.resolve(0)
+  const [dau, wau, mau] = await Promise.all([activeSince(0), activeSince(6), activeSince(29)])
   return {
     totalMembers,
     newToday: sumSince(daily, 'new_users', jstDate(0)),
@@ -139,15 +147,15 @@ export async function getPreference(): Promise<PrefSlice[]> {
 export type Investor = {
   registeredMembers: number; mau: number; favoriteTotal: number; monthlyEvents: number
   workSaveRate: number; actressFollowRate: number; favoriteUtilization: number
-  avgDepth: number; fanzaReferrals: number; retention7d: number; stickiness: number
+  avgDepth: number; fanzaReferrals: number; fanzaCtr: number; retention7d: number; stickiness: number
   coverage: { works: number; actresses: number; tags: number }
 }
 export async function getInvestor(daily: DailyRow[]): Promise<Investor> {
   const c = db()
   const [totalMembers, mau, dau] = await Promise.all([
     c ? toCount(c.from('profiles').select('*', { count: 'exact', head: true }).eq('brand_id', BRAND)) : Promise.resolve(0),
-    c ? toCount(c.from('user_activity_summary').select('*', { count: 'exact', head: true }).gte('last_event_at', isoDaysAgo(30))) : Promise.resolve(0),
-    c ? toCount(c.from('user_activity_summary').select('*', { count: 'exact', head: true }).gte('last_event_at', isoDaysAgo(1))) : Promise.resolve(0),
+    c ? toCount(c.from('user_activity_summary').select('*', { count: 'exact', head: true }).gte('last_event_at', jstDayStartIso(29))) : Promise.resolve(0),
+    c ? toCount(c.from('user_activity_summary').select('*', { count: 'exact', head: true }).gte('last_event_at', jstDayStartIso(0))) : Promise.resolve(0),
   ])
 
   let favAny = 0, favWork = 0, favActress = 0
@@ -180,8 +188,29 @@ export async function getInvestor(daily: DailyRow[]): Promise<Investor> {
     favoriteUtilization: pct(favAny, totalMembers),
     avgDepth:            mau > 0 ? r1(monthlyEvents / mau) : 0,
     fanzaReferrals:      sumAll(daily, 'fanza_clicks'),
+    fanzaCtr:            pct(sumAll(daily, 'fanza_clicks'), sumAll(daily, 'work_views')), // FANZA送客率 = clicks/work_views
     retention7d:         pct(retNumer, retDenom),
     stickiness:          pct(dau, mau),
     coverage: { works, actresses, tags },
   }
+}
+
+// ── Cron Status（集計鮮度・成否） ───────────────────────────────────────────────
+export type CronRow = { job_name: string; started_at: string; finished_at: string | null; status: string | null; duration_ms: number | null; error: string | null }
+export async function getCronStatus(): Promise<CronRow[]> {
+  const c = db(); if (!c) return []
+  try {
+    const { data } = await c.from('cron_status_latest').select('*')
+    return ((data ?? []) as CronRow[]).sort((a, b) => a.job_name < b.job_name ? -1 : 1)
+  } catch { return [] }
+}
+
+// ── Preference Weights（編集UI用の現値取得） ────────────────────────────────────
+export type WeightRow = { event_name: string; weight: number }
+export async function getPreferenceWeights(): Promise<WeightRow[]> {
+  const c = db(); if (!c) return []
+  try {
+    const { data } = await c.from('preference_weights').select('event_name,weight').order('event_name')
+    return (data ?? []) as WeightRow[]
+  } catch { return [] }
 }
