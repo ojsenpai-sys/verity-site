@@ -114,6 +114,7 @@ export function trackEvent(eventName: EventName, payload: TrackPayload = {}): vo
         target_id,
         metadata,
         page_path,
+        user_agent: navigator.userAgent,   // bot 除外(analytics_v2_audience)用。033 列追加後に有効
       }).then()
     )
     .catch(() => {})
