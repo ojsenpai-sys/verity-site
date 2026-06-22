@@ -122,7 +122,7 @@ export default async function AnalyticsPage() {
                 <li key={w.external_id} className="flex items-center gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5">
                   <span className="w-5 shrink-0 text-center text-[11px] font-bold text-[var(--text-muted)]">{i + 1}</span>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={proxy(w.image_url)} alt="" className="h-10 w-7 shrink-0 rounded object-cover" />
+                  <img src={proxy(w.image_url)} alt="" className="h-10 w-7 shrink-0 rounded object-cover object-right" />
                   <span className="flex-1 truncate text-xs text-[var(--text)]">{w.title}</span>
                   <span className="shrink-0 text-[11px] font-bold tabular-nums" style={{ color: '#aaff00' }}>{fmt(Number(w.score_30d) || 0)}</span>
                 </li>
@@ -137,7 +137,7 @@ export default async function AnalyticsPage() {
                 <li key={a.external_id} className="flex items-center gap-2.5 rounded-lg border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1.5">
                   <span className="w-5 shrink-0 text-center text-[11px] font-bold text-[var(--text-muted)]">{i + 1}</span>
                   {/* eslint-disable-next-line @next/next/no-img-element */}
-                  <img src={proxy(a.image_url)} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover" />
+                  <img src={proxy(a.image_url)} alt="" className="h-9 w-9 shrink-0 rounded-full object-cover object-right" />
                   <span className="flex-1 truncate text-xs text-[var(--text)]">{a.name}</span>
                   <span className="shrink-0 text-[11px] font-bold tabular-nums" style={{ color: '#aaff00' }}>{fmt(Number(a.score_30d) || 0)}</span>
                 </li>
