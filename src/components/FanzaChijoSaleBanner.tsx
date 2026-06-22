@@ -98,8 +98,11 @@ type CardProps = {
 }
 
 function SaleImage({ cid, alt }: { cid: string; alt: string }) {
-  // 単一チョークポイント: pl→jp.jpg（正面の縦型表紙）化し、coverPosClass で object-center 中央寄せ。
-  const coverUrl   = cidToCdnUrl(cid, 'pl').replace(/(?:pl|ps)\.jpg$/, 'jp.jpg')
+  // 単一チョークポイント coverPosClass で表紙を表示。
+  // ※本セールCID群は jp.jpg 不在で pl にフォールバックする（実測12/12 fallback）ため、
+  //   jp.jpg化+object-center は背表紙が中央に出て逆効果。pl.jpg のまま coverPosClass→object-right
+  //   で「正面の表紙(スプレッド右側)」を表示するのが正。ArticleCard/人気ランキングと同規約。
+  const coverUrl   = cidToCdnUrl(cid, 'pl')
   const candidates = [proxyUrl(coverUrl)]
 
   const [idx, setIdx]       = useState(0)
