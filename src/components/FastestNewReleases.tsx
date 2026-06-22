@@ -16,6 +16,19 @@ type MakerConfig = {
 
 const MAKERS: MakerConfig[] = [
   {
+    id: 's1',
+    label: 'エスワン',
+    cids: [
+      'snos00300', 'snos00291', 'snos00261', 'ofje00653',
+      'snos00327', 'snos00271', 'snos00316', 'snos00301',
+      'snos00247', 'snos00312', 'snos00293', 'snos00263',
+      'snos00292', 'snos00296', 'snos00318', 'snos00370',
+      'snos00326', 'snos00308', 'snos00307', 'snos00320',
+      'ofje00647', 'ofje00648',
+    ],
+    actressMap: {},
+  },
+  {
     id: 'honchu',
     label: '本中',
     cids: ['hmn00890', 'hmn00888', 'hmn00883', 'hmn00880', 'hmn00860'],
@@ -114,11 +127,20 @@ async function getAllArticles(): Promise<Map<string, Article>> {
   return new Map(((data as Article[]) ?? []).map((a) => [a.external_id, a]))
 }
 
-function getProxiedImage(article: Article): string {
-  const raw = isBadImageUrl(article.image_url) ? null : article.image_url
-  const hi = toHighResPackageUrl(raw)
-  if (hi) return `/verity/api/proxy/image?url=${encodeURIComponent(hi)}`
-  return `/verity/api/proxy/image?url=${encodeURIComponent(cidToCdnUrl(article.external_id, 'pl'))}`
+function dmmUrl(cid: string): string {
+  return `https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=${cid}/`
+}
+
+function proxied(url: string): string {
+  return `/verity/api/proxy/image?url=${encodeURIComponent(url)}`
+}
+
+// DB記事の画像があればそれを、無ければCIDから pl.jpg を再構築。
+// coverPosClass は「実際に描画されるURL」で判定する（生 image_url を渡すと null→object-center で
+// 背表紙が中央に出るため）。本CID群は jp.jpg 不在で pl 配信＝coverPosClass→object-right。
+function effectiveCoverUrl(cid: string, article: Article | undefined): string {
+  const raw = article && !isBadImageUrl(article.image_url) ? article.image_url : null
+  return toHighResPackageUrl(raw) ?? cidToCdnUrl(cid, 'pl')
 }
 
 function getAffiliateUrl(article: Article): string | null {
@@ -134,14 +156,24 @@ function getAffiliateUrl(article: Article): string | null {
 export async function FastestNewReleases() {
   const articleMap = await getAllArticles()
 
-  const makerSections = MAKERS
-    .map((maker) => ({
-      ...maker,
-      articles: maker.cids
-        .map((cid) => articleMap.get(cid))
-        .filter(Boolean) as Article[],
-    }))
-    .filter((s) => s.articles.length > 0)
+  // DB記事があれば優先、無ければCIDから直接カード化（解禁直後でDB未登録でも表示）。
+  const makerSections = MAKERS.map((maker) => ({
+    id:    maker.id,
+    label: maker.label,
+    cards: maker.cids.map((cid) => {
+      const article = articleMap.get(cid)
+      const cover   = effectiveCoverUrl(cid, article)
+      return {
+        cid,
+        title:       article?.title ?? '',
+        slug:        article?.slug ?? null,
+        coverUrl:    cover,
+        imgSrc:      proxied(cover),
+        href:        (article ? getAffiliateUrl(article) : null) ?? withAffiliate(dmmUrl(cid)),
+        actressName: maker.actressMap[cid] ?? '',
+      }
+    }),
+  })).filter((s) => s.cards.length > 0)
 
   if (!makerSections.length) return null
 
@@ -173,28 +205,26 @@ export async function FastestNewReleases() {
           </span>
 
           <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 sm:overflow-visible lg:grid-cols-5">
-            {section.articles.map((article) => {
-              const imgSrc = getProxiedImage(article)
-              const href = getAffiliateUrl(article)
-              const actressName = section.actressMap[article.external_id] ?? ''
+            {section.cards.map((card) => {
+              const { imgSrc, href, actressName } = card
 
               return (
                 <div
-                  key={article.id}
+                  key={card.cid}
                   className="shrink-0 w-36 sm:w-auto snap-start rounded-xl overflow-hidden border border-[var(--border)] bg-[var(--surface)] flex flex-col group transition-colors hover:border-orange-500/40 hover:shadow-md"
                 >
                   {/* ── 表紙画像（FanzaLink直行） ─────────────────────── */}
                   {href ? (
                     <FanzaLink
                       href={href}
-                      targetId={article.external_id}
+                      targetId={card.cid}
                       position="fastest_new_releases"
                       className="relative w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]"
                     >
                       <ProxiedImage
                         src={imgSrc}
-                        alt={article.title}
-                        className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(article.image_url)} transition-transform duration-300 ease-out group-hover:scale-105`}
+                        alt={card.title || card.cid}
+                        className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(card.coverUrl)} transition-transform duration-300 ease-out group-hover:scale-105`}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                       <span className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-black tracking-widest bg-red-600 text-white shadow-lg">
@@ -216,8 +246,8 @@ export async function FastestNewReleases() {
                     <div className="relative w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]">
                       <ProxiedImage
                         src={imgSrc}
-                        alt={article.title}
-                        className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(article.image_url)}`}
+                        alt={card.title || card.cid}
+                        className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(card.coverUrl)}`}
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/10 to-transparent" />
                       <span className="absolute top-2 left-2 rounded px-1.5 py-0.5 text-[9px] font-black tracking-widest bg-red-600 text-white shadow-lg">
@@ -233,23 +263,25 @@ export async function FastestNewReleases() {
 
                   {/* ── テキストエリア ────────────────────────────────── */}
                   <div className="flex flex-1 flex-col gap-2.5 p-3">
-                    {article.slug ? (
-                      <Link href={`/verity/articles/${article.slug}`}>
-                        <p className="flex-1 text-[11px] font-medium leading-snug text-[var(--text)] line-clamp-3 hover:text-[var(--magenta)] transition-colors">
-                          {article.title}
+                    {card.title && (
+                      card.slug ? (
+                        <Link href={`/verity/articles/${card.slug}`}>
+                          <p className="flex-1 text-[11px] font-medium leading-snug text-[var(--text)] line-clamp-3 hover:text-[var(--magenta)] transition-colors">
+                            {card.title}
+                          </p>
+                        </Link>
+                      ) : (
+                        <p className="flex-1 text-[11px] font-medium leading-snug text-[var(--text)] line-clamp-3">
+                          {card.title}
                         </p>
-                      </Link>
-                    ) : (
-                      <p className="flex-1 text-[11px] font-medium leading-snug text-[var(--text)] line-clamp-3">
-                        {article.title}
-                      </p>
+                      )
                     )}
                     {href ? (
                       <FanzaLink
                         href={href}
-                        targetId={article.external_id}
+                        targetId={card.cid}
                         position="fastest_new_releases_cta"
-                        className="flex items-center justify-center gap-1.5 w-full rounded-lg py-2 text-[10px] font-bold tracking-wider bg-gradient-to-r from-orange-500 to-red-600 text-white hover:from-orange-400 hover:to-red-500 transition-all shadow-sm"
+                        className="mt-auto flex items-center justify-center gap-1.5 w-full rounded-lg py-2 text-[10px] font-bold tracking-wider bg-gradient-to-r from-orange-500 to-red-600 text-white hover:from-orange-400 hover:to-red-500 transition-all shadow-sm"
                       >
                         <ExternalLink size={10} />
                         今すぐ観る
