@@ -397,12 +397,14 @@ function WorkRankingCard({
   const names = workActressNames(article)
   const style = RANK_STYLES[rank]
 
-  // 表紙: pl/ps → jp.jpg（縦型フロント単体）に変換し object-center で中央表示
-  // （cidUtils の単一チョークポイント: jp.jpg は coverPosClass → object-center）
-  const pl    = toHighResPackageUrl(article.image_url) ?? article.image_url
-  const front = pl ? pl.replace(/(?:pl|ps)\.jpg$/, 'jp.jpg') : null
-  const imgSrc = front && !isBadImageUrl(front)
-    ? `/verity/api/proxy/image?url=${encodeURIComponent(front)}`
+  // 表紙: pl.jpg（横長スプレッド・表紙は右側）のまま coverPosClass→object-right で表示。
+  // ※jp.jpg化は不可: jp未存在の作品でプロキシが pl にフォールバックし、object-center だと
+  //   背表紙が中央に出てしまう。ArticleCard/女優カードと同じ単一チョークポイント規約に統一。
+  const cover = !isBadImageUrl(article.image_url)
+    ? (toHighResPackageUrl(article.image_url) ?? article.image_url)
+    : cidToCdnUrl(article.external_id, 'pl')
+  const imgSrc = cover
+    ? `/verity/api/proxy/image?url=${encodeURIComponent(cover)}`
     : null
 
   const ctaLabel: Record<Lang, string> = {
@@ -418,7 +420,7 @@ function WorkRankingCard({
           <ProxiedImage
             src={imgSrc}
             alt={article.title}
-            className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(front)} transition-transform duration-300 group-hover:scale-105`}
+            className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(cover)} transition-transform duration-300 group-hover:scale-105`}
           />
           <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
         </>
