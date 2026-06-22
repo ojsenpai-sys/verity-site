@@ -74,13 +74,6 @@ export async function POST(request: NextRequest) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-  // 行動ログ: ログイン時同期で純新規に追加された女優を favorite_actress として記録（純新規のみ）
-  await supabase.from('user_events').insert(
-    addedExt.map(ext => ({
-      user_id: user.id, event_name: 'favorite_actress',
-      target_type: 'actress', target_id: ext, metadata: { source: 'login_sync' },
-    }))
-  )
-
+  // favorite_actress イベントは profiles差分トリガが発火（client/手動insert撤廃・二重計上防止）。
   return NextResponse.json({ ok: true, merged: addedExt.length, total: merged.length })
 }

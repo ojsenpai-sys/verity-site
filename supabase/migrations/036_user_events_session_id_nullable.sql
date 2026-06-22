@@ -1,0 +1,22 @@
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 036_user_events_session_id_nullable.sql — user_events.session_id を nullable 化
+-- ══════════════════════════════════════════════════════════════════════════════
+-- 【発覚した本番スキーマdrift】
+--   migration 024 では session_id は text（nullable）と文書化されているが、
+--   実本番テーブルには NOT NULL 制約が付いていた（024未捕捉のdrift）。
+--
+-- 【影響】server由来イベントは session_id を持てないため NOT NULL に違反:
+--   - 034 の差分トリガが favorite_actress を NULL session_id で INSERT
+--     → NOT NULL違反 → profiles UPDATE がロールバック → 女優お気に入りが壊れる
+--   - 035 backfill / sync経路のserver insert も同様に失敗（これが従来の
+--     favorite event=0 のサイレント欠損の真因）
+--
+-- 【対処】session_id を nullable 化（024 の文書化スキーマ・合意済み設計に整合）。
+--   audience 集計（029/033）は既に WHERE session_id IS NOT NULL で NULL を除外済みのため
+--   下流への影響はない。
+--
+-- ※ 適用順: 034 → **036（本ファイル）** → 035(backfill) の順で適用すること。
+-- 冪等。
+-- ══════════════════════════════════════════════════════════════════════════════
+
+ALTER TABLE public.user_events ALTER COLUMN session_id DROP NOT NULL;

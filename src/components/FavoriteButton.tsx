@@ -5,7 +5,7 @@ import { Heart, X } from 'lucide-react'
 import Link from 'next/link'
 import { useFavorite } from '@/hooks/useFavorite'
 import { useAuth } from '@/components/AuthProvider'
-import { trackEvent } from '@/lib/analytics'
+import { trackEvent, getSessionId } from '@/lib/analytics'
 import type { FavType, FavMeta } from '@/hooks/useFavorite'
 
 type Props = {
@@ -37,23 +37,22 @@ export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: 
 
     toggle(id, meta)
     const action = faved ? 'remove' : 'add'
-    const adding = !faved
 
+    // favorite イベントは DB 側（record_favorite_article RPC / profiles差分トリガ）で
+    // 保存と同一tx・単一発火源化済み。client trackEvent は撤廃（二重計上防止）。
     if (type === 'actress') {
       fetch('/verity/api/favorites/actress', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    JSON.stringify({ external_id: id, action }),
       }).catch(() => {})
-      trackEvent(adding ? 'favorite_actress' : 'unfavorite_actress', { actressId: id })
     } else {
-      // 作品: DB へ永続化（slug|CID は API 側で解決）。news 等で未解決なら 404 → LS のみ
+      // 作品: DB へ永続化（slug|CID は API 側で解決）。session_id は RPC が user_events に載せる。
       fetch('/verity/api/favorites/article', {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ id, action }),
+        body:    JSON.stringify({ id, action, session_id: getSessionId() }),
       }).catch(() => {})
-      trackEvent(adding ? 'favorite_work' : 'unfavorite_work', { cid: cid ?? id })
     }
   }, [toggle, id, cid, meta, user, type, faved])
 

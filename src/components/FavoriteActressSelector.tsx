@@ -8,7 +8,6 @@ import { cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
 import { NowPrinting } from '@/components/NowPrinting'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { CROWN_CLICK_THRESHOLD, CROWN_LP_THRESHOLD } from '@/lib/titles'
-import { trackEvent } from '@/lib/analytics'
 
 type Props = {
   favorites:         Actress[]
@@ -356,7 +355,7 @@ export function FavoriteActressSelector({
     setQuery('')
     setResults([])
     setSaving(true)
-    if (actress.external_id) trackEvent('favorite_actress', { actressId: actress.external_id })
+    // favorite_actress イベントは profiles差分トリガが発火（client撤廃・二重計上防止）
     try { await onChange(next.map(a => a.id), next) }
     finally { setSaving(false) }
   }
@@ -374,7 +373,8 @@ export function FavoriteActressSelector({
     const next = currentFavs.filter(a => a.id !== id)
     setCurrentFavs(next)
     setSaving(true)
-    if (ext) trackEvent('unfavorite_actress', { actressId: ext })
+    // unfavorite_actress イベントは profiles差分トリガが発火（client撤廃）
+    void ext
     try { await onChange(next.map(a => a.id), next) }
     finally { setSaving(false) }
   }
