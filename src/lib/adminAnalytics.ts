@@ -72,9 +72,9 @@ export async function getOverview(daily: DailyRow[]) {
 }
 
 // ── Engagement ───────────────────────────────────────────────────────────────
-export async function getEngagement(daily: DailyRow[]) {
+export async function getEngagement(daily: DailyRow[], audienceMau: number) {
   const c = db()
-  const [favWorks, favActresses, totalMembers, mau] = await Promise.all([
+  const [favWorks, favActresses, totalMembers, memberMau] = await Promise.all([
     c ? toCount(c.from('favorite_articles').select('*', { count: 'exact', head: true })) : Promise.resolve(0),
     c ? toCount(c.from('favorite_actresses').select('*', { count: 'exact', head: true })) : Promise.resolve(0),
     c ? toCount(c.from('profiles').select('*', { count: 'exact', head: true }).eq('brand_id', BRAND)) : Promise.resolve(0),
@@ -83,8 +83,11 @@ export async function getEngagement(daily: DailyRow[]) {
   const totalViews = sumAll(daily, 'work_views')
   return {
     favWorks, favActresses, totalViews,
-    avgViewsPerUser: mau > 0 ? r1(totalViews / mau) : 0,
-    avgFavsPerUser:  totalMembers > 0 ? r1((favWorks + favActresses) / totalMembers) : 0,
+    // 総閲覧は匿名含む全Audience由来。母集団別に分母を明示する（旧 avgViewsPerUser は
+    // 全Audience閲覧 ÷ 会員MAU(=3) で異常値だった）。
+    avgViewsPerAudience: audienceMau  > 0 ? r1(totalViews / audienceMau)  : 0,
+    avgViewsPerMember:   memberMau    > 0 ? r1(totalViews / memberMau)    : 0,
+    avgFavsPerUser:      totalMembers > 0 ? r1((favWorks + favActresses) / totalMembers) : 0,
   }
 }
 
@@ -147,10 +150,10 @@ export async function getPreference(): Promise<PrefSlice[]> {
 export type Investor = {
   registeredMembers: number; mau: number; favoriteTotal: number; monthlyEvents: number
   workSaveRate: number; actressFollowRate: number; favoriteUtilization: number
-  avgDepth: number; fanzaReferrals: number; fanzaCtr: number; retention7d: number; stickiness: number
+  avgSessionDepth: number; fanzaReferrals: number; fanzaCtr: number; retention7d: number; stickiness: number
   coverage: { works: number; actresses: number; tags: number }
 }
-export async function getInvestor(daily: DailyRow[]): Promise<Investor> {
+export async function getInvestor(daily: DailyRow[], audienceMau: number): Promise<Investor> {
   const c = db()
   const [totalMembers, mau, dau] = await Promise.all([
     c ? toCount(c.from('profiles').select('*', { count: 'exact', head: true }).eq('brand_id', BRAND)) : Promise.resolve(0),
@@ -186,7 +189,9 @@ export async function getInvestor(daily: DailyRow[]): Promise<Investor> {
     workSaveRate:        pct(favWork, totalMembers),
     actressFollowRate:   pct(favActress, totalMembers),
     favoriteUtilization: pct(favAny, totalMembers),
-    avgDepth:            mau > 0 ? r1(monthlyEvents / mau) : 0,
+    // Average Session Depth = 総イベント ÷ Session数(=Audience MAU/distinct session_id)。
+    // 旧 avgDepth は events ÷ 会員MAU(=3) で「深度」を名乗る異常値だった。
+    avgSessionDepth:     audienceMau > 0 ? r1(monthlyEvents / audienceMau) : 0,
     fanzaReferrals:      sumAll(daily, 'fanza_clicks'),
     fanzaCtr:            pct(sumAll(daily, 'fanza_clicks'), sumAll(daily, 'work_views')), // FANZA送客率 = clicks/work_views
     retention7d:         pct(retNumer, retDenom),
