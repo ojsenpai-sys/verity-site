@@ -220,6 +220,26 @@ export async function getPreferenceWeights(): Promise<WeightRow[]> {
   } catch { return [] }
 }
 
+// ── KPI Trend（日次スナップショット・観測基盤 / kpi_daily_snapshot）──────────────
+// 038 のテーブル。未適用時は空配列で UI はセクション非表示にグレースフル劣化。
+export type KpiSnapshot = {
+  snapshot_date: string
+  members_total: number; members_active: number
+  audience_raw_mau: number
+  audience_v2_dau: number; audience_v2_wau: number; audience_v2_mau: number
+  preference_profiles: number
+  favorite_work_events: number; favorite_actress_events: number
+  page_view_total: number; video_view_total: number; fanza_click_total: number
+  user_events_total: number
+}
+export async function getKpiSnapshots(): Promise<KpiSnapshot[]> {
+  const c = db(); if (!c) return []
+  try {
+    const { data } = await c.from('kpi_daily_snapshot').select('*').order('snapshot_date', { ascending: false }).limit(14)
+    return (data ?? []) as KpiSnapshot[]
+  } catch { return [] }
+}
+
 // ── Audience（匿名含む・セッション基準。distinct session_id）──────────────────────
 // 注意: session_id は sessionStorage 由来＝訪問(セッション)単位。ユニーク訪問者ではない。
 export type Audience = { dau: number; wau: number; mau: number }

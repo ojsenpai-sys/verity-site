@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { BarChart3 } from 'lucide-react'
 import {
   getDailyMetrics, getOverview, getEngagement, getFanza, getTags, getPreference, getInvestor,
-  getCronStatus, getPreferenceWeights, getAudience, getAudienceV2,
+  getCronStatus, getPreferenceWeights, getAudience, getAudienceV2, getKpiSnapshots,
 } from '@/lib/adminAnalytics'
 import { AnalyticsCharts } from './AnalyticsCharts'
 import { PreferenceWeightsEditor } from './PreferenceWeightsEditor'
@@ -35,7 +35,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default async function AnalyticsPage() {
   const daily = await getDailyMetrics()
   // Audience MAU(=distinct session_id) を先に取得し、母集団別の平均指標の分母に使う。
-  const [audience, audienceV2] = await Promise.all([getAudience(), getAudienceV2()])
+  const [audience, audienceV2, kpiTrend] = await Promise.all([getAudience(), getAudienceV2(), getKpiSnapshots()])
   const [overview, engagement, fanza, tags, preference, investor, cron, weights] = await Promise.all([
     getOverview(daily), getEngagement(daily, audience.mau), getFanza(daily), getTags(), getPreference(), getInvestor(daily, audience.mau),
     getCronStatus(), getPreferenceWeights(),
@@ -55,6 +55,47 @@ export default async function AnalyticsPage() {
           <p className="text-[11px] text-[var(--text-muted)]">事前集計（daily_metrics / *_summary / *_popularity）から取得</p>
         </div>
       </div>
+
+      {/* KPI Trend（観測基盤・日次スナップショット） */}
+      {kpiTrend.length > 0 && (
+        <Section title="KPI Trend（日次・観測基盤）">
+          <p className="-mt-1 text-[11px] text-[var(--text-muted)]">
+            ※ <strong className="text-[var(--text)]">kpi_daily_snapshot</strong>（refresh_analytics cron が毎日記録）。7〜14日の推移を観測。最新日が上。
+          </p>
+          <div className="overflow-x-auto rounded-xl border border-[var(--border)]">
+            <table className="w-full min-w-[760px] text-[11px]">
+              <thead>
+                <tr className="border-b border-[var(--border)] text-left text-[var(--text-muted)]">
+                  <th className="px-2.5 py-1.5 font-semibold">日付</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold">会員 計/活</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold">Aud v2 D/W/M</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold">Raw MAU</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold">Pref</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold">Fav W/A</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold">PV</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold">VV</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold">Click</th>
+                </tr>
+              </thead>
+              <tbody>
+                {kpiTrend.map(s => (
+                  <tr key={s.snapshot_date} className="border-b border-[var(--border)]/40 tabular-nums">
+                    <td className="px-2.5 py-1.5 font-semibold text-[var(--text)]">{s.snapshot_date}</td>
+                    <td className="px-2.5 py-1.5 text-right">{s.members_total}/{s.members_active}</td>
+                    <td className="px-2.5 py-1.5 text-right font-bold" style={{ color: '#aaff00' }}>{s.audience_v2_dau}/{s.audience_v2_wau}/{s.audience_v2_mau}</td>
+                    <td className="px-2.5 py-1.5 text-right text-[var(--text-muted)]">{fmt(s.audience_raw_mau)}</td>
+                    <td className="px-2.5 py-1.5 text-right">{s.preference_profiles}</td>
+                    <td className="px-2.5 py-1.5 text-right">{s.favorite_work_events}/{s.favorite_actress_events}</td>
+                    <td className="px-2.5 py-1.5 text-right">{fmt(s.page_view_total)}</td>
+                    <td className="px-2.5 py-1.5 text-right">{fmt(s.video_view_total)}</td>
+                    <td className="px-2.5 py-1.5 text-right">{fmt(s.fanza_click_total)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Section>
+      )}
 
       {/* Overview */}
       <Section title="Overview">
