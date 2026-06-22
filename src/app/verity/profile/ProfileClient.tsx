@@ -17,6 +17,7 @@ import type { AxisScore, RecommendedProduct } from '@/components/GentlemanAnalys
 import { LocalFavArticles } from '@/components/LocalFavArticles'
 import { FanzaLink } from '@/components/FanzaLink'
 import { withAffiliate } from '@/lib/affiliate'
+import { coverPosClass } from '@/lib/cidUtils'
 import { GenreProfilingModal } from '@/components/GenreProfilingModal'
 
 type Props = {
@@ -85,7 +86,7 @@ function WorkRow({ article, sub, position }: { article: HistoryWork; sub: string
       <img
         src={proxiedCover(article.image_url)}
         alt={article.title}
-        className="w-10 h-14 rounded-md object-cover shrink-0"
+        className={`w-10 h-14 rounded-md object-cover ${coverPosClass(article.image_url)} shrink-0`}
       />
       <div className="flex-1 min-w-0">
         <p className="line-clamp-2 text-sm font-medium text-[var(--text)] leading-snug">{article.title}</p>
