@@ -5,7 +5,6 @@ import Link from 'next/link'
 import { Heart, ExternalLink, X } from 'lucide-react'
 import { readArticleMeta } from '@/hooks/useFavorite'
 import type { FavMeta } from '@/hooks/useFavorite'
-import { trackEvent } from '@/lib/analytics'
 
 const FAV_ARTICLES_KEY = 'verity_fav_articles'
 const META_KEY         = 'verity_fav_articles_meta'
@@ -32,7 +31,7 @@ function removeId(id: string) {
   const current = readIds()
   const next    = current.filter(s => s !== id)
   localStorage.setItem(FAV_ARTICLES_KEY, JSON.stringify(next))
-  trackEvent('unfavorite_work', { cid: id })  // id は slug|CID（記録用・除去シグナル）
+  // 匿名LSのみの除去は真実源(DB)外のためイベント対象外（ログイン同期時に RPC で計上）
 
   // Remove from meta map too
   try {

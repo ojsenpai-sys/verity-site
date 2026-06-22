@@ -63,14 +63,20 @@ function buildMetadata(payload: TrackPayload): Record<string, unknown> {
   return meta
 }
 
-function getSessionId(): string {
-  const key = 'verity_sid'
-  let sid = sessionStorage.getItem(key)
-  if (!sid) {
-    sid = crypto.randomUUID()
-    sessionStorage.setItem(key, sid)
+// session_id 取得失敗（sessionStorage不可・プライベートモード等）でも例外を投げず null を返す。
+// → favorite 等の呼び出し側で「session_id無しでも本処理は成功」を保証する。
+export function getSessionId(): string | null {
+  try {
+    const key = 'verity_sid'
+    let sid = sessionStorage.getItem(key)
+    if (!sid) {
+      sid = crypto.randomUUID()
+      sessionStorage.setItem(key, sid)
+    }
+    return sid
+  } catch {
+    return null
   }
-  return sid
 }
 
 /**
