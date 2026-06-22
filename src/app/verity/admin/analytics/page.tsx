@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { BarChart3 } from 'lucide-react'
 import {
   getDailyMetrics, getOverview, getEngagement, getFanza, getTags, getPreference, getInvestor,
-  getCronStatus, getPreferenceWeights, getAudience, getAudienceV2, getKpiSnapshots,
+  getCronStatus, getPreferenceWeights, getAudience, getAudienceV2, getKpiSnapshots, getHumanEngagement,
 } from '@/lib/adminAnalytics'
 import { AnalyticsCharts } from './AnalyticsCharts'
 import { PreferenceWeightsEditor } from './PreferenceWeightsEditor'
@@ -35,7 +35,10 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default async function AnalyticsPage() {
   const daily = await getDailyMetrics()
   // Audience MAU(=distinct session_id) を先に取得し、母集団別の平均指標の分母に使う。
-  const [audience, audienceV2, kpiTrend] = await Promise.all([getAudience(), getAudienceV2(), getKpiSnapshots()])
+  const [audience, audienceV2, kpiTrend, humanEng] = await Promise.all([getAudience(), getAudienceV2(), getKpiSnapshots(), getHumanEngagement()])
+  // Human版（30日/30日）。additive・RPC未適用時は humanEng=null でカード非表示。
+  const avgViewsPerHumanAudience = humanEng && humanEng.human_mau > 0 ? Math.round((humanEng.human_work_views / humanEng.human_mau) * 10) / 10 : 0
+  const humanSessionDepth        = humanEng && humanEng.human_mau > 0 ? Math.round((humanEng.human_total_events / humanEng.human_mau) * 10) / 10 : 0
   const [overview, engagement, fanza, tags, preference, investor, cron, weights] = await Promise.all([
     getOverview(daily), getEngagement(daily, audience.mau), getFanza(daily), getTags(), getPreference(), getInvestor(daily, audience.mau),
     getCronStatus(), getPreferenceWeights(),
@@ -74,6 +77,7 @@ export default async function AnalyticsPage() {
                   <th className="px-2.5 py-1.5 text-right font-semibold">Fav W/A</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">PV</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">VV</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold" style={{ color: '#aaff00' }}>Hum VV</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">Click</th>
                 </tr>
               </thead>
@@ -88,6 +92,7 @@ export default async function AnalyticsPage() {
                     <td className="px-2.5 py-1.5 text-right">{s.favorite_work_events}/{s.favorite_actress_events}</td>
                     <td className="px-2.5 py-1.5 text-right">{fmt(s.page_view_total)}</td>
                     <td className="px-2.5 py-1.5 text-right">{fmt(s.video_view_total)}</td>
+                    <td className="px-2.5 py-1.5 text-right font-bold" style={{ color: '#aaff00' }}>{s.human_work_views != null ? fmt(s.human_work_views) : '—'}</td>
                     <td className="px-2.5 py-1.5 text-right">{fmt(s.fanza_click_total)}</td>
                   </tr>
                 ))}
@@ -148,6 +153,7 @@ export default async function AnalyticsPage() {
           <Stat label="お気に入り女優数" value={fmt(engagement.favActresses)} />
           <Stat label="総閲覧履歴数" value={fmt(engagement.totalViews)} sub="作品閲覧（匿名含む）" />
           <Stat label="Avg Views / Audience (RAW)" value={fmt(engagement.avgViewsPerAudience)} sub="RAW総閲覧 ÷ RAW Audience MAU(bot含む)" />
+          {humanEng && <Stat label="Avg Views / Human Audience" value={fmt(avgViewsPerHumanAudience)} sub="30日Human閲覧 ÷ 30日Human MAU" />}
           <Stat label="Avg Views / Member" value={fmt(engagement.avgViewsPerMember)} sub="総閲覧 ÷ Member MAU" />
           <Stat label="平均お気に入り/人" value={fmt(engagement.avgFavsPerUser)} sub="お気に入り ÷ 総会員" />
         </div>
@@ -259,6 +265,7 @@ export default async function AnalyticsPage() {
           <Stat label="女優フォロー率" value={`${investor.actressFollowRate}%`} />
           <Stat label="月間イベント数" value={fmt(investor.monthlyEvents)} />
           <Stat label="Avg Session Depth (RAW)" value={fmt(investor.avgSessionDepth)} sub="RAW総イベント ÷ RAW Session数(bot含む)" />
+          {humanEng && <Stat label="Human Session Depth" value={fmt(humanSessionDepth)} sub="30日Humanイベント ÷ 30日Human MAU" />}
           <Stat label="FANZA送客数" value={fmt(investor.fanzaReferrals)} sub="累計" />
           <Stat label="FANZA送客率" value={`${investor.fanzaCtr}%`} sub="clicks÷作品閲覧" />
           <Stat label="Content Coverage" value={`${fmt(investor.coverage.works)}作品`} sub={`女優${fmt(investor.coverage.actresses)} / タグ${fmt(investor.coverage.tags)}`} />
