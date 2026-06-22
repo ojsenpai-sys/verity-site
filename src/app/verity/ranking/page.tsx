@@ -2,7 +2,7 @@ export const dynamic = 'force-dynamic'
 export const revalidate = 0
 
 import Link from 'next/link'
-import { Trophy, ExternalLink, Info, Heart } from 'lucide-react'
+import { Trophy, ExternalLink, Info, Heart, Flame, Play } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { FanzaLink } from '@/components/FanzaLink'
 import { FavoriteButton } from '@/components/FavoriteButton'
@@ -147,6 +147,51 @@ async function getFavoriteRanking(): Promise<FavRankRow[]> {
   const { data, error } = await supabase.rpc('get_actress_favorite_ranking', { p_limit: 20 })
   if (error) { console.error('[fav-ranking]', error.message); return [] }
   return (data ?? []) as FavRankRow[]
+}
+
+// ── 人気作品ランキング（熱量×トレンドスコア / 031 RPC） ──────────────────────
+// anon は user_events を直接参照できないため SECURITY DEFINER RPC 経由で集計値を取得。
+// RPC 未適用時は空配列 → セクション非表示（既存ランキングと同じグレースフル劣化）。
+
+type RankedWork = {
+  rank:    number
+  points:  number
+  article: Article
+}
+
+async function getWorksRanking(): Promise<RankedWork[]> {
+  const supabase = await createClient()
+  const { data, error } = await supabase.rpc('get_top_works_ranked', { p_limit: 10 })
+  if (error) { console.error('[works-ranking]', error.message); return [] }
+  const rows = (data ?? []) as { external_id: string; points: number }[]
+  if (rows.length === 0) return []
+
+  const ids = rows.map(r => r.external_id)
+  const { data: articles } = await supabase
+    .from('articles')
+    .select('id, external_id, title, image_url, slug, tags, metadata, source')
+    .in('external_id', ids)
+    .eq('is_active', true)
+
+  const map = new Map(((articles ?? []) as Article[]).map(a => [a.external_id, a]))
+
+  return rows
+    .map(r => {
+      const article = map.get(r.external_id)
+      return article ? { points: Number(r.points), article } : null
+    })
+    .filter((r): r is Omit<RankedWork, 'rank'> => r !== null)
+    .map((r, i) => ({ rank: i + 1, ...r }))
+}
+
+// 出演女優名を metadata.actress / actress_name から抽出
+function workActressNames(article: Article): string[] {
+  const meta = article.metadata as Record<string, unknown> | null
+  if (Array.isArray(meta?.actress)) {
+    return (meta!.actress as { name?: string }[]).map(a => a.name ?? '').filter(Boolean)
+  }
+  if (typeof meta?.actress_name === 'string') return [meta.actress_name as string]
+  return []
 }
 
 async function getLatestArticlesForActresses(
@@ -337,6 +382,134 @@ function RankingCard({
   )
 }
 
+// ── 人気作品ランキングカード ──────────────────────────────────────────────────
+
+function WorkRankingCard({
+  item,
+  fanzaUrl,
+  lang,
+}: {
+  item:     RankedWork
+  fanzaUrl: string | null
+  lang:     Lang
+}) {
+  const { rank, points, article } = item
+  const names = workActressNames(article)
+  const style = RANK_STYLES[rank]
+
+  // 表紙: pl/ps → jp.jpg（縦型フロント単体）に変換し object-center で中央表示
+  // （cidUtils の単一チョークポイント: jp.jpg は coverPosClass → object-center）
+  const pl    = toHighResPackageUrl(article.image_url) ?? article.image_url
+  const front = pl ? pl.replace(/(?:pl|ps)\.jpg$/, 'jp.jpg') : null
+  const imgSrc = front && !isBadImageUrl(front)
+    ? `/verity/api/proxy/image?url=${encodeURIComponent(front)}`
+    : null
+
+  const ctaLabel: Record<Lang, string> = {
+    ja: 'FANZAでサンプル視聴',
+    en: 'Watch sample on FANZA',
+    zh: '在FANZA观看样片',
+  }
+
+  const ImageInner = (
+    <>
+      {imgSrc ? (
+        <>
+          <ProxiedImage
+            src={imgSrc}
+            alt={article.title}
+            className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(front)} transition-transform duration-300 group-hover:scale-105`}
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
+        </>
+      ) : (
+        <NowPrinting />
+      )}
+
+      {/* 順位バッジ */}
+      <div className="absolute left-2 top-2">
+        {style ? (
+          <span className={['inline-flex h-7 w-7 items-center justify-center rounded-full font-black text-xs shadow-lg', style.badge].join(' ')}>
+            {style.crown ? '👑' : rank}
+          </span>
+        ) : (
+          <span className="inline-flex h-6 w-6 items-center justify-center rounded-full border border-white/20 bg-black/70 text-[11px] font-bold text-white">
+            {rank}
+          </span>
+        )}
+      </div>
+
+      {/* 永続 FANZA バッジ（Playアイコン・hoverでマゼンタ化） */}
+      {fanzaUrl && (
+        <span
+          className="pointer-events-none absolute bottom-2 left-2 z-[5] inline-flex items-center gap-1
+                     rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm
+                     ring-1 ring-white/15 shadow-[0_2px_6px_rgba(0,0,0,0.4)] transition-all duration-200
+                     group-hover:bg-[var(--magenta)]/90 group-hover:ring-[var(--magenta)]/40"
+        >
+          <Play size={9} className="fill-white" /> FANZA
+        </span>
+      )}
+
+      {/* 戦闘力ポイント */}
+      <span className="absolute bottom-2 right-2 z-[5] inline-flex items-center gap-1 rounded-full bg-black/60 px-2 py-0.5 text-[10px] font-black text-amber-300 ring-1 ring-amber-400/30 backdrop-blur-sm">
+        <Flame size={9} className="fill-amber-400 text-amber-400" />
+        {points.toLocaleString()}
+      </span>
+    </>
+  )
+
+  const imageWrapClass = 'group relative aspect-[2/3] w-full overflow-hidden bg-[var(--surface-2)]'
+
+  return (
+    <div className={[
+      'flex flex-col overflow-hidden rounded-xl border bg-[var(--surface)] transition-all hover:-translate-y-0.5',
+      style?.border ?? 'border-[var(--border)]',
+      style?.glow   ?? 'hover:border-[var(--magenta)]/40 hover:shadow-[0_0_16px_rgba(226,0,116,0.15)]',
+    ].join(' ')}>
+      {/* 画像（FANZA送客 or 作品詳細へ） */}
+      {fanzaUrl ? (
+        <FanzaLink href={fanzaUrl} targetId={article.external_id} position="ranking_works_image" className={imageWrapClass}>
+          {ImageInner}
+        </FanzaLink>
+      ) : article.slug ? (
+        <Link href={`/verity/articles/${article.slug}`} className={imageWrapClass}>
+          {ImageInner}
+        </Link>
+      ) : (
+        <div className={imageWrapClass}>{ImageInner}</div>
+      )}
+
+      {/* テキスト + CTA */}
+      <div className="flex flex-1 flex-col gap-1.5 px-2.5 py-2">
+        {article.slug ? (
+          <Link href={`/verity/articles/${article.slug}`} className="line-clamp-2 text-[11px] font-semibold leading-tight text-[var(--text)] transition-colors hover:text-[var(--magenta)]">
+            {article.title}
+          </Link>
+        ) : (
+          <p className="line-clamp-2 text-[11px] font-semibold leading-tight text-[var(--text)]">{article.title}</p>
+        )}
+
+        {names.length > 0 && (
+          <p className="truncate text-[10px] text-[var(--magenta)]">{names.join('・')}</p>
+        )}
+
+        {fanzaUrl && (
+          <FanzaLink
+            href={fanzaUrl}
+            targetId={article.external_id}
+            position="ranking_works_cta"
+            className="mt-auto inline-flex items-center justify-center gap-1 rounded-full bg-gradient-to-r from-pink-600 to-rose-600 px-2.5 py-1.5 text-[10px] font-bold text-white transition-all hover:from-pink-500 hover:to-rose-500 hover:shadow-[0_0_14px_rgba(225,29,72,0.5)] active:scale-95"
+          >
+            <Play size={10} className="fill-white" />
+            {ctaLabel[lang]}
+          </FanzaLink>
+        )}
+      </div>
+    </div>
+  )
+}
+
 // ── ページ本体 ────────────────────────────────────────────────────────────────
 
 export default async function RankingPage({
@@ -347,10 +520,11 @@ export default async function RankingPage({
   const { lang: lp } = await searchParams
   const lang = getLang(lp)
 
-  const [ranking, isOverseas, favRanking] = await Promise.all([
+  const [ranking, isOverseas, favRanking, worksRanking] = await Promise.all([
     getRanking(),
     getIsOverseasUser(),
     getFavoriteRanking(),
+    getWorksRanking(),
   ])
 
   const actressNames = ranking.map(r => r.actress.name)
@@ -526,6 +700,66 @@ export default async function RankingPage({
                 </Link>
               )
             })}
+          </div>
+        </section>
+      )}
+
+      {/* ── 人気作品ランキング TOP10 ── */}
+      {worksRanking.length > 0 && (
+        <section className="space-y-4 border-t border-[var(--border)] pt-8">
+          <div className="space-y-1">
+            <div className="flex items-center gap-2.5">
+              <Flame size={18} className="text-amber-400" style={{ fill: 'rgba(251,191,36,0.4)' }} />
+              <h2 className="text-base font-black text-[var(--text)]">
+                {lang === 'ja' ? '人気作品ランキング'
+                 : lang === 'en' ? 'Popular Works Ranking'
+                 : '人气作品排行榜'}
+              </h2>
+              <span className="rounded-full bg-amber-500/15 px-2.5 py-0.5 text-[11px] font-bold text-amber-400">
+                TOP {worksRanking.length}
+              </span>
+            </div>
+            <p className="text-xs text-[var(--text-muted)]">
+              {lang === 'ja' ? '直近14日のユーザー行動（閲覧・サンプル視聴・出演女優お気に入り）をトレンド減衰で集計した『総合戦闘力』ランキング。'
+               : lang === 'en' ? "Ranked by 'total power' aggregating the last 14 days of user activity (views, sample plays, cast favorites) with trend decay."
+               : '根据最近14天的用户行为（浏览、样片观看、出演女优收藏）以趋势衰减综合计算的『总合战斗力』排行榜。'}
+            </p>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-5">
+            {worksRanking.map(item => {
+              const meta = item.article.metadata as Record<string, unknown> | null
+              const rawUrl =
+                typeof meta?.affiliate_url === 'string' ? meta.affiliate_url
+                : typeof meta?.url === 'string' && item.article.source === 'dmm' ? (meta.url as string)
+                : null
+              const fanzaUrl = withAffiliateForRegion(rawUrl, isOverseas)
+              return (
+                <WorkRankingCard
+                  key={item.article.id}
+                  item={item}
+                  fanzaUrl={fanzaUrl}
+                  lang={lang}
+                />
+              )
+            })}
+          </div>
+
+          {/* 作品スコア内訳チップ */}
+          <div className="flex flex-wrap gap-2">
+            {[
+              { label: lang === 'ja' ? 'ページ閲覧' : lang === 'en' ? 'Page View'    : '浏览',       pt: '1pt'  },
+              { label: lang === 'ja' ? 'サンプル視聴' : lang === 'en' ? 'Sample Play'  : '样片观看',   pt: '5pt'  },
+              { label: lang === 'ja' ? '女優お気に入り' : lang === 'en' ? 'Cast Favorite' : '女优收藏', pt: '20pt' },
+            ].map(({ label, pt }) => (
+              <span
+                key={label}
+                className="inline-flex items-center gap-1 rounded-full border border-[var(--border)] bg-[var(--surface-2)] px-2.5 py-1 text-[10px] font-mono"
+              >
+                <span className="text-[var(--text-muted)]">{label}</span>
+                <span className="font-bold text-amber-400">{pt}</span>
+              </span>
+            ))}
           </div>
         </section>
       )}
