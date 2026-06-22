@@ -231,6 +231,8 @@ export type KpiSnapshot = {
   favorite_work_events: number; favorite_actress_events: number
   page_view_total: number; video_view_total: number; fanza_click_total: number
   user_events_total: number
+  human_work_views: number | null   // 039 additive（未適用日は null）
+  human_mau: number | null
 }
 export async function getKpiSnapshots(): Promise<KpiSnapshot[]> {
   const c = db(); if (!c) return []
@@ -238,6 +240,21 @@ export async function getKpiSnapshots(): Promise<KpiSnapshot[]> {
     const { data } = await c.from('kpi_daily_snapshot').select('*').order('snapshot_date', { ascending: false }).limit(14)
     return (data ?? []) as KpiSnapshot[]
   } catch { return [] }
+}
+
+// ── Human版エンゲージメント（30日/30日・039 get_human_engagement_counts）─────────
+// 既存RAW指標とは別の additive KPI。RPC未適用時は null でカード非表示にグレースフル。
+export type HumanEngagement = {
+  human_work_views: number; human_actress_views: number; human_fanza_clicks: number
+  human_total_events: number; human_unique_work_viewers: number; human_mau: number
+}
+export async function getHumanEngagement(): Promise<HumanEngagement | null> {
+  const c = db(); if (!c) return null
+  try {
+    const { data } = await c.rpc('get_human_engagement_counts')
+    const r = (Array.isArray(data) ? data[0] : data) as HumanEngagement | null
+    return r && r.human_mau > 0 ? r : null
+  } catch { return null }
 }
 
 // ── Audience（匿名含む・セッション基準。distinct session_id）──────────────────────
