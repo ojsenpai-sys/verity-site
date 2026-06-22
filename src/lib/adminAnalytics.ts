@@ -231,3 +231,15 @@ export async function getAudience(): Promise<Audience> {
     return { dau: n(r?.dau), wau: n(r?.wau), mau: n(r?.mau) }
   } catch { return { dau: 0, wau: 0, mau: 0 } }
 }
+
+// ── analytics_v2_audience（bot/単発除外後の Human セッション）─────────────────────
+// 033 の get_audience_counts_v2: 既知bot UA 除外 ＋ 各窓 events>=2(単発=滞在0除外)。
+// RPC 未適用時は 0（UI は v1 のみ表示にグレースフル劣化）。
+export async function getAudienceV2(): Promise<Audience> {
+  const c = db(); if (!c) return { dau: 0, wau: 0, mau: 0 }
+  try {
+    const { data } = await c.rpc('get_audience_counts_v2')
+    const r = (Array.isArray(data) ? data[0] : data) as { dau: number; wau: number; mau: number } | null
+    return { dau: n(r?.dau), wau: n(r?.wau), mau: n(r?.mau) }
+  } catch { return { dau: 0, wau: 0, mau: 0 } }
+}

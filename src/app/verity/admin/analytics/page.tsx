@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import { BarChart3 } from 'lucide-react'
 import {
   getDailyMetrics, getOverview, getEngagement, getFanza, getTags, getPreference, getInvestor,
-  getCronStatus, getPreferenceWeights, getAudience,
+  getCronStatus, getPreferenceWeights, getAudience, getAudienceV2,
 } from '@/lib/adminAnalytics'
 import { AnalyticsCharts } from './AnalyticsCharts'
 import { PreferenceWeightsEditor } from './PreferenceWeightsEditor'
@@ -35,12 +35,13 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default async function AnalyticsPage() {
   const daily = await getDailyMetrics()
   // Audience MAU(=distinct session_id) を先に取得し、母集団別の平均指標の分母に使う。
-  const audience = await getAudience()
+  const [audience, audienceV2] = await Promise.all([getAudience(), getAudienceV2()])
   const [overview, engagement, fanza, tags, preference, investor, cron, weights] = await Promise.all([
     getOverview(daily), getEngagement(daily, audience.mau), getFanza(daily), getTags(), getPreference(), getInvestor(daily, audience.mau),
     getCronStatus(), getPreferenceWeights(),
   ])
-  const audienceStickiness = audience.mau > 0 ? Math.round((audience.dau / audience.mau) * 1000) / 10 : 0
+  const audienceStickiness = audienceV2.mau > 0 ? Math.round((audienceV2.dau / audienceV2.mau) * 1000) / 10 : 0
+  const botReduction = audience.mau > 0 ? Math.round((1 - audienceV2.mau / audience.mau) * 1000) / 10 : 0
 
   return (
     <div className="mx-auto max-w-6xl px-6 py-8 space-y-10">
@@ -73,16 +74,18 @@ export default async function AnalyticsPage() {
         </div>
       </Section>
 
-      {/* Audience（匿名含む・セッション基準） */}
-      <Section title="Audience（匿名含む）">
+      {/* Audience v2（bot/単発除外後の Human セッション） */}
+      <Section title="Audience v2（bot除外）">
         <p className="-mt-1 text-[11px] text-[var(--text-muted)]">
-          ※ <strong className="text-[var(--text)]">session_id（訪問/セッション）単位</strong>の集計。匿名訪問を含みます。日跨ぎは別セッション扱いのため厳密なユニーク訪問者数ではありません。
+          ※ <strong className="text-[var(--text)]">analytics_v2_audience</strong>：既知bot UA（Googlebot/Bingbot/AhrefsBot/GPTBot/ClaudeBot 等）と
+          <strong className="text-[var(--text)]">単発(1イベント=滞在0)セッション</strong>を除外した Human セッション基準。
+          {botReduction > 0 && <> 生値から <strong style={{ color: '#fbbf24' }}>−{botReduction}%</strong> を bot/単発として除外。</>}
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Audience DAU" value={fmt(audience.dau)} sub="当日訪問" />
-          <Stat label="Audience WAU" value={fmt(audience.wau)} sub="過去7日" />
-          <Stat label="Audience MAU" value={fmt(audience.mau)} sub="過去30日" />
-          <Stat label="Audience Stickiness" value={`${audienceStickiness}%`} sub="DAU÷MAU" />
+          <Stat label="Audience DAU (v2)" value={fmt(audienceV2.dau)} sub={`生値 ${fmt(audience.dau)}`} />
+          <Stat label="Audience WAU (v2)" value={fmt(audienceV2.wau)} sub={`生値 ${fmt(audience.wau)}`} />
+          <Stat label="Audience MAU (v2)" value={fmt(audienceV2.mau)} sub={`生値 ${fmt(audience.mau)}`} />
+          <Stat label="Audience Stickiness" value={`${audienceStickiness}%`} sub="v2 DAU÷MAU" />
         </div>
       </Section>
 
