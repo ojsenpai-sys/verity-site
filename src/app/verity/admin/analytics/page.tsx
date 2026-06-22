@@ -147,7 +147,7 @@ export default async function AnalyticsPage() {
           <Stat label="お気に入り作品数" value={fmt(engagement.favWorks)} />
           <Stat label="お気に入り女優数" value={fmt(engagement.favActresses)} />
           <Stat label="総閲覧履歴数" value={fmt(engagement.totalViews)} sub="作品閲覧（匿名含む）" />
-          <Stat label="Avg Views / Audience" value={fmt(engagement.avgViewsPerAudience)} sub="総閲覧 ÷ Audience MAU" />
+          <Stat label="Avg Views / Audience (RAW)" value={fmt(engagement.avgViewsPerAudience)} sub="RAW総閲覧 ÷ RAW Audience MAU(bot含む)" />
           <Stat label="Avg Views / Member" value={fmt(engagement.avgViewsPerMember)} sub="総閲覧 ÷ Member MAU" />
           <Stat label="平均お気に入り/人" value={fmt(engagement.avgFavsPerUser)} sub="お気に入り ÷ 総会員" />
         </div>
@@ -258,7 +258,7 @@ export default async function AnalyticsPage() {
           <Stat label="作品保存率" value={`${investor.workSaveRate}%`} />
           <Stat label="女優フォロー率" value={`${investor.actressFollowRate}%`} />
           <Stat label="月間イベント数" value={fmt(investor.monthlyEvents)} />
-          <Stat label="Avg Session Depth" value={fmt(investor.avgSessionDepth)} sub="総イベント ÷ Session数" />
+          <Stat label="Avg Session Depth (RAW)" value={fmt(investor.avgSessionDepth)} sub="RAW総イベント ÷ RAW Session数(bot含む)" />
           <Stat label="FANZA送客数" value={fmt(investor.fanzaReferrals)} sub="累計" />
           <Stat label="FANZA送客率" value={`${investor.fanzaCtr}%`} sub="clicks÷作品閲覧" />
           <Stat label="Content Coverage" value={`${fmt(investor.coverage.works)}作品`} sub={`女優${fmt(investor.coverage.actresses)} / タグ${fmt(investor.coverage.tags)}`} />
