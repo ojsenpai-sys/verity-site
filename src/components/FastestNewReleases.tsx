@@ -31,7 +31,13 @@ const MAKERS: MakerConfig[] = [
   {
     id: 'honchu',
     label: '本中',
-    cids: ['hmn00890', 'hmn00888', 'hmn00883', 'hmn00880', 'hmn00860'],
+    cids: [
+      // 今回解禁の最新作（先頭に追加）
+      'hmn00870', 'hmn00878', 'hndb279', 'hmn00912',
+      'hmn00866', 'hmn00869', 'hmn00885',
+      // 既存掲載（維持）
+      'hmn00890', 'hmn00888', 'hmn00883', 'hmn00880', 'hmn00860',
+    ],
     actressMap: {
       hmn00890: 'RINOA',
       hmn00888: '秋山美杏',
