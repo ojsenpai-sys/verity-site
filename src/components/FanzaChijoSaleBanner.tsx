@@ -5,42 +5,41 @@ import { Flame, Lock, ExternalLink, Tag } from 'lucide-react'
 import { useAuth } from '@/components/AuthProvider'
 import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliate } from '@/lib/affiliate'
-import { cidToCdnUrl } from '@/lib/cidUtils'
+import { cidToCdnUrl, coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from '@/components/FanzaLink'
 
 type SaleItem = {
-  cid:     string
-  actress: string
-  title?:  string
+  cid:      string
+  actress?: string
+  title?:   string
 }
 
-// 痴女・小悪魔50%OFFセール 指定25作品
+// 痴女・小悪魔50%OFFセール【第2弾】全24作品（CID差し替え）
 const SALE_ITEMS: SaleItem[] = [
-  { cid: 'ssis00308', actress: '河北彩花' },
-  { cid: 'sone00162', actress: '浅野こころ' },
-  { cid: 'mide00786', actress: '七沢みあ' },
-  { cid: 'ssis00013', actress: '三上悠亜' },
-  { cid: 'ssis00794', actress: '小日向みゆう' },
-  { cid: 'pred00403', actress: '楪カレン' },
-  { cid: 'midv00162', actress: '石川澪' },
-  { cid: 'midv00018', actress: '七沢みあ' },
-  { cid: 'ssis00778', actress: '三上悠亜' },
-  { cid: 'mvsd00439', actress: '松本いちか / 丘えりな' },
-  { cid: 'ofje00384', actress: '鷲尾めい' },
-  { cid: 'pred00226', actress: '山岸逢花 / 水戸かな' },
-  { cid: 'waaa00260', actress: '森日向子' },
-  { cid: 'ssni00876', actress: '天音まひな' },
-  { cid: 'hnd00714',  actress: '稲場るか' },
-  { cid: 'midv00535', actress: '葵いぶき' },
-  { cid: 'ssis00079', actress: 'miru' },
-  { cid: 'cawd00500', actress: '伊藤舞雪' },
-  { cid: 'midv00581', actress: '九野ひなの' },
-  { cid: 'waaa00133', actress: '東條なつ' },
-  { cid: 'ssis00555', actress: '夢乃あいか' },
-  { cid: 'midv00703', actress: '八木奈々' },
-  { cid: 'dasd00569', actress: '佐藤ののか' },
-  { cid: 'sone00154', actress: '小宵こなん' },
-  { cid: 'miaa00744', actress: '白桃はな' },
+  { cid: 'mvsd00542' },
+  { cid: 'ssis00914' },
+  { cid: 'pppe00089' },
+  { cid: 'midv00287' },
+  { cid: 'midv00670' },
+  { cid: 'mide00870' },
+  { cid: 'waaa00222' },
+  { cid: 'jufe00448' },
+  { cid: 'waaa00240' },
+  { cid: 'waaa00243' },
+  { cid: 'waaa00353' },
+  { cid: 'pred00331' },
+  { cid: 'mide00963' },
+  { cid: 'ssis00480' },
+  { cid: 'midv00564' },
+  { cid: 'cawd00519' },
+  { cid: 'cawd00446' },
+  { cid: 'midv00435' },
+  { cid: 'mird00214' },
+  { cid: 'mide00869' },
+  { cid: 'bban00479' },
+  { cid: 'cjod00337' },
+  { cid: 'cawd00399' },
+  { cid: 'midv00113' },
 ]
 
 function dmmUrl(cid: string): string {
@@ -51,7 +50,7 @@ function proxyUrl(url: string): string {
   return `/api/proxy/image?url=${encodeURIComponent(url)}`
 }
 
-const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=chijokoakuma&sort=bookmark_desc'
+const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=chijokoakuma&sort=review_rank'
 
 const TEXTS = {
   ja: {
@@ -99,9 +98,9 @@ type CardProps = {
 }
 
 function SaleImage({ cid, alt }: { cid: string; alt: string }) {
-  const candidates = [
-    proxyUrl(cidToCdnUrl(cid, 'pl')),
-  ]
+  // 単一チョークポイント: pl→jp.jpg（正面の縦型表紙）化し、coverPosClass で object-center 中央寄せ。
+  const coverUrl   = cidToCdnUrl(cid, 'pl').replace(/(?:pl|ps)\.jpg$/, 'jp.jpg')
+  const candidates = [proxyUrl(coverUrl)]
 
   const [idx, setIdx]       = useState(0)
   const [failed, setFailed] = useState(false)
@@ -113,7 +112,7 @@ function SaleImage({ cid, alt }: { cid: string; alt: string }) {
     <img
       src={candidates[idx]}
       alt={alt}
-      className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-200 group-hover:scale-105"
+      className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(coverUrl)} transition-transform duration-200 group-hover:scale-105`}
       onError={() => {
         if (idx < candidates.length - 1) setIdx(idx + 1)
         else setFailed(true)
@@ -260,7 +259,7 @@ export function FanzaChijoSaleBanner() {
         </p>
       </div>
 
-      {/* 25タイトル — モバイル: 横スワイプレーン / sm+: グリッド */}
+      {/* 24タイトル — モバイル: 横スワイプレーン / sm+: グリッド */}
       <div className="-mx-5 px-5 sm:mx-0 sm:px-0">
         <div className="flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory
                         [scrollbar-width:none] [-ms-overflow-style:none]
@@ -283,7 +282,7 @@ export function FanzaChijoSaleBanner() {
         </div>
         {/* モバイル限定: 横スクロールヒント */}
         <p className="mt-1 text-center text-[10px] tracking-widest text-amber-500/40 sm:hidden">
-          ← スワイプして全25作品を見る →
+          ← スワイプして全24作品を見る →
         </p>
       </div>
 
