@@ -12,34 +12,42 @@ type SaleItem = {
   cid:      string
   actress?: string
   title?:   string
+  cover?:   'jp' | 'pl'   // 画像実測で jp.jpg 有効時のみ 'jp'。省略時は pl(横長スプレッド)→object-right
 }
 
-// 痴女・小悪魔50%OFFセール【第2弾】全24作品（CID差し替え）
+// 痴女・小悪魔50%OFFセール【第3弾】全30作品（2026-06-25 CID差し替え）
+// 画像実測(2026-06-25): jp.jpg は全30件 now_printing にリダイレクト → 全件 pl で object-right。
 const SALE_ITEMS: SaleItem[] = [
-  { cid: 'mvsd00542' },
-  { cid: 'ssis00914' },
-  { cid: 'pppe00089' },
-  { cid: 'midv00287' },
-  { cid: 'midv00670' },
-  { cid: 'mide00870' },
-  { cid: 'waaa00222' },
-  { cid: 'jufe00448' },
-  { cid: 'waaa00240' },
-  { cid: 'waaa00243' },
-  { cid: 'waaa00353' },
-  { cid: 'pred00331' },
-  { cid: 'mide00963' },
-  { cid: 'ssis00480' },
-  { cid: 'midv00564' },
-  { cid: 'cawd00519' },
-  { cid: 'cawd00446' },
-  { cid: 'midv00435' },
-  { cid: 'mird00214' },
-  { cid: 'mide00869' },
-  { cid: 'bban00479' },
-  { cid: 'cjod00337' },
-  { cid: 'cawd00399' },
-  { cid: 'midv00113' },
+  { cid: 'midv00275', actress: '小野六花' },
+  { cid: 'ssis00712', actress: '四宮ありす' },
+  { cid: 'midv00228', actress: '宮下玲奈' },
+  { cid: 'pppe00224', actress: '楪カレン' },
+  { cid: 'pppe00167', actress: '藤森里穂' },
+  { cid: 'midv00271', actress: '新ありな' },
+  { cid: 'hmn00537',  actress: '七瀬アリス' },
+  { cid: 'ssis00680', actress: '夢乃あいか' },
+  { cid: 'sone00069', actress: '架乃ゆら' },
+  { cid: 'ssis00335', actress: '小宵こなん' },
+  { cid: 'midv00276', actress: '中山ふみか' },
+  { cid: 'cawd00353', actress: '伊藤舞雪' },
+  { cid: 'waaa00319', actress: '斎藤あみり' },
+  { cid: 'midv00719', actress: '葵いぶき' },
+  { cid: 'ofje00374', actress: 'miru' },
+  { cid: 'ssis00905', actress: '小日向みゆう（清原みゆう）' },
+  { cid: 'cawd00676', actress: '桜空もも' },
+  { cid: 'mide00924', actress: '水卜さくら' },
+  { cid: 'mukc00044', actress: '奏音かのん' },
+  { cid: 'ssis00281', actress: '小宵こなん' },
+  { cid: 'ssis00277', actress: '天音まひな' },
+  { cid: 'sone00127', actress: '浅野こころ' },
+  { cid: 'sone00223', actress: '倉木華' },
+  { cid: 'ssis00842', actress: 'うんぱい' },
+  { cid: 'ssis00252', actress: '河北彩花（河北彩伽）' },
+  { cid: 'midv00140', actress: '石川澪' },
+  { cid: 'mide00983', actress: '七沢みあ' },
+  { cid: 'ssis00491', actress: '東雲みれい' },
+  { cid: 'midv00186', actress: '石川澪' },
+  { cid: 'hmn00368',  actress: '美谷朱音（美谷朱里）' },
 ]
 
 function dmmUrl(cid: string): string {
@@ -50,7 +58,7 @@ function proxyUrl(url: string): string {
   return `/api/proxy/image?url=${encodeURIComponent(url)}`
 }
 
-const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=chijokoakuma&sort=review_rank'
+const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=chijokoakuma'
 
 const TEXTS = {
   ja: {
@@ -97,12 +105,13 @@ type CardProps = {
   onLock:    () => void
 }
 
-function SaleImage({ cid, alt }: { cid: string; alt: string }) {
-  // 単一チョークポイント coverPosClass で表紙を表示。
-  // ※本セールCID群は jp.jpg 不在で pl にフォールバックする（実測12/12 fallback）ため、
+function SaleImage({ cid, size, alt }: { cid: string; size: 'jp' | 'pl'; alt: string }) {
+  // 単一チョークポイント coverPosClass で表紙位置を決定。
+  // ※本セールCID群は jp.jpg 不在で pl にフォールバックする（実測 2026-06-25: 30/30 fallback）ため、
   //   jp.jpg化+object-center は背表紙が中央に出て逆効果。pl.jpg のまま coverPosClass→object-right
   //   で「正面の表紙(スプレッド右側)」を表示するのが正。ArticleCard/人気ランキングと同規約。
-  const coverUrl   = cidToCdnUrl(cid, 'pl')
+  //   将来 jp.jpg が有効な作品は item.cover='jp' を渡せば object-center に自動切替。
+  const coverUrl   = cidToCdnUrl(cid, size)
   const candidates = [proxyUrl(coverUrl)]
 
   const [idx, setIdx]       = useState(0)
@@ -145,7 +154,7 @@ function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
         position="chijo_sale_banner"
         className="relative block w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]"
       >
-        <SaleImage cid={item.cid} alt={alt} />
+        <SaleImage cid={item.cid} size={item.cover ?? 'pl'} alt={alt} />
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
 
         <span
@@ -262,7 +271,7 @@ export function FanzaChijoSaleBanner() {
         </p>
       </div>
 
-      {/* 24タイトル — モバイル: 横スワイプレーン / sm+: グリッド */}
+      {/* 30タイトル — モバイル: 横スワイプレーン / sm+: グリッド */}
       <div className="-mx-5 px-5 sm:mx-0 sm:px-0">
         <div className="flex gap-3 overflow-x-auto pb-3 snap-x snap-mandatory
                         [scrollbar-width:none] [-ms-overflow-style:none]
@@ -285,7 +294,7 @@ export function FanzaChijoSaleBanner() {
         </div>
         {/* モバイル限定: 横スクロールヒント */}
         <p className="mt-1 text-center text-[10px] tracking-widest text-amber-500/40 sm:hidden">
-          ← スワイプして全24作品を見る →
+          ← スワイプして全30作品を見る →
         </p>
       </div>
 

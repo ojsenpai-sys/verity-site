@@ -5,33 +5,40 @@ import { Flame, Lock, ExternalLink, Tag } from 'lucide-react'
 import { useAuth } from '@/components/AuthProvider'
 import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliate } from '@/lib/affiliate'
-import { cidToCdnUrl } from '@/lib/cidUtils'
+import { cidToCdnUrl, coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from '@/components/FanzaLink'
 
-// ── 15タイトルデータ ────────────────────────────────────────────────────────────
+// ── 20タイトルデータ ────────────────────────────────────────────────────────────
 type SaleItem = {
-  cid:     string
-  actress: string
-  title?:  string
+  cid:      string
+  actress?: string
+  title?:   string
+  cover?:   'jp' | 'pl'   // 画像実測で jp.jpg 有効時のみ 'jp'。省略時は pl(横長スプレッド)→object-right
 }
 
-// ── 2026-06-17 更新 v4: campaign=6565 編集長指定最新15作品 ──
+// ── 2026-06-25 更新 v5: campaign=6565 編集長指定 最新20作品 ──
+// 画像実測(2026-06-25): jp.jpg は全20件 now_printing にリダイレクト → 全件 pl で object-right。
 const SALE_ITEMS: SaleItem[] = [
-  { cid: 'sqte00614',    actress: '天馬ゆい' },
-  { cid: 'mikr00016',   actress: '白岩冬萌' },
-  { cid: 'mida00194',   actress: 'Himari' },
-  { cid: 'mfyd00011',   actress: '佐山愛' },
-  { cid: 'ebwh00223',   actress: '七瀬アリス' },
-  { cid: 'mvsd00645',   actress: '根尾あかり' },
-  { cid: 'mih00018',    actress: '松本いちか' },
-  { cid: 'mngs00002',   actress: '新井リマ' },
-  { cid: 'mngs00004',   actress: '美園和花' },
-  { cid: 'pppe00345',   actress: '逢沢みゆ' },
-  { cid: 'hmn00699',    actress: '五日市芽依' },
-  { cid: 'mida00204',   actress: '三木環奈' },
-  { cid: 'pred00777',   actress: '三好佑香' },
-  { cid: 'urvrsp00451', actress: '小野坂ゆいか' },
-  { cid: 'mikr00023',   actress: '森日向子' },
+  { cid: 'sone00874',   actress: '夢乃あいか' },
+  { cid: 'hmn00714',    actress: '東條なつ' },
+  { cid: 'sone00765',   actress: '浅野こころ' },
+  { cid: 'hndb00266',   actress: '五日市芽依' },
+  { cid: 'sone00772',   actress: '榊原萌' },
+  { cid: 'sone00761',   actress: '鷲尾めい' },
+  { cid: 'mkmp00646',   actress: '北岡果林' },
+  { cid: 'mkmp00644',   actress: '逢沢みゆ' },
+  { cid: 'sone00768',   actress: '渚あいり' },
+  { cid: 'sone00877',   actress: '東実果' },
+  { cid: 'sone00787',   actress: '木村愛心' },
+  { cid: 'hmn00707',    actress: '七瀬アリス' },
+  { cid: 'sone00563',   actress: '本郷愛' },
+  { cid: 'sivr00418',   actress: '田野憂' },
+  { cid: 'sone00763',   actress: '河北彩花（河北彩伽）' },
+  { cid: 'cjod00468',   actress: '天月あず' },
+  { cid: 'sivr00421',   actress: '兒玉七海' },
+  { cid: 'mkmp00647',   actress: '五芭' },
+  { cid: 'urvrsp00462', actress: '逢沢みゆ' },
+  { cid: 'jur00367',    actress: '竹内有紀' },
 ]
 
 function dmmUrl(cid: string): string {
@@ -43,7 +50,7 @@ function proxyUrl(url: string): string {
 }
 
 // ── 多言語テキスト ──────────────────────────────────────────────────────────────
-const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=6565&sort=review_rank'
+const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=6565&sort=suggest'
 
 const TEXTS = {
   ja: {
@@ -91,10 +98,12 @@ type CardProps = {
   onLock:    () => void
 }
 
-function SaleImage({ cid, alt }: { cid: string; alt: string }) {
-  const candidates = [
-    proxyUrl(cidToCdnUrl(cid, 'pl')),
-  ]
+function SaleImage({ cid, size, alt }: { cid: string; size: 'jp' | 'pl'; alt: string }) {
+  // 単一チョークポイント coverPosClass で表紙位置を決定。
+  // 実測(2026-06-25)で本セールCIDは全件 jp.jpg 不在(→now_printing)のため pl(横長スプレッド)配信で
+  // object-right。将来 jp.jpg が有効な作品は item.cover='jp' を渡せば object-center に自動切替。
+  const coverUrl   = cidToCdnUrl(cid, size)
+  const candidates = [proxyUrl(coverUrl)]
 
   const [idx, setIdx]       = useState(0)
   const [failed, setFailed] = useState(false)
@@ -106,7 +115,7 @@ function SaleImage({ cid, alt }: { cid: string; alt: string }) {
     <img
       src={candidates[idx]}
       alt={alt}
-      className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-200 group-hover:scale-105"
+      className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(coverUrl)} transition-transform duration-200 group-hover:scale-105`}
       onError={() => {
         if (idx < candidates.length - 1) setIdx(idx + 1)
         else setFailed(true)
@@ -137,7 +146,7 @@ function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
         position="sale_banner"
         className="relative block w-full aspect-[2/3] overflow-hidden bg-[var(--surface-2)]"
       >
-        <SaleImage cid={item.cid} alt={alt} />
+        <SaleImage cid={item.cid} size={item.cover ?? 'pl'} alt={alt} />
         <div className="absolute inset-0 bg-gradient-to-t from-[var(--surface)]/80 via-transparent to-transparent" />
 
         {/* セールバッジ */}
@@ -259,7 +268,7 @@ export function Fanza100SaleBanner() {
         </p>
       </div>
 
-      {/* 15タイトル カードグリッド */}
+      {/* 20タイトル カードグリッド */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {SALE_ITEMS.map((item) => (
           <SaleCard
