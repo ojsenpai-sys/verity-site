@@ -8,6 +8,8 @@ type Props = {
   targetId:  string
   /** 明示的に渡された position が最優先。未指定の場合は href から自動判定。 */
   position?: string
+  /** 追加の計測メタデータ（rank 等）。trackEvent の payload にマージされ metadata JSONB に格納される。 */
+  meta?:     Record<string, unknown>
   className?: string
   children:  ReactNode
 }
@@ -22,11 +24,11 @@ function derivePosition(href: string): string {
 }
 
 /** FANZA アフィリエイトリンク — クリック時に fanza_click イベントを発火 */
-export function FanzaLink({ href, targetId, position, className, children }: Props) {
+export function FanzaLink({ href, targetId, position, meta, className, children }: Props) {
   function handleClick() {
     // 明示的 position > URL フォールバック の優先順位を保証する
     const resolvedPosition = position ?? derivePosition(href)
-    trackEvent('fanza_click', { cid: targetId, position: resolvedPosition })
+    trackEvent('fanza_click', { cid: targetId, position: resolvedPosition, ...meta })
   }
 
   return (

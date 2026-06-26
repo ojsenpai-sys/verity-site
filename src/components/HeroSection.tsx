@@ -1,10 +1,13 @@
 import Link from 'next/link'
+import { Flame } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { FanzaLink } from './FanzaLink'
+import { NowPrinting } from './NowPrinting'
 import { HeroCountdown, HeroDayProgress } from './HeroCountdown'
-import { coverPosClass } from '@/lib/cidUtils'
+import { coverPosClass, isBadImageUrl, cidToCdnUrl, toHighResPackageUrl } from '@/lib/cidUtils'
+import { getTopRankedWorks, type RankedWork } from '@/lib/worksRanking'
 import type { Article } from '@/lib/types'
 
 type HeroResult = { article: Article; isFlash: boolean }
@@ -97,10 +100,157 @@ async function getHeroArticle(): Promise<HeroResult | null> {
   return best ? { article: best, isFlash: false } : null
 }
 
+// ── ランキングrail（発見導線） ──────────────────────────────────────────────────
+//
+// 「人気/急上昇」要件をメインHeroの選定ロジックを壊さずに満たす回遊起点。
+// CSS横スクロール（追加JSゼロ）でサーバーコンポーネントのまま描画し LCP に影響しない。
+
+// TOP3 のみ軽量装飾（ranking ページの RANK_STYLES を簡略再現）。
+const RAIL_RANK_STYLE: Record<number, { ring: string; badge: string }> = {
+  1: { ring: 'ring-amber-400/60',  badge: 'bg-amber-400 text-amber-950' },
+  2: { ring: 'ring-slate-300/50',  badge: 'bg-slate-300 text-slate-800' },
+  3: { ring: 'ring-amber-600/50',  badge: 'bg-amber-700 text-amber-50'  },
+}
+
+function railImgSrc(article: Article): string | null {
+  // ranking ページの WorkRankingCard と同じ表紙解決規約（pl.jpg → proxy）。
+  const cover = !isBadImageUrl(article.image_url)
+    ? (toHighResPackageUrl(article.image_url) ?? article.image_url)
+    : cidToCdnUrl(article.external_id, 'pl')
+  return cover ? `/api/proxy/image?url=${encodeURIComponent(cover)}` : null
+}
+
+function railActressName(article: Article): string | null {
+  const meta = article.metadata as Record<string, unknown> | null
+  if (Array.isArray(meta?.actress)) {
+    const first = (meta!.actress as { name?: string }[]).find(a => a.name)?.name
+    if (first) return first
+  }
+  if (typeof meta?.actress_name === 'string') return meta.actress_name as string
+  return null
+}
+
+function HeroRankCard({ item, isOverseas }: { item: RankedWork; isOverseas: boolean }) {
+  const { rank, article } = item
+  const style   = RAIL_RANK_STYLE[rank]
+  const imgSrc  = railImgSrc(article)
+  const actress = railActressName(article)
+
+  const meta = article.metadata as Record<string, unknown> | null
+  const rawUrl =
+    typeof meta?.affiliate_url === 'string' ? (meta.affiliate_url as string)
+    : typeof meta?.url === 'string' && article.source === 'dmm' ? (meta.url as string)
+    : null
+  const fanzaUrl = withAffiliateForRegion(rawUrl, isOverseas)
+
+  const cover = !isBadImageUrl(article.image_url)
+    ? (toHighResPackageUrl(article.image_url) ?? article.image_url)
+    : cidToCdnUrl(article.external_id, 'pl')
+
+  const ImageInner = (
+    <>
+      {imgSrc ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={imgSrc}
+          alt={article.title}
+          loading="lazy"
+          decoding="async"
+          className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(cover)} transition-transform duration-300 group-hover/rcard:scale-105`}
+        />
+      ) : (
+        <NowPrinting />
+      )}
+      {/* 順位バッジ */}
+      <span className={[
+        'absolute left-1.5 top-1.5 inline-flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-black shadow-lg',
+        style?.badge ?? 'border border-white/20 bg-black/70 text-white',
+      ].join(' ')}>
+        {rank}
+      </span>
+      {/* 戦闘力ポイント */}
+      <span className="absolute bottom-1.5 right-1.5 inline-flex items-center gap-0.5 rounded-full bg-black/60 px-1.5 py-0.5 text-[9px] font-black text-amber-300 ring-1 ring-amber-400/30 backdrop-blur-sm">
+        <Flame size={8} className="fill-amber-400 text-amber-400" />
+        {item.points.toLocaleString()}
+      </span>
+    </>
+  )
+
+  const imageWrapClass = [
+    'group/rcard relative block aspect-[2/3] w-full overflow-hidden rounded-lg bg-[var(--surface-2)] ring-1',
+    style?.ring ?? 'ring-[var(--border)]',
+  ].join(' ')
+
+  return (
+    <div className="w-[124px] shrink-0 snap-start sm:w-[140px]">
+      {/* 表紙 → FANZA送客（hero_rank_card） */}
+      {fanzaUrl ? (
+        <FanzaLink href={fanzaUrl} targetId={article.external_id} position="hero_rank_card" meta={{ rank: item.rank }} className={imageWrapClass}>
+          {ImageInner}
+        </FanzaLink>
+      ) : article.slug ? (
+        <Link href={`/verity/articles/${article.slug}`} className={imageWrapClass}>
+          {ImageInner}
+        </Link>
+      ) : (
+        <div className={imageWrapClass}>{ImageInner}</div>
+      )}
+
+      {/* タイトル */}
+      <p className="mt-1.5 line-clamp-2 text-[11px] font-semibold leading-snug text-[var(--text)]">
+        {article.title}
+      </p>
+      {actress && (
+        <p className="mt-0.5 line-clamp-1 text-[10px] text-[var(--text-muted)]">{actress}</p>
+      )}
+
+      {/* CTA ピル → FANZA送客（hero_rank_carousel） */}
+      {fanzaUrl && (
+        <FanzaLink
+          href={fanzaUrl}
+          targetId={article.external_id}
+          position="hero_rank_carousel"
+          meta={{ rank: item.rank }}
+          className="mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-2 py-1 text-[10px] font-bold text-[var(--magenta)] transition-colors hover:bg-[var(--magenta)]/20"
+        >
+          ▶ FANZA
+        </FanzaLink>
+      )}
+    </div>
+  )
+}
+
+function HeroRankRail({ items, isOverseas }: { items: RankedWork[]; isOverseas: boolean }) {
+  return (
+    <div className="mt-6 border-t border-[var(--border)] pt-5">
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Flame size={15} className="text-amber-400" style={{ fill: 'rgba(251,191,36,0.4)' }} />
+          <span className="text-[13px] font-black text-[var(--text)]">急上昇ランキング</span>
+          <span className="rounded-full bg-amber-500/15 px-2 py-0.5 text-[10px] font-bold text-amber-400">
+            TOP {items.length}
+          </span>
+        </div>
+        <Link href="/verity/ranking" className="text-[11px] font-bold text-[var(--text-muted)] transition-colors hover:text-[var(--magenta)]">
+          すべて見る →
+        </Link>
+      </div>
+
+      {/* CSS横スクロール（snap）。mobile/desktop 共通でJSなし。 */}
+      <div className="-mx-5 flex snap-x gap-3 overflow-x-auto px-5 pb-1 sm:-mx-8 sm:px-8 [scrollbar-width:thin]">
+        {items.map(item => (
+          <HeroRankCard key={item.article.id} item={item} isOverseas={isOverseas} />
+        ))}
+      </div>
+    </div>
+  )
+}
+
 export async function HeroSection() {
-  const [heroResult, isOverseas] = await Promise.all([
+  const [heroResult, isOverseas, ranked] = await Promise.all([
     getHeroArticle(),
     getIsOverseasUser(),
+    getTopRankedWorks(10),
   ])
   if (!heroResult) return null
 
@@ -124,6 +274,9 @@ export async function HeroSection() {
   const proxyImg = article.image_url
     ? `/api/proxy/image?url=${encodeURIComponent(article.image_url)}`
     : null
+
+  // featured 作品と重複する rail アイテムを除外（同一作品の二重表示を防ぐ）
+  const railItems = ranked.filter(r => r.article.external_id !== article.external_id)
 
   // ── 色アクセント（Hero=マゼンタ / Flash=アンバー） ───────────────────────────
   const accentText   = isFlash ? 'text-amber-300' : 'text-[var(--magenta)]'
@@ -152,6 +305,8 @@ export async function HeroSection() {
           <img
             src={proxyImg}
             alt=""
+            loading="lazy"
+            decoding="async"
             className="h-full w-full scale-150 object-cover object-center blur-3xl opacity-[0.08]"
           />
           <div className="absolute inset-0 bg-gradient-to-r from-[var(--surface)] via-[var(--surface)]/92 to-[var(--surface)]/55" />
@@ -170,14 +325,30 @@ export async function HeroSection() {
       {/* Flash: day-progress urgency bar (resets at midnight JST) */}
       {isFlash && <HeroDayProgress />}
 
-      <div className="relative flex flex-col items-center gap-5 p-5 text-center sm:flex-row sm:items-center sm:gap-9 sm:p-8 sm:text-left">
+      <div className="relative p-5 sm:p-8">
+
+      {/* Section heading — 「今、VERITYで見られている作品」 */}
+      <div className="mb-5 flex items-center justify-center gap-2.5 sm:justify-start">
+        <span className="inline-flex items-center gap-1.5 text-[10px] font-black uppercase tracking-[0.22em] text-[var(--text-muted)]">
+          <span className="relative flex h-1.5 w-1.5">
+            <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[var(--magenta)]/70" />
+            <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[var(--magenta)]" />
+          </span>
+          Trending Now
+        </span>
+        <h2 className="text-[13px] font-bold text-[var(--text)] sm:text-sm">
+          今、VERITYで見られている作品
+        </h2>
+      </div>
+
+      <div className="relative flex flex-col items-center gap-5 text-center sm:flex-row sm:items-center sm:gap-9 sm:text-left">
 
         {/* Cover image */}
         {proxyImg && (
           <FanzaLink
             href={affiliateUrl}
             targetId={article.external_id}
-            position="hero_image"
+            position="hero_main_image"
             className="relative block shrink-0"
           >
             {isFlash && (
@@ -191,6 +362,8 @@ export async function HeroSection() {
               <img
                 src={proxyImg}
                 alt={article.title}
+                fetchPriority="high"
+                decoding="async"
                 className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(article.image_url)}`}
               />
             </div>
@@ -261,7 +434,7 @@ export async function HeroSection() {
             <FanzaLink
               href={affiliateUrl}
               targetId={article.external_id}
-              position="hero_cta"
+              position="hero_main_cta"
               className={[
                 'inline-flex items-center gap-2 rounded-full px-7 py-3 text-sm font-bold transition-all duration-200 hover:brightness-110 active:scale-[0.97]',
                 isFlash
@@ -296,6 +469,11 @@ export async function HeroSection() {
             )}
           </div>
         </div>
+      </div>
+
+      {/* Discovery rail — 急上昇ランキング TOP10（空なら従来通り featured のみ） */}
+      {railItems.length > 0 && <HeroRankRail items={railItems} isOverseas={isOverseas} />}
+
       </div>
     </section>
   )

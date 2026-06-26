@@ -29,8 +29,13 @@ const EVENT_CONFIG: Record<EventKey, { label: string; color: string }> = {
 const POSITION_LABELS: Record<string, string> = {
   card_image:              'カード画像',
   card_cta:                'カードCTA',
-  hero_image:              'ヒーロー画像',
-  hero_cta:                'ヒーローCTA',
+  hero_image:              'ヒーロー画像（旧）',
+  hero_cta:                'ヒーローCTA（旧）',
+  // Hero v2 発見Hero（Phase 1）
+  hero_main_image:         'Hero v2：メイン画像',
+  hero_main_cta:           'Hero v2：メインCTA',
+  hero_rank_card:          'Hero v2：急上昇カード画像',
+  hero_rank_carousel:      'Hero v2：急上昇カードCTA',
   actress_sale_card:       '女優セールカード',
   actress_sale_search:     '女優セール検索CTA',
   fav_alert:               'お気に入りアラート',
