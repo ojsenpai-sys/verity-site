@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Flame } from 'lucide-react'
+import { Flame, Play } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
@@ -173,6 +173,16 @@ function HeroRankCard({ item, isOverseas }: { item: RankedWork; isOverseas: bool
         <Flame size={8} className="fill-amber-400 text-amber-400" />
         {item.points.toLocaleString()}
       </span>
+      {/* 常設 FANZA バッジ — クリック可能アフォーダンス（card_imageの勝因UIをrailへ移植） */}
+      <span className="pointer-events-none absolute bottom-1.5 left-1.5 inline-flex items-center gap-0.5 rounded-full bg-black/55 px-1.5 py-0.5 text-[9px] font-bold text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors group-hover/rcard:bg-[var(--magenta)]/90">
+        <Play size={8} className="fill-white" /> FANZA
+      </span>
+      {/* desktop hover オーバーレイ */}
+      <div className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/0 transition-all duration-200 group-hover/rcard:bg-black/55 md:flex">
+        <span className="translate-y-1 scale-95 rounded-full bg-white/90 px-2.5 py-1 text-[10px] font-bold text-gray-900 opacity-0 shadow-lg transition-all duration-200 group-hover/rcard:translate-y-0 group-hover/rcard:scale-100 group-hover/rcard:opacity-100">
+          ▶ FANZAで観る
+        </span>
+      </div>
     </>
   )
 
@@ -196,12 +206,31 @@ function HeroRankCard({ item, isOverseas }: { item: RankedWork; isOverseas: bool
         <div className={imageWrapClass}>{ImageInner}</div>
       )}
 
-      {/* タイトル */}
-      <p className="mt-1.5 line-clamp-2 text-[11px] font-semibold leading-snug text-[var(--text)]">
-        {article.title}
-      </p>
-      {actress && (
-        <p className="mt-0.5 line-clamp-1 text-[10px] text-[var(--text-muted)]">{actress}</p>
+      {/* タイトル/女優名 — 文字領域もFANZA送客（hero_rank_card・クリック領域をカード全体へ拡大） */}
+      {fanzaUrl ? (
+        <FanzaLink
+          href={fanzaUrl}
+          targetId={article.external_id}
+          position="hero_rank_card"
+          meta={{ rank: item.rank }}
+          className="group/rtitle mt-1.5 block"
+        >
+          <p className="line-clamp-2 text-[11px] font-semibold leading-snug text-[var(--text)] transition-colors group-hover/rtitle:text-[var(--magenta)]">
+            {article.title}
+          </p>
+          {actress && (
+            <p className="mt-0.5 line-clamp-1 text-[10px] text-[var(--text-muted)]">{actress}</p>
+          )}
+        </FanzaLink>
+      ) : (
+        <>
+          <p className="mt-1.5 line-clamp-2 text-[11px] font-semibold leading-snug text-[var(--text)]">
+            {article.title}
+          </p>
+          {actress && (
+            <p className="mt-0.5 line-clamp-1 text-[10px] text-[var(--text-muted)]">{actress}</p>
+          )}
+        </>
       )}
 
       {/* CTA ピル → FANZA送客（hero_rank_carousel） */}
@@ -211,9 +240,9 @@ function HeroRankCard({ item, isOverseas }: { item: RankedWork; isOverseas: bool
           targetId={article.external_id}
           position="hero_rank_carousel"
           meta={{ rank: item.rank }}
-          className="mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-2 py-1 text-[10px] font-bold text-[var(--magenta)] transition-colors hover:bg-[var(--magenta)]/20"
+          className="mt-1.5 inline-flex w-full items-center justify-center gap-1 rounded-full border border-[var(--magenta)]/30 bg-[var(--magenta)]/10 px-2 py-1 text-[11px] font-bold text-[var(--magenta)] transition-colors hover:bg-[var(--magenta)]/20"
         >
-          ▶ FANZA
+          ▶ FANZAで観る
         </FanzaLink>
       )}
     </div>
@@ -349,7 +378,7 @@ export async function HeroSection() {
             href={affiliateUrl}
             targetId={article.external_id}
             position="hero_main_image"
-            className="relative block shrink-0"
+            className="group/hmain relative block shrink-0"
           >
             {isFlash && (
               <div className="pointer-events-none absolute -inset-1.5 rounded-2xl bg-amber-500/20 blur-md" aria-hidden="true" />
@@ -366,6 +395,15 @@ export async function HeroSection() {
                 decoding="async"
                 className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(article.image_url)}`}
               />
+              {/* 常設 FANZA バッジ＋hoverオーバーレイ（card_imageの勝因UIをmain Heroへ移植） */}
+              <span className="pointer-events-none absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-bold text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors group-hover/hmain:bg-[var(--magenta)]/90">
+                <Play size={9} className="fill-white" /> FANZA
+              </span>
+              <div className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/0 transition-all duration-200 group-hover/hmain:bg-black/55 md:flex">
+                <span className="translate-y-1 scale-95 rounded-full bg-white/90 px-4 py-1.5 text-[11px] font-bold text-gray-900 opacity-0 shadow-lg transition-all duration-200 group-hover/hmain:translate-y-0 group-hover/hmain:scale-100 group-hover/hmain:opacity-100">
+                  ▶ FANZAで観る
+                </span>
+              </div>
             </div>
           </FanzaLink>
         )}
