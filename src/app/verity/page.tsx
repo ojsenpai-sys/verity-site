@@ -6,6 +6,8 @@ import { ArticleCard } from '@/components/ArticleCard'
 import { FilterBar } from '@/components/FilterBar'
 import { ActressMarquee } from '@/components/ActressMarquee'
 import { HeroSection } from '@/components/HeroSection'
+import { HeroV21Section } from '@/components/HeroV21Section'
+import { HERO_VARIANT } from '@/lib/heroFlags'
 import { FeaturedSection } from '@/components/FeaturedSection'
 import { RecommendedActressSection } from '@/components/RecommendedActressSection'
 import { MustOneSection } from '@/components/MustOneSection'
@@ -481,7 +483,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       {/* ── 0. Today's Hero（本日の最イチ推し 全幅バナー） ──────────────── */}
       <section id="hero">
         <Suspense fallback={<div className="h-48 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
-          <HeroSection />
+          {HERO_VARIANT === 'v2.1' ? <HeroV21Section /> : <HeroSection />}
         </Suspense>
       </section>
 

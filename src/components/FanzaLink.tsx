@@ -11,6 +11,8 @@ type Props = {
   /** 追加の計測メタデータ（rank 等）。trackEvent の payload にマージされ metadata JSONB に格納される。 */
   meta?:     Record<string, unknown>
   className?: string
+  /** スクリーンリーダー向けラベル（画像のみ/アイコンのみリンクで使用）。 */
+  ariaLabel?: string
   children:  ReactNode
 }
 
@@ -24,7 +26,7 @@ function derivePosition(href: string): string {
 }
 
 /** FANZA アフィリエイトリンク — クリック時に fanza_click イベントを発火 */
-export function FanzaLink({ href, targetId, position, meta, className, children }: Props) {
+export function FanzaLink({ href, targetId, position, meta, className, ariaLabel, children }: Props) {
   function handleClick() {
     // 明示的 position > URL フォールバック の優先順位を保証する
     const resolvedPosition = position ?? derivePosition(href)
@@ -37,6 +39,7 @@ export function FanzaLink({ href, targetId, position, meta, className, children 
       target="_blank"
       rel="noopener noreferrer sponsored"
       className={className}
+      aria-label={ariaLabel}
       onClick={handleClick}
     >
       {children}

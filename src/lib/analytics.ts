@@ -26,6 +26,9 @@ export type EventName =
   | 'unfavorite_work'
   | 'favorite_actress'
   | 'unfavorite_actress'
+  // Hero v2.1: ランキングrailのメイン切替（内部回遊）。fanza_click とは別イベントにし、
+  // 総fanza_click（share% / ダッシュボード導線別の分母）を汚染しない。
+  | 'hero_rank_select'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -50,6 +53,8 @@ const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' |
   unfavorite_work:    { type: 'article', idKey: 'cid'       },
   favorite_actress:   { type: 'actress', idKey: 'actressId' },
   unfavorite_actress: { type: 'actress', idKey: 'actressId' },
+  // cid を target_id に載せ、fanza_click と同じ集計規約（target_id=作品 / metadata.position）に揃える
+  hero_rank_select:   { type: 'article', idKey: 'cid'       },
 }
 
 // target_id にマップされる構造キーは metadata から除外する

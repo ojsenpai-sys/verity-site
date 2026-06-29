@@ -26,7 +26,8 @@ export async function getTopRankedWorks(limit = 10): Promise<RankedWork[]> {
   const ids = rows.map(r => r.external_id)
   const { data: articles } = await supabase
     .from('articles')
-    .select('id, external_id, title, image_url, slug, tags, metadata, source')
+    // published_at は Hero v2.1（発売日表示）が利用。v2 rail は未使用のため後方互換。
+    .select('id, external_id, title, image_url, slug, tags, metadata, source, published_at')
     .in('external_id', ids)
     .eq('is_active', true)
 
