@@ -8,7 +8,7 @@ import { withAffiliate } from '@/lib/affiliate'
 import { cidToCdnUrl, coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from '@/components/FanzaLink'
 
-// ── 20タイトルデータ ────────────────────────────────────────────────────────────
+// ── 25タイトルデータ ────────────────────────────────────────────────────────────
 type SaleItem = {
   cid:      string
   actress?: string
@@ -16,29 +16,18 @@ type SaleItem = {
   cover?:   'jp' | 'pl'   // 画像実測で jp.jpg 有効時のみ 'jp'。省略時は pl(横長スプレッド)→object-right
 }
 
-// ── 2026-06-25 更新 v5: campaign=6565 編集長指定 最新20作品 ──
-// 画像実測(2026-06-25): jp.jpg は全20件 now_printing にリダイレクト → 全件 pl で object-right。
+// ── 2026-07-03 更新 v6: campaign=6565 編集長指定 最新25作品 ──
+// 画像自動判定(2026-07-03, DMM CDN 実測 / proxy 判定基準に準拠):
+//   jp.jpg は全25件 now_printing プレースホルダー(2732B)にリダイレクト → jp 不在。
+//   → 全25件 cover 省略(=pl 横長スプレッド配信) で object-right を適用。
+//   pl.jpg は全25件 実在(HTTP 200 / 124〜203KB) を確認済み。
+//   将来 jp.jpg が公開された作品は cover:'jp' を付与すれば object-center へ自動切替。
 const SALE_ITEMS: SaleItem[] = [
-  { cid: 'sone00874',   actress: '夢乃あいか' },
-  { cid: 'hmn00714',    actress: '東條なつ' },
-  { cid: 'sone00765',   actress: '浅野こころ' },
-  { cid: 'hndb00266',   actress: '五日市芽依' },
-  { cid: 'sone00772',   actress: '榊原萌' },
-  { cid: 'sone00761',   actress: '鷲尾めい' },
-  { cid: 'mkmp00646',   actress: '北岡果林' },
-  { cid: 'mkmp00644',   actress: '逢沢みゆ' },
-  { cid: 'sone00768',   actress: '渚あいり' },
-  { cid: 'sone00877',   actress: '東実果' },
-  { cid: 'sone00787',   actress: '木村愛心' },
-  { cid: 'hmn00707',    actress: '七瀬アリス' },
-  { cid: 'sone00563',   actress: '本郷愛' },
-  { cid: 'sivr00418',   actress: '田野憂' },
-  { cid: 'sone00763',   actress: '河北彩花（河北彩伽）' },
-  { cid: 'cjod00468',   actress: '天月あず' },
-  { cid: 'sivr00421',   actress: '兒玉七海' },
-  { cid: 'mkmp00647',   actress: '五芭' },
-  { cid: 'urvrsp00462', actress: '逢沢みゆ' },
-  { cid: 'jur00367',    actress: '竹内有紀' },
+  { cid: 'mida00216' }, { cid: 'mida00210' }, { cid: 'mida00213' }, { cid: 'mida00212' }, { cid: 'mida00133' },
+  { cid: 'mida00182' }, { cid: 'mida00226' }, { cid: 'mizd00464' }, { cid: 'mida00220' }, { cid: 'mida00215' },
+  { cid: 'mikr00022' }, { cid: 'h_1711maan01085' }, { cid: 'sivr00420' }, { cid: 'waaa00537' }, { cid: 'waaa00541' },
+  { cid: 'mimk00231' }, { cid: 'mida00217' }, { cid: 'xvsr00824' }, { cid: 'waaa00543' }, { cid: 'mida00225' },
+  { cid: 'mida00214' }, { cid: 'kavr00429' }, { cid: 'cawd00845' }, { cid: 'kwbd00403' }, { cid: 'mimk00230' },
 ]
 
 function dmmUrl(cid: string): string {
@@ -100,7 +89,7 @@ type CardProps = {
 
 function SaleImage({ cid, size, alt }: { cid: string; size: 'jp' | 'pl'; alt: string }) {
   // 単一チョークポイント coverPosClass で表紙位置を決定。
-  // 実測(2026-06-25)で本セールCIDは全件 jp.jpg 不在(→now_printing)のため pl(横長スプレッド)配信で
+  // 実測(2026-07-03)で本セール25CIDは全件 jp.jpg 不在(→now_printing)のため pl(横長スプレッド)配信で
   // object-right。将来 jp.jpg が有効な作品は item.cover='jp' を渡せば object-center に自動切替。
   const coverUrl   = cidToCdnUrl(cid, size)
   const candidates = [proxyUrl(coverUrl)]
@@ -268,7 +257,7 @@ export function Fanza100SaleBanner() {
         </p>
       </div>
 
-      {/* 20タイトル カードグリッド */}
+      {/* 25タイトル カードグリッド */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
         {SALE_ITEMS.map((item) => (
           <SaleCard
