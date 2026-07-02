@@ -25,14 +25,70 @@ function safeQs(params: Record<string, string>): string {
   return new URLSearchParams({ ...params, api_id: '***', affiliate_id: '***' }).toString()
 }
 
-async function callApi<T>(url: string, qs: URLSearchParams, label: string): Promise<T> {
+/** jitter 付き待機（transient throttle のバックオフ用） */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
+
+/**
+ * DMM API 呼び出し共通処理。
+ *
+ * opts.retryOnThrottle=true のときのみ、DMM 側の一時的な throttle / rate-limit
+ * （HTTP 400 かつ body に api_id / Invalid Request Error を含む応答）を transient
+ * とみなし、jitter 付き指数バックオフで最大2回リトライする。ActressSearch 専用。
+ *
+ * opts を渡さない呼び出し（ItemList 等）は従来どおり試行1回・即エラーで挙動不変。
+ */
+async function callApi<T>(
+  url: string,
+  qs: URLSearchParams,
+  label: string,
+  opts?: { retryOnThrottle?: boolean },
+): Promise<T> {
   const safeUrl = `${url}?${safeQs(Object.fromEntries(qs))}`
   console.log(`[dmm:${label}] GET ${safeUrl}`)
 
-  const res = await fetch(`${url}?${qs}`, { cache: 'no-store' })
-  const text = await res.text()
+  const maxAttempts = opts?.retryOnThrottle ? 3 : 1  // 初回 + 最大2リトライ
 
-  if (!res.ok) {
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const res = await fetch(`${url}?${qs}`, { cache: 'no-store' })
+    const text = await res.text()
+
+    if (res.ok) {
+      try {
+        return JSON.parse(text) as T
+      } catch {
+        throw new Error(`[dmm:${label}] JSONパース失敗: ${text.slice(0, 200)}`)
+      }
+    }
+
+    // ─ 非 200 応答 ─
+    // DMM は一時的な throttle / rate-limit を HTTP 400 + errors.api_id="Invalid Request Error"
+    // として返すことがある（credential エラーではなく過負荷時の一過性応答）。
+    const isTransientThrottle =
+      res.status === 400 && /api_id|Invalid Request Error/i.test(text)
+
+    // transient かつリトライ余地あり → jitter 付き指数バックオフで再試行
+    if (opts?.retryOnThrottle && isTransientThrottle && attempt < maxAttempts) {
+      const delay = Math.round(300 * 2 ** (attempt - 1) + Math.random() * 150)
+      console.warn(
+        `[dmm:${label}] DMM ActressSearch transient throttle (HTTP 400) — ` +
+        `retry ${attempt}/${maxAttempts - 1} after ${delay}ms`,
+      )
+      await sleep(delay)
+      continue
+    }
+
+    // transient だがリトライ枯渇 → credential エラーと誤認させない文言で throw。
+    // 呼び出し側（fetchActressImages*）で graceful degrade される。
+    if (opts?.retryOnThrottle && isTransientThrottle) {
+      throw new Error(
+        `[dmm:${label}] DMM ActressSearch transient throttle — best-effort skip ` +
+        `(HTTP 400, ${maxAttempts}回試行後も継続)`,
+      )
+    }
+
+    // ─ 従来のエラー処理（ItemList を含む・挙動不変）─
     console.error(`[dmm:${label}] HTTP ${res.status} — URL: ${safeUrl}`)
     console.error(`[dmm:${label}] body: ${text.slice(0, 800)}`)
 
@@ -58,11 +114,8 @@ async function callApi<T>(url: string, qs: URLSearchParams, label: string): Prom
     }
   }
 
-  try {
-    return JSON.parse(text) as T
-  } catch {
-    throw new Error(`[dmm:${label}] JSONパース失敗: ${text.slice(0, 200)}`)
-  }
+  // ループを正常に抜けることは通常ないが、型の網羅性のため
+  throw new Error(`[dmm:${label}] リクエストに失敗しました`)
 }
 
 // ─── ItemList ─────────────────────────────────────────────────────────────────
@@ -230,8 +283,8 @@ export async function fetchActressImages(actressIds: number[]): Promise<Map<numb
   const imageMap = new Map<number, string>()
 
   // ActressSearch は comma-separated actress_id を受け付けないため個別リクエストのみ使用
-  // 5並列で全IDを順次処理する
-  const CONCURRENCY = 5
+  // DMM 側の throttle を避けるため 2 並列で全IDを順次処理する（ItemList には影響しない）
+  const CONCURRENCY = 2
   console.log(`[dmm:actress] ${actressIds.length}名を個別リクエスト (${CONCURRENCY}並列) で取得`)
 
   for (let i = 0; i < actressIds.length; i += CONCURRENCY) {
@@ -246,7 +299,7 @@ export async function fetchActressImages(actressIds: number[]): Promise<Map<numb
         actress_id:   String(id),
       })
       try {
-        const json = await callApi<ActressSearchResponse>(ACTRESS_SEARCH_BASE, qs, 'actress')
+        const json = await callApi<ActressSearchResponse>(ACTRESS_SEARCH_BASE, qs, 'actress', { retryOnThrottle: true })
         if (json.result.status === 200 && json.result.items?.length) {
           const item = json.result.items[0]
           const url = item.imageURL?.large ?? item.imageURL?.small ?? null
@@ -289,7 +342,7 @@ export async function fetchActressImagesByName(
       keyword:      name,
     })
     try {
-      const json = await callApi<ActressSearchResponse>(ACTRESS_SEARCH_BASE, qs, 'actress-name')
+      const json = await callApi<ActressSearchResponse>(ACTRESS_SEARCH_BASE, qs, 'actress-name', { retryOnThrottle: true })
       if (json.result.status === 200 && json.result.items?.length) {
         const exact = json.result.items.find(item => item.name === name)
         const hit   = exact ?? json.result.items[0]
