@@ -15,6 +15,21 @@
 #               切替=hero_v21_rank_nav（内部回遊イベント hero_rank_select・分母汚染なし）
 #
 # DB書き込みは一切行わない（GETのみ）。合成イベントを注入しないこと（CTRベースライン保護）。
+#
+# ── Hero v2.1 評価上の注意（go-live 窓）─────────────────────────────────────────
+#   Hero v2.1 本番反映: 2026-06-29 17:31 UTC（2026-06-30 02:31 JST / commit 9d6cd25）。
+#   これ以前は Hero v2 が稼働。go-live を跨ぐ窓では hero_v2_* と hero_v21_* が混在し、
+#   v2.1 の送客を過小評価する（表示された hero_v2 送客は v2.1 稼働前のもの）。
+#   → v2.1 を評価するときは、窓の開始が go-live 以降になる WINDOW_HOURS を指定すること。
+#
+# ── 再計測ドリル（v2.1「送客0」の切り分け判定基準）─────────────────────────────
+#   go-live 以降の窓で下記を「すべて」満たしたときのみ実装疑いに昇格し、ステージング実クリック検証へ:
+#     - home_view（page_view /verity）>= 1,000
+#     - hero_v21_rank_nav（hero_rank_select）が一定数発火（目安 >= 20）
+#     - それでも hero_v21_main_image / hero_v21_main_cta / hero_v21_rank_thumb の
+#       fanza_click が依然 0 件
+#   いずれか未達（特に home_view / rank_nav が小さい）なら「露出不足(E)」＝正常。コード変更しない。
+#   ※実クリック検証は本番 Supabase を汚染しない環境（ステージング/別プロジェクト）で行うこと。
 set -euo pipefail
 cd "$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -24,6 +39,7 @@ KEY=$(grep -E '^SUPABASE_SERVICE_ROLE_KEY=' .env.local | head -1 | cut -d= -f2- 
 auth=(-H "apikey: $KEY" -H "Authorization: Bearer $KEY")
 SINCE=$(date -u -d "${WIN_H} hours ago" '+%Y-%m-%dT%H:%M:%SZ')
 NOW=$(date -u '+%Y-%m-%dT%H:%M:%SZ')
+HERO_V21_GOLIVE='2026-06-29T17:31:00Z'  # Hero v2.1 本番反映（commit 9d6cd25 / 06-30 02:31 JST）
 
 count_of(){ curl -s --ssl-no-revoke --max-time 25 -D - -o /dev/null "${auth[@]}" \
   -H "Prefer: count=exact" -H "Range: 0-0" "$URL/rest/v1/user_events?select=id&$1" \
@@ -45,6 +61,10 @@ row(){ printf "%-22s %5s  CTR=%-8s share=%s\n" "$1" "$2" "$(ctr $2)" "$(shr $2)"
 
 echo "════ Hero v2 CTR速報  window=直近${WIN_H}h  ($SINCE → $NOW UTC) ════"
 echo "ホームimpression(page_view /verity)=$IMPR   総fanza_click=$TOTFZ"
+echo "※Hero v2.1評価は go-live($HERO_V21_GOLIVE) 以降の窓のみ有効（それ以前は Hero v2 稼働）"
+if [ "$(date -u -d "$SINCE" +%s)" -lt "$(date -u -d "$HERO_V21_GOLIVE" +%s)" ]; then
+  echo "⚠ この窓は go-live 以前を含む → hero_v2_* と hero_v21_* が混在し v2.1送客を過小評価"
+fi
 echo
 echo "── Hero v2（分母=ホームview $IMPR）──"
 row hero_main_image    "$(cnt hero_main_image)"
