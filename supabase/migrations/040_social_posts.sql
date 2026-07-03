@@ -56,7 +56,14 @@ CREATE TABLE IF NOT EXISTS public.social_posts (
   CONSTRAINT social_posts_lang_chk
     CHECK (lang IN ('ja','en','zh','all')),
   CONSTRAINT social_posts_status_chk
-    CHECK (status IN ('draft','posted','archived'))
+    CHECK (status IN ('draft','posted','archived')),
+  -- Xネイティブ指標は非負（アプリでもクランプ済みだがDBでも担保）。NULLは許容。
+  CONSTRAINT social_posts_metrics_nonneg
+    CHECK (coalesce(impressions,0) >= 0 AND coalesce(likes,0) >= 0 AND coalesce(reposts,0) >= 0
+           AND coalesce(replies,0) >= 0 AND coalesce(bookmarks,0) >= 0),
+  -- 投稿済みなら必ず posted_at を持つ（成果集計窓の起点が欠けないよう保証）。
+  CONSTRAINT social_posts_posted_at_chk
+    CHECK (status <> 'posted' OR posted_at IS NOT NULL)
 );
 
 -- ── 2. インデックス ──────────────────────────────────────────────────────────
@@ -80,12 +87,17 @@ GRANT  ALL ON public.social_posts TO service_role;
 -- 既存に共通トリガ関数が無いため、アプリ側で updated_at = now() を渡す運用とする。
 -- （将来共通トリガを導入する場合はここに CREATE TRIGGER を追加）
 
--- ── 5. 成果アトリビューション（任意・性能対策）──────────────────────────────
--- ?vp= を持つ user_events だけを対象にした部分式インデックス。
--- 逆引き（metadata->>'vp' = track_code）を高速化する。件数が増えてから適用でも可。
-CREATE INDEX IF NOT EXISTS user_events_vp_idx
-  ON public.user_events ((metadata->>'vp'))
-  WHERE metadata ? 'vp';
+-- ── 5. 成果アトリビューション索引（本マイグレーションでは適用しない・後日別途）──────
+--   既存の高トラフィック表 user_events への索引追加は本マイグレーションに含めない。
+--   （新表作成と分離し、hot table への書き込みロックを回避するため）
+--   vp タグ付きイベント（metadata.vp）が十分溜まってから、トランザクション外で
+--   CONCURRENTLY で作成する:
+--
+--     CREATE INDEX CONCURRENTLY IF NOT EXISTS user_events_vp_idx
+--       ON public.user_events ((metadata->>'vp'))
+--       WHERE metadata ? 'vp';
+--
+--   ※CONCURRENTLY はトランザクションブロック内では実行不可。SQLエディタで単独実行すること。
 
 -- ── 6. 成果集計の参考クエリ（適用不要・ドキュメント）─────────────────────────
 --   投稿単位の成果は下記で取得する（必ず posted_at 以降の窓）。
