@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 import {
   LayoutDashboard, Newspaper, FilePlus, Settings,
-  Activity, ChevronRight, Radio, Search, Zap, BarChart3,
+  Activity, ChevronRight, Radio, Search, Zap, BarChart3, Share2,
 } from 'lucide-react'
 
 type NavItem = {
@@ -22,6 +22,7 @@ const GROUPS: { title: string; items: NavItem[] }[] = [
       { href: '/verity/admin',          label: 'CMS',         Icon: LayoutDashboard, exact: true },
       { href: '/verity/admin/news',     label: 'ニュース記事', Icon: Newspaper },
       { href: '/verity/admin/news/new', label: '新規作成',     Icon: FilePlus },
+      { href: '/verity/admin/social-posts', label: 'X投稿生成', Icon: Share2 },
     ],
   },
   {

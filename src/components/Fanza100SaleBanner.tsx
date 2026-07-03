@@ -8,27 +8,13 @@ import { withAffiliate } from '@/lib/affiliate'
 import { cidToCdnUrl, coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from '@/components/FanzaLink'
 
-// ── 25タイトルデータ ────────────────────────────────────────────────────────────
-type SaleItem = {
-  cid:      string
-  actress?: string
-  title?:   string
-  cover?:   'jp' | 'pl'   // 画像実測で jp.jpg 有効時のみ 'jp'。省略時は pl(横長スプレッド)→object-right
-}
-
-// ── 2026-07-03 更新 v6: campaign=6565 編集長指定 最新25作品 ──
-// 画像自動判定(2026-07-03, DMM CDN 実測 / proxy 判定基準に準拠):
-//   jp.jpg は全25件 now_printing プレースホルダー(2732B)にリダイレクト → jp 不在。
-//   → 全25件 cover 省略(=pl 横長スプレッド配信) で object-right を適用。
-//   pl.jpg は全25件 実在(HTTP 200 / 124〜203KB) を確認済み。
-//   将来 jp.jpg が公開された作品は cover:'jp' を付与すれば object-center へ自動切替。
-const SALE_ITEMS: SaleItem[] = [
-  { cid: 'mida00216' }, { cid: 'mida00210' }, { cid: 'mida00213' }, { cid: 'mida00212' }, { cid: 'mida00133' },
-  { cid: 'mida00182' }, { cid: 'mida00226' }, { cid: 'mizd00464' }, { cid: 'mida00220' }, { cid: 'mida00215' },
-  { cid: 'mikr00022' }, { cid: 'h_1711maan01085' }, { cid: 'sivr00420' }, { cid: 'waaa00537' }, { cid: 'waaa00541' },
-  { cid: 'mimk00231' }, { cid: 'mida00217' }, { cid: 'xvsr00824' }, { cid: 'waaa00543' }, { cid: 'mida00225' },
-  { cid: 'mida00214' }, { cid: 'kavr00429' }, { cid: 'cawd00845' }, { cid: 'kwbd00403' }, { cid: 'mimk00230' },
-]
+// セール作品データは共有モジュール（src/lib/social/saleData.ts）へ集約。
+// X 投稿生成（admin/social-posts）と同一データを参照する。表示コピー(TEXTS)は本ファイルに残す。
+import {
+  FANZA_SALE_ITEMS as SALE_ITEMS,
+  FANZA_MORE_SALE_URL as MORE_SALE_URL,
+  type SaleItem,
+} from '@/lib/social/saleData'
 
 function dmmUrl(cid: string): string {
   return `https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=${cid}/`
@@ -39,8 +25,6 @@ function proxyUrl(url: string): string {
 }
 
 // ── 多言語テキスト ──────────────────────────────────────────────────────────────
-const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=6565&sort=suggest'
-
 const TEXTS = {
   ja: {
     badge:   '期間限定セール',

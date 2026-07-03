@@ -8,48 +8,13 @@ import { withAffiliate } from '@/lib/affiliate'
 import { cidToCdnUrl, coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from '@/components/FanzaLink'
 
-type SaleItem = {
-  cid:      string
-  actress?: string
-  title?:   string
-  cover?:   'jp' | 'pl'   // 画像実測で jp.jpg 有効時のみ 'jp'。省略時は pl(横長スプレッド)→object-right
-}
-
-// 巨乳キャンペーン30%OFF 全30作品（2026-07-03 CID差し替え）
-// 恒久配線: 全件 cover:'pl'（横長パッケージ）→ coverPosClass→object-right で正面表紙をジャスト表示。
-// jp.jpg フォールバック落ち・背表紙中央バグ・NowPrinting 落ちを回避する安全モードに統一。
-const SALE_ITEMS: SaleItem[] = [
-  { cid: 'ipzz00501', cover: 'pl' },
-  { cid: 'mida00370', cover: 'pl' },
-  { cid: 'ssis00606', cover: 'pl' },
-  { cid: 'ipzz00771', cover: 'pl' },
-  { cid: 'mida00478', cover: 'pl' },
-  { cid: 'ofje00534', cover: 'pl' },
-  { cid: 'sone00761', cover: 'pl' },
-  { cid: 'dass00531', cover: 'pl' },
-  { cid: 'ipzz00133', cover: 'pl' },
-  { cid: 'midv00927', cover: 'pl' },
-  { cid: 'yuj00057',  cover: 'pl' },
-  { cid: 'mida00550', cover: 'pl' },
-  { cid: 'mida00158', cover: 'pl' },
-  { cid: 'fpre00176', cover: 'pl' },
-  { cid: 'midv00868', cover: 'pl' },
-  { cid: 'blk00663',  cover: 'pl' },
-  { cid: 'mikr00009', cover: 'pl' },
-  { cid: 'mida00119', cover: 'pl' },
-  { cid: 'mida00520', cover: 'pl' },
-  { cid: 'ofje00551', cover: 'pl' },
-  { cid: 'royd00240', cover: 'pl' },
-  { cid: 'ssis00088', cover: 'pl' },
-  { cid: 'snos00038', cover: 'pl' },
-  { cid: 'ofje00615', cover: 'pl' },
-  { cid: 'snos00039', cover: 'pl' },
-  { cid: 'ssis00116', cover: 'pl' },
-  { cid: 'ofje00495', cover: 'pl' },
-  { cid: 'waaa00492', cover: 'pl' },
-  { cid: 'snos00146', cover: 'pl' },
-  { cid: 'ssis00222', cover: 'pl' },
-]
+// セール作品データは共有モジュール（src/lib/social/saleData.ts）へ集約。
+// X 投稿生成（admin/social-posts）と同一データを参照する。表示コピー(TEXTS)は本ファイルに残す。
+import {
+  CHIJO_SALE_ITEMS as SALE_ITEMS,
+  CHIJO_MORE_SALE_URL as MORE_SALE_URL,
+  type SaleItem,
+} from '@/lib/social/saleData'
 
 function dmmUrl(cid: string): string {
   return `https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=${cid}/`
@@ -58,8 +23,6 @@ function dmmUrl(cid: string): string {
 function proxyUrl(url: string): string {
   return `/api/proxy/image?url=${encodeURIComponent(url)}`
 }
-
-const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=kyonyucp'
 
 const TEXTS = {
   ja: {
