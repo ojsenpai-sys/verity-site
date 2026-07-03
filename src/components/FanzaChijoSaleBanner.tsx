@@ -15,39 +15,40 @@ type SaleItem = {
   cover?:   'jp' | 'pl'   // 画像実測で jp.jpg 有効時のみ 'jp'。省略時は pl(横長スプレッド)→object-right
 }
 
-// 痴女・小悪魔50%OFFセール【第3弾】全30作品（2026-06-25 CID差し替え）
-// 画像実測(2026-06-25): jp.jpg は全30件 now_printing にリダイレクト → 全件 pl で object-right。
+// 巨乳キャンペーン30%OFF 全30作品（2026-07-03 CID差し替え）
+// 恒久配線: 全件 cover:'pl'（横長パッケージ）→ coverPosClass→object-right で正面表紙をジャスト表示。
+// jp.jpg フォールバック落ち・背表紙中央バグ・NowPrinting 落ちを回避する安全モードに統一。
 const SALE_ITEMS: SaleItem[] = [
-  { cid: 'midv00275', actress: '小野六花' },
-  { cid: 'ssis00712', actress: '四宮ありす' },
-  { cid: 'midv00228', actress: '宮下玲奈' },
-  { cid: 'pppe00224', actress: '楪カレン' },
-  { cid: 'pppe00167', actress: '藤森里穂' },
-  { cid: 'midv00271', actress: '新ありな' },
-  { cid: 'hmn00537',  actress: '七瀬アリス' },
-  { cid: 'ssis00680', actress: '夢乃あいか' },
-  { cid: 'sone00069', actress: '架乃ゆら' },
-  { cid: 'ssis00335', actress: '小宵こなん' },
-  { cid: 'midv00276', actress: '中山ふみか' },
-  { cid: 'cawd00353', actress: '伊藤舞雪' },
-  { cid: 'waaa00319', actress: '斎藤あみり' },
-  { cid: 'midv00719', actress: '葵いぶき' },
-  { cid: 'ofje00374', actress: 'miru' },
-  { cid: 'ssis00905', actress: '小日向みゆう（清原みゆう）' },
-  { cid: 'cawd00676', actress: '桜空もも' },
-  { cid: 'mide00924', actress: '水卜さくら' },
-  { cid: 'mukc00044', actress: '奏音かのん' },
-  { cid: 'ssis00281', actress: '小宵こなん' },
-  { cid: 'ssis00277', actress: '天音まひな' },
-  { cid: 'sone00127', actress: '浅野こころ' },
-  { cid: 'sone00223', actress: '倉木華' },
-  { cid: 'ssis00842', actress: 'うんぱい' },
-  { cid: 'ssis00252', actress: '河北彩花（河北彩伽）' },
-  { cid: 'midv00140', actress: '石川澪' },
-  { cid: 'mide00983', actress: '七沢みあ' },
-  { cid: 'ssis00491', actress: '東雲みれい' },
-  { cid: 'midv00186', actress: '石川澪' },
-  { cid: 'hmn00368',  actress: '美谷朱音（美谷朱里）' },
+  { cid: 'ipzz00501', cover: 'pl' },
+  { cid: 'mida00370', cover: 'pl' },
+  { cid: 'ssis00606', cover: 'pl' },
+  { cid: 'ipzz00771', cover: 'pl' },
+  { cid: 'mida00478', cover: 'pl' },
+  { cid: 'ofje00534', cover: 'pl' },
+  { cid: 'sone00761', cover: 'pl' },
+  { cid: 'dass00531', cover: 'pl' },
+  { cid: 'ipzz00133', cover: 'pl' },
+  { cid: 'midv00927', cover: 'pl' },
+  { cid: 'yuj00057',  cover: 'pl' },
+  { cid: 'mida00550', cover: 'pl' },
+  { cid: 'mida00158', cover: 'pl' },
+  { cid: 'fpre00176', cover: 'pl' },
+  { cid: 'midv00868', cover: 'pl' },
+  { cid: 'blk00663',  cover: 'pl' },
+  { cid: 'mikr00009', cover: 'pl' },
+  { cid: 'mida00119', cover: 'pl' },
+  { cid: 'mida00520', cover: 'pl' },
+  { cid: 'ofje00551', cover: 'pl' },
+  { cid: 'royd00240', cover: 'pl' },
+  { cid: 'ssis00088', cover: 'pl' },
+  { cid: 'snos00038', cover: 'pl' },
+  { cid: 'ofje00615', cover: 'pl' },
+  { cid: 'snos00039', cover: 'pl' },
+  { cid: 'ssis00116', cover: 'pl' },
+  { cid: 'ofje00495', cover: 'pl' },
+  { cid: 'waaa00492', cover: 'pl' },
+  { cid: 'snos00146', cover: 'pl' },
+  { cid: 'ssis00222', cover: 'pl' },
 ]
 
 function dmmUrl(cid: string): string {
@@ -58,41 +59,41 @@ function proxyUrl(url: string): string {
   return `/api/proxy/image?url=${encodeURIComponent(url)}`
 }
 
-const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=chijokoakuma'
+const MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=kyonyucp'
 
 const TEXTS = {
   ja: {
-    badge:   '50%OFF セール',
-    tag:     '痴女・小悪魔',
-    title:   '痴女・小悪魔 50%OFFセール特集',
-    sub:     '人気の痴女・小悪魔系タイトルが期間限定で50%OFF！旬の女優・話題作が特別価格でラインナップ！',
+    badge:   '30%OFF セール',
+    tag:     '巨乳キャンペーン',
+    title:   '巨乳キャンペーン 30%OFF特集',
+    sub:     '人気の巨乳・爆乳タイトルが期間限定で30%OFF！旬の女優・話題作の全30作品が特別価格でラインナップ！',
     cta:     '対象作品をすべてチェック →',
     lock:    '会員登録で完全リストを見る',
     pr:      '※本バナーはアフィリエイトリンクを含むプロモーションです',
     viewBtn: 'FANZAで観る',
-    moreBtn: '🔥 痴女・小悪魔50%OFFのエロ動画一覧をすべて見る',
+    moreBtn: '🔥 巨乳キャンペーン30%OFFのエロ動画一覧をすべて見る',
   },
   en: {
-    badge:   '50% OFF Sale',
-    tag:     'Chijo / Koakuma',
-    title:   'Chijo & Koakuma 50% OFF Sale',
-    sub:     'Top titles in the chijo & koakuma genre now at 50% off for a limited time!',
+    badge:   '30% OFF Sale',
+    tag:     'Big Tits Campaign',
+    title:   'Big Tits Campaign 30% OFF',
+    sub:     'Top big-tits titles now at 30% off for a limited time — all 30 works at special prices!',
     cta:     'View All Eligible Titles →',
     lock:    'Register free to see the full list',
     pr:      '* This banner contains affiliate / promotional links.',
     viewBtn: 'Watch on FANZA',
-    moreBtn: '🔥 View All 50% OFF Titles',
+    moreBtn: '🔥 View All 30% OFF Titles',
   },
   th: {
-    badge:   'ลด 50% ช่วงเวลาจำกัด',
-    tag:     'เซลล์พิเศษ',
-    title:   'เซลล์ 50% OFF Chijo & Koakuma',
-    sub:     'ผลงานยอดนิยมราคาพิเศษ 50% OFF ช่วงเวลาจำกัด!',
+    badge:   'ลด 30% ช่วงเวลาจำกัด',
+    tag:     'แคมเปญนมใหญ่',
+    title:   'แคมเปญนมใหญ่ ลด 30% OFF',
+    sub:     'ผลงานนมใหญ่ยอดนิยมราคาพิเศษ ลด 30% ช่วงเวลาจำกัด ครบทั้ง 30 ผลงาน!',
     cta:     'ดูผลงานทั้งหมด →',
     lock:    'สมัครสมาชิกฟรีเพื่อดูรายการเต็ม',
     pr:      '* แบนเนอร์นี้มีลิงก์พันธมิตร (affiliate)',
     viewBtn: 'ดูบน FANZA',
-    moreBtn: '🔥 ดูผลงานเซลล์ 50% OFF ทั้งหมด',
+    moreBtn: '🔥 ดูผลงานเซลล์ 30% OFF ทั้งหมด',
   },
 } as const
 
@@ -107,9 +108,9 @@ type CardProps = {
 
 function SaleImage({ cid, size, alt }: { cid: string; size: 'jp' | 'pl'; alt: string }) {
   // 単一チョークポイント coverPosClass で表紙位置を決定。
-  // ※本セールCID群は jp.jpg 不在で pl にフォールバックする（実測 2026-06-25: 30/30 fallback）ため、
-  //   jp.jpg化+object-center は背表紙が中央に出て逆効果。pl.jpg のまま coverPosClass→object-right
-  //   で「正面の表紙(スプレッド右側)」を表示するのが正。ArticleCard/人気ランキングと同規約。
+  // ※本キャンペーンCID群は恒久配線で cover:'pl' に統一（横長パッケージ）。pl.jpg のまま
+  //   coverPosClass→object-right で「正面の表紙(スプレッド右側)」を表示するのが正。
+  //   jp.jpg化+object-center は背表紙が中央に出て逆効果になり得るため回避。ArticleCard/人気ランキングと同規約。
   //   将来 jp.jpg が有効な作品は item.cover='jp' を渡せば object-center に自動切替。
   const coverUrl   = cidToCdnUrl(cid, size)
   const candidates = [proxyUrl(coverUrl)]
@@ -161,7 +162,7 @@ function SaleCard({ item, isAuthed, viewLabel, onLock }: CardProps) {
           className="absolute left-0 top-3 rounded-r-full px-3 py-0.5 text-[10px] font-black text-white shadow-md"
           style={{ background: 'linear-gradient(135deg, #f59e0b, #ea580c)' }}
         >
-          50%OFF
+          30%OFF
         </span>
 
         <div className="absolute inset-0 opacity-0 group-hover:opacity-100 transition-opacity"
@@ -225,7 +226,7 @@ export function FanzaChijoSaleBanner() {
   return (
     <section
       id="fanza-chijo-sale"
-      aria-label="痴女・小悪魔 50%OFFセール特集"
+      aria-label="巨乳キャンペーン 30%OFF特集"
       className="relative overflow-hidden rounded-2xl space-y-5"
       style={{
         background: 'linear-gradient(135deg, #1c1000 0%, #201500 40%, #1a0c00 100%)',
