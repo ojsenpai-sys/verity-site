@@ -2,11 +2,11 @@
 
 import { useState, useTransition } from 'react'
 import {
-  Sparkles, Copy, Check, AlertTriangle, ImageOff, Images, Loader2, Info,
+  Sparkles, Copy, Check, AlertTriangle, ImageOff, Images, Loader2, Info, Save,
 } from 'lucide-react'
-import { generateSocialPost } from '@/app/verity/actions/admin-social-posts'
+import { generateSocialPost, saveSocialPost } from '@/app/verity/actions/admin-social-posts'
 import type {
-  GenerateInput, GenerateResult, PostLangOrAll, PostType,
+  GenerateInput, GenerateResult, PostLangOrAll, PostType, SavePostInput,
 } from '@/lib/social/types'
 import { TWEET_LIMIT } from '@/lib/social/tweetLength'
 
@@ -92,8 +92,14 @@ export default function SocialPostsClient() {
   const [copied, setCopied] = useState(false)
   const [pending, startTransition] = useTransition()
 
+  const [saving, setSaving]       = useState(false)
+  const [saved, setSaved]         = useState<{ trackCode: string; trackedBody: string } | null>(null)
+  const [saveError, setSaveError] = useState<string | null>(null)
+
   function handleGenerate() {
     setCopied(false)
+    setSaved(null)
+    setSaveError(null)
     const input: GenerateInput = {
       postType,
       count,
@@ -117,6 +123,27 @@ export default function SocialPostsClient() {
     } catch {
       /* clipboard 権限なし: フォールバックなし（textarea は手動選択可） */
     }
+  }
+
+  async function handleSave() {
+    if (!result?.ok) return
+    const v = result.variants[lang]
+    if (!v) return
+    setSaving(true)
+    setSaveError(null)
+    setSaved(null)
+    const input: SavePostInput = {
+      postType,
+      lang,
+      body: v.body,
+      url: result.meta.url,
+      imageCandidates: result.images,
+      sourceNote: result.meta.sourceNote,
+    }
+    const res = await saveSocialPost(input)
+    setSaving(false)
+    if (res.ok) setSaved({ trackCode: res.trackCode, trackedBody: res.trackedBody })
+    else setSaveError(res.error)
   }
 
   const variant280 = result?.ok ? result.variants[lang] : null
@@ -237,7 +264,7 @@ export default function SocialPostsClient() {
                 <button
                   key={l.key}
                   type="button"
-                  onClick={() => { setLang(l.key); setCopied(false) }}
+                  onClick={() => { setLang(l.key); setCopied(false); setSaved(null); setSaveError(null) }}
                   className="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all"
                   style={
                     active
@@ -275,15 +302,56 @@ export default function SocialPostsClient() {
                 </span>
               )}
             </div>
-            <button
-              type="button"
-              onClick={() => handleCopy(variant280.body)}
-              className="inline-flex items-center gap-2 rounded-lg border border-[var(--magenta)]/40 px-4 py-2 text-sm font-bold text-[var(--magenta)] transition-all hover:bg-[var(--magenta)]/10 active:scale-95"
-            >
-              {copied ? <Check size={15} /> : <Copy size={15} />}
-              {copied ? 'コピーしました' : '本文をコピー'}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => handleCopy(variant280.body)}
+                className="inline-flex items-center gap-2 rounded-lg border border-[var(--magenta)]/40 px-4 py-2 text-sm font-bold text-[var(--magenta)] transition-all hover:bg-[var(--magenta)]/10 active:scale-95"
+              >
+                {copied ? <Check size={15} /> : <Copy size={15} />}
+                {copied ? 'コピーしました' : '本文をコピー'}
+              </button>
+              <button
+                type="button"
+                onClick={handleSave}
+                disabled={saving}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 px-4 py-2 text-sm font-bold text-emerald-400 transition-all hover:bg-emerald-500/10 active:scale-95 disabled:opacity-60"
+              >
+                {saving ? <Loader2 size={15} className="animate-spin" /> : <Save size={15} />}
+                履歴に保存
+              </button>
+            </div>
           </div>
+
+          {/* 保存結果（?vp= 付き投稿用テキスト） */}
+          {saveError && (
+            <p className="flex items-center gap-1.5 text-xs text-red-400">
+              <AlertTriangle size={12} /> 保存に失敗: {saveError}
+            </p>
+          )}
+          {saved && (
+            <div className="space-y-2 rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-bold text-emerald-400">
+                <Check size={13} /> 履歴に保存しました（track_code: {saved.trackCode}）
+              </p>
+              <p className="text-[11px] text-[var(--text-muted)]">
+                ↓ 成果計測用に <code>?vp=</code> を付与した投稿用テキスト。<strong>こちらをコピーしてXへ投稿してください。</strong>
+              </p>
+              <textarea
+                readOnly
+                value={saved.trackedBody}
+                rows={Math.min(16, saved.trackedBody.split('\n').length + 1)}
+                className="w-full resize-y rounded-lg border border-[var(--border)] bg-[var(--surface-2)] p-3 font-mono text-sm leading-relaxed text-[var(--text)] focus:outline-none focus:ring-1 focus:ring-emerald-500"
+              />
+              <button
+                type="button"
+                onClick={() => handleCopy(saved.trackedBody)}
+                className="inline-flex items-center gap-2 rounded-lg border border-emerald-500/40 px-4 py-2 text-sm font-bold text-emerald-400 transition-all hover:bg-emerald-500/10 active:scale-95"
+              >
+                <Copy size={15} /> vp付きテキストをコピー
+              </button>
+            </div>
+          )}
 
           {/* データソース */}
           <p className="flex items-start gap-1.5 border-t border-[var(--border)] pt-3 text-[11px] text-[var(--text-muted)]">

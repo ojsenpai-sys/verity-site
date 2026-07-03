@@ -15,12 +15,21 @@ import { getTopRankedWorks } from '@/lib/worksRanking'
 import { cidToCdnUrl, isBadImageUrl, toHighResPackageUrl } from '@/lib/cidUtils'
 import { SALE_CAMPAIGNS } from '@/lib/social/saleData'
 import { generatePost } from '@/lib/social/postGenerator'
+import { buildTrackedUrl, applyTrackCodeToBody, generateTrackCode } from '@/lib/social/attribution'
 import type {
   GenerateInput,
   GenerateResult,
   ImageCandidate,
   PostData,
   PostItem,
+  SavePostInput,
+  SaveResult,
+  SocialPostRow,
+  AttributedMetrics,
+  ManualMetrics,
+  PostStatus,
+  PostType,
+  PostLangOrAll,
 } from '@/lib/social/types'
 
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
@@ -340,11 +349,206 @@ export async function generateSocialPost(input: GenerateInput): Promise<Generate
         templateKey: data.templateKey,
         itemCount: data.items.length,
         sourceNote,
+        url: data.url,
       },
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : String(e)
     if (msg === 'unauthorized') return { ok: false, error: '権限がありません。' }
     return { ok: false, error: `生成に失敗しました: ${msg}` }
+  }
+}
+
+// ══ Phase 2: 履歴保存・成果記録 ══════════════════════════════════════════════
+
+const SITE_KEY = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
+
+function errMsg(e: unknown): string {
+  const msg = e instanceof Error ? e.message : String(e)
+  return msg === 'unauthorized' ? '権限がありません。' : msg
+}
+
+// social_posts 未作成（mig040未適用）を検出し、画面を落とさず案内文に変換する。それ以外は生メッセージ。
+function friendlyDbError(error: { code?: string; message?: string } | null): string {
+  const code = error?.code ?? ''
+  const msg  = error?.message ?? '不明なエラー'
+  const missingTable =
+    code === '42P01' || code === 'PGRST205' ||
+    (/social_posts/.test(msg) && /(does not exist|find the table)/i.test(msg))
+  if (missingTable) {
+    return 'social_posts テーブルが未作成です（mig040未適用）。管理者は supabase/migrations/040_social_posts.sql を適用してください。'
+  }
+  return msg
+}
+
+function extractHashtags(body: string): string[] {
+  const line = body.split('\n').find((l) => l.trim().startsWith('#'))
+  if (!line) return []
+  return line.trim().split(/\s+/).filter((t) => t.startsWith('#'))
+}
+
+/** 生成した1言語分を下書き保存し、?vp= 付きの投稿用テキストを返す。 */
+export async function saveSocialPost(input: SavePostInput): Promise<SaveResult> {
+  try {
+    const user = await requireAdmin()
+    const db = svc()
+    const trackCode   = generateTrackCode()
+    const trackedUrl  = buildTrackedUrl(input.url, trackCode)
+    const trackedBody = applyTrackCodeToBody(input.body, input.url, trackCode)
+
+    const { data, error } = await db
+      .from('social_posts')
+      .insert({
+        site_key:         SITE_KEY,
+        post_type:        input.postType,
+        lang:             input.lang,
+        body:             trackedBody,
+        url:              trackedUrl,
+        hashtags:         extractHashtags(trackedBody),
+        image_candidates: input.imageCandidates,
+        source_snapshot:  { sourceNote: input.sourceNote, images: input.imageCandidates },
+        track_code:       trackCode,
+        status:           'draft',
+        created_by:       user.email ?? null,
+      })
+      .select('id')
+      .single()
+
+    if (error) return { ok: false, error: friendlyDbError(error) }
+    return { ok: true, id: (data as { id: string }).id, trackCode, trackedBody }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+}
+
+/** 下書き→投稿済み。posted_at を確定（＝成果集計窓の起点）。 */
+export async function markSocialPostPosted(
+  id: string,
+  tweetUrl?: string,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    const db  = svc()
+    const now = new Date().toISOString()
+    const { error } = await db
+      .from('social_posts')
+      .update({ status: 'posted', posted_at: now, tweet_url: tweetUrl?.trim() || null, updated_at: now })
+      .eq('id', id)
+    if (error) return { ok: false, error: friendlyDbError(error) }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+}
+
+/** X 手入力指標の更新（0未満・非数は null 化）。 */
+export async function updateSocialPostMetrics(
+  id: string,
+  metrics: ManualMetrics,
+): Promise<{ ok: boolean; error?: string }> {
+  try {
+    await requireAdmin()
+    const db  = svc()
+    const now = new Date().toISOString()
+    const clean = (n: number | null | undefined) =>
+      n == null || Number.isNaN(Number(n)) ? null : Math.max(0, Math.trunc(Number(n)))
+    const { error } = await db
+      .from('social_posts')
+      .update({
+        impressions:        clean(metrics.impressions),
+        likes:              clean(metrics.likes),
+        reposts:            clean(metrics.reposts),
+        replies:            clean(metrics.replies),
+        bookmarks:          clean(metrics.bookmarks),
+        metrics_updated_at: now,
+        updated_at:         now,
+      })
+      .eq('id', id)
+    if (error) return { ok: false, error: friendlyDbError(error) }
+    return { ok: true }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
+  }
+}
+
+/** posted_at 以降の user_events を vp で突合し、投稿単位の成果を集計する。 */
+async function getAttributedMetrics(
+  db: ReturnType<typeof svc>,
+  trackCode: string,
+  sinceIso: string,
+): Promise<AttributedMetrics> {
+  const empty: AttributedMetrics = { fanzaClick: 0, pageView: 0, signup: 0, engagement: 0, sessions: 0 }
+  const { data, error } = await db
+    .from('user_events')
+    .select('event_name, session_id')
+    .eq('metadata->>vp', trackCode)   // ?vp= と突合
+    .gte('created_at', sinceIso)      // 施策開始(posted_at)以降のみ
+    .limit(20000)
+  if (error || !data) return empty
+
+  const rows = data as Array<{ event_name: string; session_id: string | null }>
+  const sessions = new Set<string>()
+  const m: AttributedMetrics = { ...empty }
+  for (const r of rows) {
+    if (r.session_id) sessions.add(r.session_id)
+    switch (r.event_name) {
+      case 'fanza_click':     m.fanzaClick++; break
+      case 'page_view':       m.pageView++;   break
+      case 'signup_complete': m.signup++;     break
+      case 'video_view':
+      case 'favorite_work':
+      case 'actress_view':    m.engagement++; break
+    }
+  }
+  m.sessions = sessions.size
+  return m
+}
+
+/** 履歴一覧（成果は posted_at 以降のみ集計。下書きは attributed=null）。 */
+export async function listSocialPosts(
+  limit = 50,
+): Promise<{ ok: true; rows: SocialPostRow[] } | { ok: false; error: string }> {
+  try {
+    await requireAdmin()
+    const db = svc()
+    const { data, error } = await db
+      .from('social_posts')
+      .select('id, post_type, lang, body, url, hashtags, track_code, status, posted_at, tweet_url, impressions, likes, reposts, replies, bookmarks, created_at')
+      .eq('site_key', SITE_KEY)
+      .order('created_at', { ascending: false })
+      .limit(limit)
+    if (error) return { ok: false, error: friendlyDbError(error) }
+
+    const raw = (data ?? []) as Array<Record<string, unknown>>
+    const rows: SocialPostRow[] = await Promise.all(
+      raw.map(async (r) => {
+        const posted_at = (r.posted_at as string | null) ?? null
+        const attributed = posted_at
+          ? await getAttributedMetrics(db, r.track_code as string, posted_at)
+          : null
+        return {
+          id:          r.id as string,
+          post_type:   r.post_type as PostType,
+          lang:        r.lang as PostLangOrAll,
+          body:        r.body as string,
+          url:         (r.url as string | null) ?? null,
+          hashtags:    (r.hashtags as string[] | null) ?? [],
+          track_code:  r.track_code as string,
+          status:      r.status as PostStatus,
+          posted_at,
+          tweet_url:   (r.tweet_url as string | null) ?? null,
+          impressions: (r.impressions as number | null) ?? null,
+          likes:       (r.likes as number | null) ?? null,
+          reposts:     (r.reposts as number | null) ?? null,
+          replies:     (r.replies as number | null) ?? null,
+          bookmarks:   (r.bookmarks as number | null) ?? null,
+          created_at:  r.created_at as string,
+          attributed,
+        }
+      }),
+    )
+    return { ok: true, rows }
+  } catch (e) {
+    return { ok: false, error: errMsg(e) }
   }
 }

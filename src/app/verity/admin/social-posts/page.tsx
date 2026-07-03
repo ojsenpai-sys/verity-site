@@ -3,7 +3,7 @@ export const revalidate = 0
 
 import type { Metadata } from 'next'
 import { Share2 } from 'lucide-react'
-import SocialPostsClient from './SocialPostsClient'
+import SocialPostsWorkspace from './SocialPostsWorkspace'
 
 export const metadata: Metadata = { title: 'X投稿生成 — VERITY Admin' }
 
@@ -22,7 +22,7 @@ export default function AdminSocialPostsPage() {
         <div className="h-px w-full bg-gradient-to-r from-[var(--magenta)]/50 via-[var(--magenta)]/15 to-transparent" />
       </div>
 
-      <SocialPostsClient />
+      <SocialPostsWorkspace />
     </div>
   )
 }

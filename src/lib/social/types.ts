@@ -79,6 +79,64 @@ export type GenerateResult =
       ok: true
       variants: Record<PostLangOrAll, PostVariant>
       images: ImageCandidate[]
-      meta: { postType: PostType; templateKey: TemplateKey; itemCount: number; sourceNote: string }
+      meta: { postType: PostType; templateKey: TemplateKey; itemCount: number; sourceNote: string; url: string }
     }
   | { ok: false; error: string }
+
+// ── Phase 2: 履歴保存・成果記録 ──────────────────────────────────────────────
+
+export type PostStatus = 'draft' | 'posted' | 'archived'
+
+/** 生成結果から履歴保存するときの入力（1言語分）。 */
+export type SavePostInput = {
+  postType: PostType
+  lang: PostLangOrAll
+  body: string
+  url: string
+  imageCandidates: ImageCandidate[]
+  sourceNote: string
+}
+
+export type SaveResult =
+  | { ok: true; id: string; trackCode: string; trackedBody: string }
+  | { ok: false; error: string }
+
+/** posted_at 以降で user_events から集計した投稿単位の成果。 */
+export type AttributedMetrics = {
+  fanzaClick: number
+  pageView: number
+  signup: number
+  engagement: number
+  sessions: number
+}
+
+/** X 手入力指標（部分更新）。 */
+export type ManualMetrics = {
+  impressions?: number | null
+  likes?: number | null
+  reposts?: number | null
+  replies?: number | null
+  bookmarks?: number | null
+}
+
+/** 履歴一覧の1行（DB行＋成果）。 */
+export type SocialPostRow = {
+  id: string
+  post_type: PostType
+  lang: PostLangOrAll
+  body: string
+  url: string | null
+  hashtags: string[]
+  track_code: string
+  status: PostStatus
+  posted_at: string | null
+  tweet_url: string | null
+  impressions: number | null
+  likes: number | null
+  reposts: number | null
+  replies: number | null
+  bookmarks: number | null
+  created_at: string
+  /** posted_at 以降の成果（下書き=null） */
+  attributed: AttributedMetrics | null
+}

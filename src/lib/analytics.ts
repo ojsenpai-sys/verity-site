@@ -68,6 +68,24 @@ function buildMetadata(payload: TrackPayload): Record<string, unknown> {
   return meta
 }
 
+// X投稿アトリビューション: 着地URLの ?vp= を sessionStorage から拾い（無ければURLから拾って退避）、
+// 全イベントの metadata.vp に合流させる。既存の metadata は壊さない（未指定時のみ付与）。
+function readVp(): string | null {
+  try {
+    const stored = sessionStorage.getItem('verity_vp')
+    if (stored) return stored
+    const q = new URLSearchParams(window.location.search).get('vp')
+    if (q) {
+      const v = q.slice(0, 16)
+      sessionStorage.setItem('verity_vp', v)
+      return v
+    }
+  } catch {
+    /* sessionStorage 不可時は無視 */
+  }
+  return null
+}
+
 // session_id 取得失敗（sessionStorage不可・プライベートモード等）でも例外を投げず null を返す。
 // → favorite 等の呼び出し側で「session_id無しでも本処理は成功」を保証する。
 export function getSessionId(): string | null {
@@ -99,6 +117,12 @@ export function trackEvent(eventName: EventName, payload: TrackPayload = {}): vo
   const target_type = mapping?.type                                               ?? null
   const target_id   = mapping ? (payload[mapping.idKey] as string | undefined) ?? null : null
   const metadata    = buildMetadata(payload)
+
+  // X投稿アトリビューション（vp）を合流。呼び出し側が明示指定していない場合のみ付与。
+  if (metadata.vp == null) {
+    const vp = readVp()
+    if (vp) metadata.vp = vp
+  }
 
   // ── GA4 ──────────────────────────────────────────────────────────────────────
   if (window.gtag) {
