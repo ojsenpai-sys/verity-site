@@ -37,10 +37,10 @@ export async function generateMetadata({ params }: { params: Promise<Params> }) 
   if (!event) return {}
 
   const names = event.actresses.map((a) => a.name).slice(0, 4).join('・')
-  const title = `${event.shortName ?? event.name} ${event.location} 出演女優のX投稿まとめ | VERITY`
+  const title = `${event.shortName ?? event.name} ${event.location} 出演女優のX投稿・告知まとめ | VERITY`
   const description =
     `${event.name}（${event.venue ?? event.location}・${jpDate(event.startDate)}〜${jpDate(event.endDate)}）出演の` +
-    `${names}ほか出演女優のX投稿と関連作品を VERITY がまとめて紹介。`
+    `${names}ほか出演女優の出演告知・TRE関連投稿・最近のX投稿と関連作品を VERITY がまとめて紹介。`
   return {
     title,
     description,
@@ -280,9 +280,14 @@ export default async function EventDetailPage({ params }: { params: Promise<Para
           </section>
         )}
 
-        {/* ══ 出演女優の投稿タイムライン ══ */}
+        {/* ══ 出演女優のX投稿（告知・関連・最近） ══ */}
         <section className="space-y-6">
-          <SectionHeader icon={<MessageCircle size={18} />} label="出演女優の投稿タイムライン" count={tweets.length || undefined} />
+          <SectionHeader icon={<MessageCircle size={18} />} label="出演女優のX投稿まとめ" count={tweets.length || undefined} />
+          <p className="-mt-2 text-[11px] leading-relaxed text-white/40">
+            出演告知・TRE関連投稿・各女優の最近のX投稿をまとめています（会場からの最新投稿は随時反映）。
+            <span className="ml-1 rounded border border-[#d4af37]/25 bg-[#d4af37]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#d4af37]/70">TRE</span>
+            バッジ付きはTRE2026関連の投稿です。
+          </p>
           {tweets.length > 0 ? (
             <div className="space-y-5">
               {tweets.map((t, i) => {
