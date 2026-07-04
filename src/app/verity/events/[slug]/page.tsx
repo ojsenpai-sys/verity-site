@@ -283,11 +283,17 @@ export default async function EventDetailPage({ params }: { params: Promise<Para
         {/* ══ 出演女優のX投稿（告知・関連・最近） ══ */}
         <section className="space-y-6">
           <SectionHeader icon={<MessageCircle size={18} />} label="出演女優のX投稿まとめ" count={tweets.length || undefined} />
-          <p className="-mt-2 text-[11px] leading-relaxed text-white/40">
-            出演告知・TRE関連投稿・各女優の最近のX投稿をまとめています（会場からの最新投稿は随時反映）。
-            <span className="ml-1 rounded border border-[#d4af37]/25 bg-[#d4af37]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#d4af37]/70">TRE</span>
-            バッジ付きはTRE2026関連の投稿です。
-          </p>
+          <div className="-mt-2 flex flex-wrap items-center gap-2">
+            <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/45 bg-red-500/10 px-2.5 py-0.5 text-[10px] font-bold text-red-300">
+              <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" />
+              随時更新中
+            </span>
+            <p className="text-[11px] leading-relaxed text-white/40">
+              TRE2026関連の投稿（
+              <span className="rounded border border-[#d4af37]/25 bg-[#d4af37]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#d4af37]/70">TRE</span>
+              バッジ）を優先表示。会場からの最新投稿は順次追加します。
+            </p>
+          </div>
           {tweets.length > 0 ? (
             <div className="space-y-5">
               {tweets.map((t, i) => {

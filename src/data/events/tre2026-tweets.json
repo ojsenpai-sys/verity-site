@@ -1,32 +1,35 @@
 {
-  "_note": "全て実在・埋め込み可能なツイートURL。eventRelated=true は TRE2026 関連を確認済み（本文で言及）。eventRelated=false は出演女優の会期前の最近の投稿で、会場投稿が集まり次第の差し替え候補（social_feeds由来の実URL）。本文/画像は転載せず公式X埋め込みで表示する。",
+  "_note": "随時更新中。eventRelated=true は TRE2026 関連を確認済み（本文で明言）。postedAt は実投稿時刻（snowflake ID / social_feeds 由来）。eventRelated=false は主要出演女優の会期前の最近投稿を最小限のみ掲載（会場投稿への差し替え候補）。会期中(7/3-5)の会場投稿は手動URLで追加する運用（RapidAPI 403・web検索は当日ツイート未indexのため自動取得不可）。placeholder は使わない。全URL実在・埋め込み可能。",
   "tre2026": [
     {
-      "screenName": "_ishikawamio_",
-      "name": "石川澪",
-      "url": "https://x.com/_ishikawamio_/status/2039641745278095425",
+      "screenName": "riri_nntmr",
+      "name": "七ツ森りり",
+      "url": "https://x.com/riri_nntmr/status/2052998647957311685",
+      "postedAt": "2026-05-09T06:26:35+00:00",
       "eventRelated": true,
-      "note": "TRE2026出演告知「今年もTRE参加させていただきます🔥 7月に台湾で会いましょう〜❣️」"
+      "note": "TRE2026関連「TREのグッズお迎えしてね〜🤍🤍」"
     },
     {
       "screenName": "alice_710_",
       "name": "釈アリス",
       "url": "https://x.com/alice_710_/status/2045084706535030984",
+      "postedAt": "2026-04-17T10:19:24+00:00",
       "eventRelated": true,
       "note": "TRE2026出演告知「TRE2026に出演させていただきます！台湾の皆様とお会いできること楽しみにしてます❤️」"
     },
     {
-      "screenName": "riri_nntmr",
-      "name": "七ツ森りり",
-      "url": "https://x.com/riri_nntmr/status/2052998647957311685",
+      "screenName": "_ishikawamio_",
+      "name": "石川澪",
+      "url": "https://x.com/_ishikawamio_/status/2039641745278095425",
+      "postedAt": "2026-04-02T09:51:01+00:00",
       "eventRelated": true,
-      "note": "TRE関連「TREのグッズお迎えしてね〜🤍🤍」"
+      "note": "TRE2026出演告知「今年もTRE参加させていただきます🔥 7月に台湾で会いましょう〜❣️」"
     },
     {
-      "screenName": "saika_kawakita",
-      "name": "河北彩花",
-      "url": "https://x.com/saika_kawakita/status/2061804290356937131",
-      "postedAt": "2026-06-02T13:37:03+00:00",
+      "screenName": "mashiro__sana",
+      "name": "純白彩永",
+      "url": "https://x.com/mashiro__sana/status/2063077053608681831",
+      "postedAt": "2026-06-06T01:54:34+00:00",
       "eventRelated": false,
       "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
     },
@@ -39,26 +42,10 @@
       "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
     },
     {
-      "screenName": "sakumomo1203",
-      "name": "桜空もも",
-      "url": "https://x.com/sakumomo1203/status/2055800504261976289",
-      "postedAt": "2026-05-17T00:00:09+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "mashiro__sana",
-      "name": "純白彩永",
-      "url": "https://x.com/mashiro__sana/status/2063077053608681831",
-      "postedAt": "2026-06-06T01:54:34+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "watanabe_h0n0",
-      "name": "渡部ほの",
-      "url": "https://x.com/watanabe_h0n0/status/2061400420120236133",
-      "postedAt": "2026-06-01T10:52:13+00:00",
+      "screenName": "rei_kamiki",
+      "name": "神木麗",
+      "url": "https://x.com/rei_kamiki/status/2062871170803020248",
+      "postedAt": "2026-06-05T12:16:28+00:00",
       "eventRelated": false,
       "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
     },
@@ -71,76 +58,12 @@
       "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
     },
     {
-      "screenName": "rei_kamiki",
-      "name": "神木麗",
-      "url": "https://x.com/rei_kamiki/status/2062871170803020248",
-      "postedAt": "2026-06-05T12:16:28+00:00",
+      "screenName": "saika_kawakita",
+      "name": "河北彩花",
+      "url": "https://x.com/saika_kawakita/status/2061804290356937131",
+      "postedAt": "2026-06-02T13:37:03+00:00",
       "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "akari_tsumugi__",
-      "name": "明里つむぎ",
-      "url": "https://x.com/akari_tsumugi__/status/2058092098650595409",
-      "postedAt": "2026-05-23T07:46:08+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "onorikka",
-      "name": "小野六花",
-      "url": "https://x.com/onorikka/status/2062884435612291145",
-      "postedAt": "2026-06-05T13:09:10+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "yaginana0903",
-      "name": "八木奈々",
-      "url": "https://x.com/yaginana0903/status/2061064687450742952",
-      "postedAt": "2026-05-31T12:38:08+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "honjosuzu",
-      "name": "本庄鈴",
-      "url": "https://x.com/honjosuzu/status/2062826693614764384",
-      "postedAt": "2026-06-05T09:19:43+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "yua_fucuda",
-      "name": "福田ゆあ",
-      "url": "https://x.com/yua_fucuda/status/2062896059697999979",
-      "postedAt": "2026-06-05T13:55:22+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "nao_satsuki",
-      "name": "彩月七緒",
-      "url": "https://x.com/nao_satsuki/status/2063061234141069621",
-      "postedAt": "2026-06-06T00:51:42+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "Aizawa_miyu03",
-      "name": "逢沢みゆ",
-      "url": "https://x.com/Aizawa_miyu03/status/2063025208961999081",
-      "postedAt": "2026-06-05T22:28:33+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
-    },
-    {
-      "screenName": "mia_nanasawa",
-      "name": "七沢みあ",
-      "url": "https://x.com/mia_nanasawa/status/2062843514568974752",
-      "postedAt": "2026-06-05T10:26:34+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
+      "note": "代言人・会期前の最近の投稿（会場投稿へ差し替え候補）"
     }
   ]
 }
