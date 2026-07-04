@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react'
 import Link from 'next/link'
-import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Building2, LayoutGrid, Sparkles, Zap, Trophy, Search } from 'lucide-react'
+import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Building2, LayoutGrid, Sparkles, Zap, Trophy, Search, CalendarDays } from 'lucide-react'
 import { LoginButton } from './LoginButton'
 import { withAffiliate } from '@/lib/affiliate'
 
@@ -28,6 +28,7 @@ const NAV_LINKS = [
 ]
 
 const VERITY_CORNER_LINKS = [
+  { href: '/verity/events',              label: 'イベント',       sub: 'Event Hub',       icon: CalendarDays },
   { href: '/verity/features',            label: '特集一覧',       sub: 'Spotlight',       icon: Sparkles },
   { href: '/verity#fastest-new-releases', label: '最新作最速更新', sub: 'New Releases',    icon: Zap },
   { href: '/verity/ranking',             label: '人気女優ランキング', sub: 'Ranking',      icon: Trophy },

@@ -31,6 +31,7 @@ import { MakerBadgesSection } from '@/components/MakerBadgesSection'
 import { MinamoMemorialBanner } from '@/components/MinamoMemorialBanner'
 import { FastestNewReleases } from '@/components/FastestNewReleases'
 import { SpotlightCard } from '@/components/SpotlightCard'
+import { EventHubCard } from '@/components/EventHubCard'
 import { TopSearchBar } from '@/components/TopSearchBar'
 import { TrendingNowSection } from '@/components/TrendingNowSection'
 import { TrendingWidget } from '@/components/TrendingWidget'
@@ -485,6 +486,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         <Suspense fallback={<div className="h-48 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
           {HERO_VARIANT === 'v2.1' ? <HeroV21Section /> : <HeroSection />}
         </Suspense>
+      </section>
+
+      {/* ── 0a-2. 開催中イベント（Event Hub 導線カード） ────────────────── */}
+      <section id="event-hub">
+        <EventHubCard />
       </section>
 
       {/* ── 0b. MINAMOメモリアルバナー（引退発表特設） ────────────────── */}
