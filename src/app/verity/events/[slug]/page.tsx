@@ -37,10 +37,10 @@ export async function generateMetadata({ params }: { params: Promise<Params> }) 
   if (!event) return {}
 
   const names = event.actresses.map((a) => a.name).slice(0, 4).join('・')
-  const title = `${event.shortName ?? event.name} ${event.location} 出演女優のX投稿・告知まとめ | VERITY`
+  const title = `${event.shortName ?? event.name} ${event.location} 出演女優の最新X投稿まとめ | VERITY`
   const description =
     `${event.name}（${event.venue ?? event.location}・${jpDate(event.startDate)}〜${jpDate(event.endDate)}）出演の` +
-    `${names}ほか出演女優の出演告知・TRE関連投稿・最近のX投稿と関連作品を VERITY がまとめて紹介。`
+    `${names}ほか出演女優の最新の公式X投稿と関連作品を VERITY がまとめて紹介。随時更新中。`
   return {
     title,
     description,
@@ -116,6 +116,9 @@ const STATUS_LABEL: Record<string, string> = {
   ended: '開催終了',
 }
 
+// 投稿日から72時間以内なら NEW バッジ
+const NEW_WINDOW_MS = 72 * 60 * 60 * 1000
+
 // ── ページ本体 ────────────────────────────────────────────────────────────────
 
 export default async function EventDetailPage({ params }: { params: Promise<Params> }) {
@@ -126,6 +129,7 @@ export default async function EventDetailPage({ params }: { params: Promise<Para
   const isOverseas = await getIsOverseasUser()
   const status = resolveEventStatus(event)
   const tweets = getEventTweets(slug)
+  const renderNow = Date.now()
 
   // 出演女優ごとに external_id 解決＋関連作品取得を並列実行
   const resolvedActresses: ResolvedActress[] = await Promise.all(
@@ -280,18 +284,18 @@ export default async function EventDetailPage({ params }: { params: Promise<Para
           </section>
         )}
 
-        {/* ══ 出演女優のX投稿（告知・関連・最近） ══ */}
+        {/* ══ 出演女優の最新X投稿 ══ */}
         <section className="space-y-6">
-          <SectionHeader icon={<MessageCircle size={18} />} label="出演女優のX投稿まとめ" count={tweets.length || undefined} />
+          <SectionHeader icon={<MessageCircle size={18} />} label="出演女優の最新X投稿" count={tweets.length || undefined} />
           <div className="-mt-2 flex flex-wrap items-center gap-2">
             <span className="inline-flex items-center gap-1.5 rounded-full border border-red-500/45 bg-red-500/10 px-2.5 py-0.5 text-[10px] font-bold text-red-300">
               <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-red-400" />
               随時更新中
             </span>
             <p className="text-[11px] leading-relaxed text-white/40">
-              TRE2026関連の投稿（
-              <span className="rounded border border-[#d4af37]/25 bg-[#d4af37]/10 px-1.5 py-0.5 text-[9px] font-bold text-[#d4af37]/70">TRE</span>
-              バッジ）を優先表示。会場からの最新投稿は順次追加します。
+              出演女優の公式X投稿をまとめています。新しい順に表示、直近72時間以内の投稿には
+              <span className="mx-1 rounded border border-red-500/40 bg-red-500/10 px-1.5 py-0.5 text-[9px] font-bold text-red-300">NEW</span>
+              バッジが付きます。
             </p>
           </div>
           {tweets.length > 0 ? (
@@ -302,6 +306,8 @@ export default async function EventDetailPage({ params }: { params: Promise<Para
                 const actressHref = actress?.externalId
                   ? `/verity/actresses/${actress.externalId}`
                   : null
+                // 投稿日から72時間以内なら NEW
+                const isNew = !!t.postedAt && renderNow - new Date(t.postedAt).getTime() < NEW_WINDOW_MS
                 return (
                   <div key={i} className="space-y-2">
                     {/* 女優導線ヘッダー */}
@@ -324,6 +330,12 @@ export default async function EventDetailPage({ params }: { params: Promise<Para
                           {displayName}
                           <ExternalLink size={10} />
                         </a>
+                      )}
+                      {isNew && (
+                        <span className="inline-flex items-center gap-1 rounded-full border border-red-500/45 bg-red-500/10 px-2 py-0.5 text-[9px] font-bold text-red-300">
+                          <span className="h-1 w-1 animate-pulse rounded-full bg-red-400" />
+                          NEW
+                        </span>
                       )}
                       {t.eventRelated && (
                         <span className="rounded-full border border-[#d4af37]/30 bg-[#d4af37]/10 px-2 py-0.5 text-[9px] font-bold text-[#d4af37]/70">

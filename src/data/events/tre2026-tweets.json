@@ -1,69 +1,320 @@
 {
-  "_note": "随時更新中。eventRelated=true は TRE2026 関連を確認済み（本文で明言）。postedAt は実投稿時刻（snowflake ID / social_feeds 由来）。eventRelated=false は主要出演女優の会期前の最近投稿を最小限のみ掲載（会場投稿への差し替え候補）。会期中(7/3-5)の会場投稿は手動URLで追加する運用（RapidAPI 403・web検索は当日ツイート未indexのため自動取得不可）。placeholder は使わない。全URL実在・埋め込み可能。",
+  "_note": "TRE2026会期(2026-07-03〜05)の出演女優によるイベント関連X投稿。全て実在・埋め込み可能URL、eventRelated=true。postedAtはSnowflake IDから復元。同一女優は最新3件まで。本文/画像は転載せず公式X埋め込みで表示。随時更新中。",
   "tre2026": [
     {
-      "screenName": "riri_nntmr",
-      "name": "七ツ森りり",
-      "url": "https://x.com/riri_nntmr/status/2052998647957311685",
-      "postedAt": "2026-05-09T06:26:35+00:00",
-      "eventRelated": true,
-      "note": "TRE2026関連「TREのグッズお迎えしてね〜🤍🤍」"
-    },
-    {
-      "screenName": "alice_710_",
-      "name": "釈アリス",
-      "url": "https://x.com/alice_710_/status/2045084706535030984",
-      "postedAt": "2026-04-17T10:19:24+00:00",
-      "eventRelated": true,
-      "note": "TRE2026出演告知「TRE2026に出演させていただきます！台湾の皆様とお会いできること楽しみにしてます❤️」"
-    },
-    {
-      "screenName": "_ishikawamio_",
-      "name": "石川澪",
-      "url": "https://x.com/_ishikawamio_/status/2039641745278095425",
-      "postedAt": "2026-04-02T09:51:01+00:00",
-      "eventRelated": true,
-      "note": "TRE2026出演告知「今年もTRE参加させていただきます🔥 7月に台湾で会いましょう〜❣️」"
+      "screenName": "Aizawa_miyu03",
+      "name": "逢沢みゆ",
+      "url": "https://x.com/Aizawa_miyu03/status/2073285492993581089",
+      "postedAt": "2026-07-04T05:59:15.968Z",
+      "eventRelated": true
     },
     {
       "screenName": "mashiro__sana",
       "name": "純白彩永",
-      "url": "https://x.com/mashiro__sana/status/2063077053608681831",
-      "postedAt": "2026-06-06T01:54:34+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
+      "url": "https://x.com/mashiro__sana/status/2073285092223623494",
+      "postedAt": "2026-07-04T05:57:40.417Z",
+      "eventRelated": true
     },
     {
       "screenName": "kanna_seto0510",
       "name": "瀬戸環奈",
-      "url": "https://x.com/kanna_seto0510/status/2062729996708479333",
-      "postedAt": "2026-06-05T02:55:29+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
+      "url": "https://x.com/kanna_seto0510/status/2073281483427778702",
+      "postedAt": "2026-07-04T05:43:20.013Z",
+      "eventRelated": true
     },
     {
-      "screenName": "rei_kamiki",
-      "name": "神木麗",
-      "url": "https://x.com/rei_kamiki/status/2062871170803020248",
-      "postedAt": "2026-06-05T12:16:28+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
+      "screenName": "yua_fucuda",
+      "name": "福田ゆあ",
+      "url": "https://x.com/yua_fucuda/status/2073266319080702029",
+      "postedAt": "2026-07-04T04:43:04.551Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "kuramotosumire",
+      "name": "倉本すみれ",
+      "url": "https://x.com/kuramotosumire/status/2073239268919763007",
+      "postedAt": "2026-07-04T02:55:35.290Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "onorikka",
+      "name": "小野六花",
+      "url": "https://x.com/onorikka/status/2073238119147844092",
+      "postedAt": "2026-07-04T02:51:01.163Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "_yu_8_8",
+      "name": "田野憂",
+      "url": "https://x.com/_yu_8_8/status/2073237756982215067",
+      "postedAt": "2026-07-04T02:49:34.816Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "onorikka",
+      "name": "小野六花",
+      "url": "https://x.com/onorikka/status/2073237686769598569",
+      "postedAt": "2026-07-04T02:49:18.076Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "kanna_seto0510",
+      "name": "瀬戸環奈",
+      "url": "https://x.com/kanna_seto0510/status/2073222814195499230",
+      "postedAt": "2026-07-04T01:50:12.178Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "korokorococoroo",
+      "name": "浅野こころ",
+      "url": "https://x.com/korokorococoroo/status/2073221779016044990",
+      "postedAt": "2026-07-04T01:46:05.372Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "nao_satsuki",
+      "name": "彩月七緒",
+      "url": "https://x.com/nao_satsuki/status/2073199232874590453",
+      "postedAt": "2026-07-04T00:16:29.953Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "_yu_8_8",
+      "name": "田野憂",
+      "url": "https://x.com/_yu_8_8/status/2073187708869210500",
+      "postedAt": "2026-07-03T23:30:42.416Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "yua_fucuda",
+      "name": "福田ゆあ",
+      "url": "https://x.com/yua_fucuda/status/2073187118608683232",
+      "postedAt": "2026-07-03T23:28:21.687Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "mashiro__sana",
+      "name": "純白彩永",
+      "url": "https://x.com/mashiro__sana/status/2073185786359591140",
+      "postedAt": "2026-07-03T23:23:04.054Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "alice_710_",
+      "name": "釈アリス",
+      "url": "https://x.com/alice_710_/status/2073183350639186009",
+      "postedAt": "2026-07-03T23:13:23.333Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "Aizawa_miyu03",
+      "name": "逢沢みゆ",
+      "url": "https://x.com/Aizawa_miyu03/status/2073163201240531264",
+      "postedAt": "2026-07-03T21:53:19.342Z",
+      "eventRelated": true
     },
     {
       "screenName": "kiho_kanematsu",
       "name": "金松季歩",
-      "url": "https://x.com/kiho_kanematsu/status/2063049931468984629",
-      "postedAt": "2026-06-06T00:06:47+00:00",
-      "eventRelated": false,
-      "note": "会期前の最近の投稿（会場投稿へ差し替え候補）"
+      "url": "https://x.com/kiho_kanematsu/status/2073080206123008509",
+      "postedAt": "2026-07-03T16:23:31.764Z",
+      "eventRelated": true
     },
     {
-      "screenName": "saika_kawakita",
+      "screenName": "yua_fucuda",
+      "name": "福田ゆあ",
+      "url": "https://x.com/yua_fucuda/status/2073073980513116643",
+      "postedAt": "2026-07-03T15:58:47.463Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "nao_satsuki",
+      "name": "彩月七緒",
+      "url": "https://x.com/nao_satsuki/status/2073043886398967889",
+      "postedAt": "2026-07-03T13:59:12.467Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "_ishikawamio_",
+      "name": "石川澪",
+      "url": "https://x.com/_ishikawamio_/status/2073041607436472725",
+      "postedAt": "2026-07-03T13:50:09.120Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "7mim_sub",
+      "name": "松本菜奈実",
+      "url": "https://x.com/7mim_sub/status/2073038076910457005",
+      "postedAt": "2026-07-03T13:36:07.377Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "_ishikawamio_",
+      "name": "石川澪",
+      "url": "https://x.com/_ishikawamio_/status/2073036244364497262",
+      "postedAt": "2026-07-03T13:28:50.464Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "Aizawa_miyu03",
+      "name": "逢沢みゆ",
+      "url": "https://x.com/Aizawa_miyu03/status/2073017435029201286",
+      "postedAt": "2026-07-03T12:14:05.969Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "Saika_Kawakita",
       "name": "河北彩花",
-      "url": "https://x.com/saika_kawakita/status/2061804290356937131",
-      "postedAt": "2026-06-02T13:37:03+00:00",
-      "eventRelated": false,
-      "note": "代言人・会期前の最近の投稿（会場投稿へ差し替え候補）"
+      "url": "https://x.com/Saika_Kawakita/status/2073015829764165679",
+      "postedAt": "2026-07-03T12:07:43.244Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "remu19971203",
+      "name": "涼森れむ",
+      "url": "https://x.com/remu19971203/status/2073013744167432334",
+      "postedAt": "2026-07-03T11:59:25.999Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "korokorococoroo",
+      "name": "浅野こころ",
+      "url": "https://x.com/korokorococoroo/status/2073012187577336181",
+      "postedAt": "2026-07-03T11:53:14.879Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "yaginana0903",
+      "name": "八木奈々",
+      "url": "https://x.com/yaginana0903/status/2073010595385999696",
+      "postedAt": "2026-07-03T11:46:55.271Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "kiho_kanematsu",
+      "name": "金松季歩",
+      "url": "https://x.com/kiho_kanematsu/status/2073004303170871715",
+      "postedAt": "2026-07-03T11:21:55.090Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "yoshitakanene",
+      "name": "吉高寧々",
+      "url": "https://x.com/yoshitakanene/status/2073003931060551750",
+      "postedAt": "2026-07-03T11:20:26.372Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "umi_sea_0v0",
+      "name": "八掛うみ",
+      "url": "https://x.com/umi_sea_0v0/status/2073001123917783091",
+      "postedAt": "2026-07-03T11:09:17.097Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "onorikka",
+      "name": "小野六花",
+      "url": "https://x.com/onorikka/status/2072997555554979915",
+      "postedAt": "2026-07-03T10:55:06.333Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "nao_satsuki",
+      "name": "彩月七緒",
+      "url": "https://x.com/nao_satsuki/status/2072993147354046585",
+      "postedAt": "2026-07-03T10:37:35.336Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "alice_710_",
+      "name": "釈アリス",
+      "url": "https://x.com/alice_710_/status/2072992914649800861",
+      "postedAt": "2026-07-03T10:36:39.855Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "mia_nanasawa",
+      "name": "七沢みあ",
+      "url": "https://x.com/mia_nanasawa/status/2072992899692965969",
+      "postedAt": "2026-07-03T10:36:36.289Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "honjosuzu",
+      "name": "本庄鈴",
+      "url": "https://x.com/honjosuzu/status/2072990039362203727",
+      "postedAt": "2026-07-03T10:25:14.333Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "riri_nntmr",
+      "name": "七ツ森りり",
+      "url": "https://x.com/riri_nntmr/status/2072986849271054553",
+      "postedAt": "2026-07-03T10:12:33.756Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "mashiro__sana",
+      "name": "純白彩永",
+      "url": "https://x.com/mashiro__sana/status/2072985432938426427",
+      "postedAt": "2026-07-03T10:06:56.076Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "_yu_8_8",
+      "name": "田野憂",
+      "url": "https://x.com/_yu_8_8/status/2072952191128912040",
+      "postedAt": "2026-07-03T07:54:50.611Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "kuramotosumire",
+      "name": "倉本すみれ",
+      "url": "https://x.com/kuramotosumire/status/2072927743633953107",
+      "postedAt": "2026-07-03T06:17:41.874Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "kiho_kanematsu",
+      "name": "金松季歩",
+      "url": "https://x.com/kiho_kanematsu/status/2072927085400883583",
+      "postedAt": "2026-07-03T06:15:04.939Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "riri_nntmr",
+      "name": "七ツ森りり",
+      "url": "https://x.com/riri_nntmr/status/2072909965006921831",
+      "postedAt": "2026-07-03T05:07:03.119Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "kanna_seto0510",
+      "name": "瀬戸環奈",
+      "url": "https://x.com/kanna_seto0510/status/2072901623207399665",
+      "postedAt": "2026-07-03T04:33:54.279Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "alice_710_",
+      "name": "釈アリス",
+      "url": "https://x.com/alice_710_/status/2072889707206508831",
+      "postedAt": "2026-07-03T03:46:33.283Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "korokorococoroo",
+      "name": "浅野こころ",
+      "url": "https://x.com/korokorococoroo/status/2072861621614174282",
+      "postedAt": "2026-07-03T01:54:57.156Z",
+      "eventRelated": true
+    },
+    {
+      "screenName": "7mim_sub",
+      "name": "松本菜奈実",
+      "url": "https://x.com/7mim_sub/status/2072848892945986017",
+      "postedAt": "2026-07-03T01:04:22.405Z",
+      "eventRelated": true
     }
   ]
 }
