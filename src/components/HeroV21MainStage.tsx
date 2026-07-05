@@ -10,12 +10,14 @@ import { RANK_STYLE, heroClickMeta, type HeroV21Item } from '@/lib/heroV21'
 // v2.2（動画）はこの表紙領域に sample 動画を差し込む拡張ポイント。表示ロジックを
 // ここに閉じ込めることで、オーケストレータ（HeroV21Client）の責務を切替＋計測に限定する。
 
-/** メイン表紙。LCP対象のため fetchPriority=high・遅延読み込みしない。 */
+/** メイン表紙。LCP対象のため fetchPriority=high・遅延読み込みしない。
+ *  hero-slide-in / hero-ken-burns は cid を key に再マウントさせて毎スライド再生する
+ *  （カルーセル自動送り時のクロスフェード＋ゆるいズーム。prefers-reduced-motion では無効）。 */
 function MainCover({ item, highlight }: { item: HeroV21Item; highlight?: string }) {
   return (
     <div
       className={[
-        'relative aspect-[2/3] w-[170px] overflow-hidden rounded-xl shadow-[0_18px_56px_rgba(0,0,0,0.70)] ring-1 transition-transform duration-300 group-hover/hmain:scale-[1.03] sm:w-[230px] lg:w-[260px]',
+        'hero-slide-in relative aspect-[2/3] w-[170px] overflow-hidden rounded-xl shadow-[0_18px_56px_rgba(0,0,0,0.70)] ring-1 transition-transform duration-300 group-hover/hmain:scale-[1.03] sm:w-[230px] lg:w-[260px]',
         highlight ?? 'ring-[var(--border)]',
       ].join(' ')}
     >
@@ -25,7 +27,7 @@ function MainCover({ item, highlight }: { item: HeroV21Item; highlight?: string 
         alt={item.title}
         fetchPriority="high"
         decoding="async"
-        className={`absolute inset-0 h-full w-full object-cover ${item.coverPos}`}
+        className={`hero-ken-burns absolute inset-0 h-full w-full object-cover ${item.coverPos}`}
       />
       {/* 常設 FANZA バッジ＋hoverオーバーレイ */}
       <span className="pointer-events-none absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full bg-black/55 px-2 py-0.5 text-[10px] font-bold text-white ring-1 ring-white/15 backdrop-blur-sm transition-colors group-hover/hmain:bg-[var(--magenta)]/90">
@@ -40,7 +42,17 @@ function MainCover({ item, highlight }: { item: HeroV21Item; highlight?: string 
   )
 }
 
-export function HeroV21MainStage({ item }: { item: HeroV21Item }) {
+export function HeroV21MainStage({
+  item,
+  onFanzaAuto,
+  onPreviewActiveChange,
+}: {
+  item: HeroV21Item
+  /** カルーセル文脈のFANZAクリック補助計測。main画像/CTAクリック時に親が hero_auto_fanza_click を撃つ。 */
+  onFanzaAuto?: () => void
+  /** プレビュー開閉を親（自動カルーセル）へ通知し、開いている間は自動送りを止める。 */
+  onPreviewActiveChange?: (active: boolean) => void
+}) {
   const badge = RANK_STYLE[item.rank]
   const meta  = heroClickMeta(item)
   const ctaLabel = `第${item.rank}位 ${item.title} をFANZAで見る`
@@ -55,14 +67,15 @@ export function HeroV21MainStage({ item }: { item: HeroV21Item }) {
             targetId={item.cid}
             position="hero_v21_main_image"
             meta={meta}
+            onClick={onFanzaAuto}
             ariaLabel={ctaLabel}
             className="group/hmain relative block shrink-0"
           >
-            <MainCover item={item} highlight={badge?.ring} />
+            <MainCover key={item.cid} item={item} highlight={badge?.ring} />
           </FanzaLink>
         ) : (
           <div className="relative block shrink-0">
-            <MainCover item={item} highlight={badge?.ring} />
+            <MainCover key={item.cid} item={item} highlight={badge?.ring} />
           </div>
         )
       )}
@@ -123,6 +136,7 @@ export function HeroV21MainStage({ item }: { item: HeroV21Item }) {
             targetId={item.cid}
             position="hero_v21_main_cta"
             meta={meta}
+            onClick={onFanzaAuto}
             className="mt-1 inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-7 py-3 text-sm font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.42)] transition-all duration-200 hover:shadow-[0_0_40px_rgba(226,0,116,0.65)] hover:brightness-110 active:scale-[0.97]"
           >
             ▶ 今すぐFANZAで見る
@@ -131,8 +145,14 @@ export function HeroV21MainStage({ item }: { item: HeroV21Item }) {
         )}
 
         {/* 15秒プレビュー（方式A：公式litevideo iframe）— main 且つ sample動画ありのみ。
-            動画URLが無い作品では HeroV21Preview が null を返し何も描画しない。 */}
-        {item.sampleMovieUrl && <HeroV21Preview item={item} />}
+            動画URLが無い作品では HeroV21Preview が null を返す。自動カルーセルで動画あり/なし
+            スライドを跨いでも高さが変わらないよう min-h で領域を予約（CLS防止）。
+            key=cid でスライド切替時にプレビュー状態をリセット。 */}
+        <div className="min-h-[46px]">
+          {item.sampleMovieUrl && (
+            <HeroV21Preview key={item.cid} item={item} onActiveChange={onPreviewActiveChange} />
+          )}
+        </div>
       </div>
     </div>
   )

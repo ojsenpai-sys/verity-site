@@ -38,6 +38,11 @@ export type EventName =
   | 'hero_preview_play'
   | 'hero_preview_complete'
   | 'hero_preview_fanza_click'
+  // Hero v2.1: 画像自動カルーセル（Phase C / position=hero_v21_autocarousel）。
+  //   slide_view … 1ページビュー内で各cid初回表示時のみ発火（ループ再発火なし・可視時のみ）。
+  //   fanza_click … カルーセル文脈のFANZAクリック補助。遷移自体は既存 fanza_click で必ず記録。
+  | 'hero_auto_slide_view'
+  | 'hero_auto_fanza_click'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -69,6 +74,9 @@ const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' |
   hero_preview_play:        { type: 'article', idKey: 'cid' },
   hero_preview_complete:    { type: 'article', idKey: 'cid' },
   hero_preview_fanza_click: { type: 'article', idKey: 'cid' },
+  // カルーセルも作品単位。target_id=CID / metadata.position 規約に揃える
+  hero_auto_slide_view:     { type: 'article', idKey: 'cid' },
+  hero_auto_fanza_click:    { type: 'article', idKey: 'cid' },
 }
 
 // target_id にマップされる構造キーは metadata から除外する

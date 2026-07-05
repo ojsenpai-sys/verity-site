@@ -58,6 +58,37 @@ export const PREVIEW_POSITION = 'hero_v21_preview_main'
 /** プレビュー再生秒数。この秒数経過で iframe をアンマウントして停止し CTA を強調する。 */
 export const PREVIEW_DURATION_SEC = 15
 
+// ── Auto Preview Carousel（Phase C・画像シネマティック / mp4不使用）─────────────
+//
+// 既存 main の selected を一定間隔で自動送りし、急上昇TOP10を受動的に見せる。
+// 動画は使わず（mp4推測/proxyなし）、画像のクロスフェード＋Ken Burns のみ。
+
+/** カルーセル起因イベントの position（既存 hero_v21_* 規約に合わせる）。 */
+export const AUTOCAROUSEL_POSITION = 'hero_v21_autocarousel'
+
+/** 1スライドの表示秒数（ms）。 */
+export const AUTO_SLIDE_MS = 5000
+
+/**
+ * カルーセル計測メタ（hero_auto_*）。cid は呼び出し側で target_id に載せるため含めない。
+ * 女優IDは analytics が camelCase actressId を剥がすため snake_case で持つ（[[previewMeta]] と同様）。
+ * slide_view は「1ページビュー内で各cid初回のみ」発火する運用（過剰発火防止）。
+ */
+export function autoSlideMeta(item: HeroV21Item, slideIndex: number, loopCount: number) {
+  return {
+    position:          AUTOCAROUSEL_POSITION,
+    slideIndex,
+    rank:              item.rank,
+    points:            item.points,
+    title:             item.title,
+    actress:           item.actress,
+    actress_id:        item.actressId,
+    hasVideo:          Boolean(item.sampleMovieUrl),
+    viewingMode:       'image',
+    carouselLoopCount: loopCount,
+  }
+}
+
 /**
  * プレビュー系イベント（hero_preview_*）共通メタ。
  * cid は呼び出し側で target_id に載せるためここには含めない。

@@ -29,10 +29,22 @@ import {
 
 type Phase = 'idle' | 'playing' | 'ended'
 
-export function HeroV21Preview({ item }: { item: HeroV21Item }) {
+export function HeroV21Preview({
+  item,
+  onActiveChange,
+}: {
+  item: HeroV21Item
+  /** プレビューが idle 以外（再生中/CTA表示中）になったら true。親の自動カルーセルを停止させる用。 */
+  onActiveChange?: (active: boolean) => void
+}) {
   const [phase, setPhase]   = useState<Phase>('idle')
   const [loaded, setLoaded] = useState(false)
   const playFiredRef        = useRef(false)
+
+  // プレビューが開いている間は親（カルーセル）の自動送りを止める。
+  useEffect(() => {
+    onActiveChange?.(phase !== 'idle')
+  }, [phase, onActiveChange])
 
   // 再生準備完了（iframe load）から PREVIEW_DURATION_SEC 秒でアンマウント停止 → complete 計測。
   useEffect(() => {

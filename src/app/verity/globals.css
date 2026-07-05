@@ -80,3 +80,19 @@ body {
   50%      { transform: translate3d(0,-8px,0) scale(1.06); }
 }
 .drift { animation: drift 9s ease-in-out infinite; }
+
+/* Hero Auto Carousel: 各スライド切替時のクロスフェード＋ゆるいKen Burnsズーム */
+@keyframes hero-slide-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes hero-ken-burns {
+  from { transform: scale(1); }
+  to   { transform: scale(1.06); }
+}
+.hero-slide-in { animation: hero-slide-in 0.55s ease-out both; }
+.hero-ken-burns { animation: hero-ken-burns 6s ease-out both; }
+/* 自動送り自体も JS 側(matchMedia)で停止するが、動きの二重防御として無効化 */
+@media (prefers-reduced-motion: reduce) {
+  .hero-slide-in, .hero-ken-burns { animation: none; }
+}
