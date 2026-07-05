@@ -22,7 +22,14 @@ import { HeroV21Thumb } from './HeroV21Thumb'
 // ※サンプル動画/AI切り抜き/閲覧人数は本フェーズ非対象（読み込まない）。
 
 export function HeroV21Client({ items }: { items: HeroV21Item[] }) {
-  const [selected, setSelected] = useState(0)
+  // 初期 main は「急上昇TOP内で sampleMovieUrl を持つ最上位rank作品」を優先し、
+  // 15秒プレビュー実験が初期表示から露出されるようにする（無ければ従来通り rank#1）。
+  // findIndex は最小index=最上位rankの動画あり作品を返す。props から決定的なため
+  // SSR/hydration で同値になり不整合しない。rail 順・rank・既存計測は変更しない。
+  const [selected, setSelected] = useState(() => {
+    const i = items.findIndex(item => item.sampleMovieUrl)
+    return i >= 0 ? i : 0
+  })
 
   // サムネ本体タップ = メイン切替（内部回遊・fanza_click を汚染しない別イベント）。
   // 依存なしの安定参照にして、切替時に全サムネのハンドラ同一性を保つ。
