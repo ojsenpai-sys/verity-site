@@ -29,6 +29,15 @@ export type EventName =
   // Hero v2.1: ランキングrailのメイン切替（内部回遊）。fanza_click とは別イベントにし、
   // 総fanza_click（share% / ダッシュボード導線別の分母）を汚染しない。
   | 'hero_rank_select'
+  // Hero v2.1: main 15秒プレビュー実験（方式A=公式litevideo iframe / position=hero_v21_preview_main）。
+  //   open     … ▶プレビューボタン押下（開封）
+  //   play     … iframe load（＝再生準備完了の近似。クロスオリジンiframeのため厳密な再生開始は取得不可）
+  //   complete … 開封後 PREVIEW_DURATION_SEC 秒滞在の近似（iframeアンマウント時。厳密な完走検知は不可）
+  //   fanza_click … プレビュー内CTA押下の補助計測。FANZA遷移自体は従来 fanza_click でも必ず記録される。
+  | 'hero_preview_open'
+  | 'hero_preview_play'
+  | 'hero_preview_complete'
+  | 'hero_preview_fanza_click'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -55,6 +64,11 @@ const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' |
   unfavorite_actress: { type: 'actress', idKey: 'actressId' },
   // cid を target_id に載せ、fanza_click と同じ集計規約（target_id=作品 / metadata.position）に揃える
   hero_rank_select:   { type: 'article', idKey: 'cid'       },
+  // プレビュー系も作品単位。fanza_click と同じ target_id=CID / metadata.position 規約に揃える
+  hero_preview_open:        { type: 'article', idKey: 'cid' },
+  hero_preview_play:        { type: 'article', idKey: 'cid' },
+  hero_preview_complete:    { type: 'article', idKey: 'cid' },
+  hero_preview_fanza_click: { type: 'article', idKey: 'cid' },
 }
 
 // target_id にマップされる構造キーは metadata から除外する

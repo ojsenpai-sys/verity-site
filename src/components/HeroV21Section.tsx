@@ -70,6 +70,13 @@ function toItem(rank: number, points: number, article: Article, isOverseas: bool
     imgSrc,
     coverPos:    coverPosClass(cover),
     fanzaUrl,
+    // 15秒プレビュー用（方式A）。litevideo プレイヤーURL（iframe用）。無ければ null → ボタン非表示。
+    sampleMovieUrl:
+      typeof meta.sample_movie_url === 'string' && meta.sample_movie_url
+        ? (meta.sample_movie_url as string)
+        : null,
+    // 将来 mp4 seek 用。config/metadata に持てば拾う（現状は既定0・iframe方式では未使用）。
+    previewStartSec: typeof meta.preview_start_sec === 'number' ? (meta.preview_start_sec as number) : 0,
   }
 }
 

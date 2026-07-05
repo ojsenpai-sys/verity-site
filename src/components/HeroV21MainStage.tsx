@@ -3,6 +3,7 @@
 import Link from 'next/link'
 import { Flame, Play } from 'lucide-react'
 import { FanzaLink } from './FanzaLink'
+import { HeroV21Preview } from './HeroV21Preview'
 import { RANK_STYLE, heroClickMeta, type HeroV21Item } from '@/lib/heroV21'
 
 // Hero v2.1 メインステージ（選択中Rankの大型表示）。
@@ -128,6 +129,10 @@ export function HeroV21MainStage({ item }: { item: HeroV21Item }) {
             <span className="opacity-70">↗</span>
           </FanzaLink>
         )}
+
+        {/* 15秒プレビュー（方式A：公式litevideo iframe）— main 且つ sample動画ありのみ。
+            動画URLが無い作品では HeroV21Preview が null を返し何も描画しない。 */}
+        {item.sampleMovieUrl && <HeroV21Preview item={item} />}
       </div>
     </div>
   )
