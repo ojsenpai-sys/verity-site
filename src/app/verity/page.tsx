@@ -573,7 +573,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </Suspense>
       </div>
 
-      {/* ── 2. VERITYオススメ女優（33名 — ファーストビュー最優先） ────── */}
+      {/* ── 2. VERITYオススメ女優（34名 — ファーストビュー最優先） ────── */}
       <section id="recommended-actresses">
         <Suspense fallback={<div className="h-72 animate-pulse rounded-xl bg-[var(--surface)]" />}>
           <FeaturedSection />
