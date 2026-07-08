@@ -16,6 +16,67 @@ type MakerConfig = {
 
 const MAKERS: MakerConfig[] = [
   {
+    id: 'ideapocket',
+    label: 'アイデアポケット',
+    cids: [
+      'ipzz00575', 'ipzz00613', 'ipzz00611', 'ipzz00383',
+      'ipzz00605', 'ipzz00610', 'ipzz00601', 'ipzz00604',
+    ],
+    actressMap: {
+      ipzz00575: '桜空もも',
+      ipzz00613: '愛才りあ',
+      ipzz00611: '佐々木さき',
+      ipzz00383: '望乃るい',
+      ipzz00605: '役野満里奈',
+      ipzz00610: '山田鈴奈',
+      ipzz00601: '長浜みつり',
+      ipzz00604: '花守夏歩',
+    },
+  },
+  {
+    id: 's1',
+    label: 'エスワン',
+    cids: [
+      // 今回追加の最新作（先頭）
+      'sone00786', 'sone00804', 'sone00812', 'sone00780', 'sone00798',
+      'sone00758', 'sone00790', 'sone00746', 'sone00802',
+      // 既存掲載（維持）
+      'snos00300', 'snos00291', 'snos00261', 'ofje00653',
+      'snos00327', 'snos00271', 'snos00316', 'snos00301',
+      'snos00247', 'snos00312', 'snos00293', 'snos00263',
+      'snos00292', 'snos00296', 'snos00318', 'snos00370',
+      'snos00326', 'snos00308', 'snos00307', 'snos00320',
+      'ofje00647', 'ofje00648',
+    ],
+    actressMap: {
+      sone00786: '田野憂',
+      sone00804: '川越にこ',
+      sone00812: '桜乃りの',
+      sone00780: '南沢海香',
+      sone00798: '小日向みゆう',
+      sone00758: '瀬戸環奈',
+      sone00790: '金松季歩',
+      sone00746: '村上悠華',
+      sone00802: '三田真鈴',
+    },
+  },
+  {
+    id: 'spotlight',
+    label: '注目の新作',
+    cids: [
+      'dvaj00694', 'apgh00039', 'dass00657', 'rki00719',
+      'jur00380', 'davk00107', 'huntc00349', 'mkmp00651',
+    ],
+    actressMap: {
+      dvaj00694: '尾崎えりか',
+      apgh00039: '虹村ゆみ',
+      dass00657: '美谷朱音',
+      rki00719: '倉本すみれ',
+      jur00380: 'めぐり',
+      mkmp00651: '武田怜香',
+    },
+  },
+  {
     id: 'moodyz',
     label: 'ムーディーズ',
     cids: [
@@ -69,19 +130,6 @@ const MAKERS: MakerConfig[] = [
       cawb00016: '結城りの',
       cawb00015: '齋藤かさね',
     },
-  },
-  {
-    id: 's1',
-    label: 'エスワン',
-    cids: [
-      'snos00300', 'snos00291', 'snos00261', 'ofje00653',
-      'snos00327', 'snos00271', 'snos00316', 'snos00301',
-      'snos00247', 'snos00312', 'snos00293', 'snos00263',
-      'snos00292', 'snos00296', 'snos00318', 'snos00370',
-      'snos00326', 'snos00308', 'snos00307', 'snos00320',
-      'ofje00647', 'ofje00648',
-    ],
-    actressMap: {},
   },
   {
     id: 'honchu',
@@ -194,6 +242,9 @@ export async function FastestNewReleases() {
       const cover   = effectiveCoverUrl(cid, article)
       return {
         cid,
+        // TODO(future): DB未登録作品はタイトルが空になる。DMM ItemList API から
+        // CIDでタイトル/女優を取得し（サーバー側フェッチ or 事前バッチ）、
+        // article未取得時のフォールバックとして表示できるようにする。
         title:       article?.title ?? '',
         slug:        article?.slug ?? null,
         coverUrl:    cover,
