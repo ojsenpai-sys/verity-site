@@ -28,51 +28,51 @@ export type SaleCampaign = {
   items: SaleItem[]
 }
 
-// ── 巨乳キャンペーン30%OFF 全30作品（2026-07-03 CID差し替え） ──
+// ── 巨乳キャンペーン30%OFF 全30作品（2026-07-08 CID差し替え） ──
 // 恒久配線: 全件 cover:'pl'（横長パッケージ）→ coverPosClass→object-right で正面表紙をジャスト表示。
 export const CHIJO_SALE_ITEMS: SaleItem[] = [
-  { cid: 'ipzz00501', cover: 'pl' },
-  { cid: 'mida00370', cover: 'pl' },
-  { cid: 'ssis00606', cover: 'pl' },
-  { cid: 'ipzz00771', cover: 'pl' },
-  { cid: 'mida00478', cover: 'pl' },
-  { cid: 'ofje00534', cover: 'pl' },
-  { cid: 'sone00761', cover: 'pl' },
-  { cid: 'dass00531', cover: 'pl' },
-  { cid: 'ipzz00133', cover: 'pl' },
-  { cid: 'midv00927', cover: 'pl' },
-  { cid: 'yuj00057', cover: 'pl' },
-  { cid: 'mida00550', cover: 'pl' },
-  { cid: 'mida00158', cover: 'pl' },
-  { cid: 'fpre00176', cover: 'pl' },
-  { cid: 'midv00868', cover: 'pl' },
-  { cid: 'blk00663', cover: 'pl' },
-  { cid: 'mikr00009', cover: 'pl' },
-  { cid: 'mida00119', cover: 'pl' },
-  { cid: 'mida00520', cover: 'pl' },
-  { cid: 'ofje00551', cover: 'pl' },
-  { cid: 'royd00240', cover: 'pl' },
-  { cid: 'ssis00088', cover: 'pl' },
-  { cid: 'snos00038', cover: 'pl' },
-  { cid: 'ofje00615', cover: 'pl' },
-  { cid: 'snos00039', cover: 'pl' },
-  { cid: 'ssis00116', cover: 'pl' },
-  { cid: 'ofje00495', cover: 'pl' },
-  { cid: 'waaa00492', cover: 'pl' },
-  { cid: 'snos00146', cover: 'pl' },
-  { cid: 'ssis00222', cover: 'pl' },
+  { cid: 'hndb00278', cover: 'pl' },
+  { cid: 'jur00648', cover: 'pl' },
+  { cid: 'pppe00335', cover: 'pl' },
+  { cid: 'mida00193', cover: 'pl' },
+  { cid: 'sone00621', cover: 'pl' },
+  { cid: 'mimk00204', cover: 'pl' },
+  { cid: 'snos00104', cover: 'pl' },
+  { cid: 'ipzz00582', cover: 'pl' },
+  { cid: 'snos00093', cover: 'pl' },
+  { cid: 'mida00165', cover: 'pl' },
+  { cid: 'waaa00501', cover: 'pl' },
+  { cid: 'mikr00036', cover: 'pl' },
+  { cid: 'sone00466', cover: 'pl' },
+  { cid: 'jufe00495', cover: 'pl' },
+  { cid: 'midv00889', cover: 'pl' },
+  { cid: 'sone00934', cover: 'pl' },
+  { cid: 'ipzz00841', cover: 'pl' },
+  { cid: 'mida00156', cover: 'pl' },
+  { cid: 'cawd00799', cover: 'pl' },
+  { cid: 'sone00279', cover: 'pl' },
+  { cid: 'fway00043', cover: 'pl' },
+  { cid: 'pppe00234', cover: 'pl' },
+  { cid: 'sone00627', cover: 'pl' },
+  { cid: 'jufe00583', cover: 'pl' },
+  { cid: 'sone00754', cover: 'pl' },
+  { cid: 'mfyd00009', cover: 'pl' },
+  { cid: 'sone00131', cover: 'pl' },
+  { cid: 'sone00568', cover: 'pl' },
+  { cid: 'sone00504', cover: 'pl' },
+  { cid: 'eyan00200', cover: 'pl' },
 ]
 
-export const CHIJO_MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=kyonyucp'
+export const CHIJO_MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=kyonyucp&sort=suggest'
 
-// ── 2026-07-03 更新 v6: campaign=6565 編集長指定 最新25作品 ──
-// 全25件 jp.jpg 不在（now_printing）→ cover 省略（=pl 横長スプレッド配信）で object-right。
+// ── 2026-07-08 更新: FANZA期間限定セール特集 指定25作品へ差し替え ──
+// cover 省略（=pl 横長スプレッド配信）で coverPosClass→object-right。
 export const FANZA_SALE_ITEMS: SaleItem[] = [
-  { cid: 'mida00216' }, { cid: 'mida00210' }, { cid: 'mida00213' }, { cid: 'mida00212' }, { cid: 'mida00133' },
-  { cid: 'mida00182' }, { cid: 'mida00226' }, { cid: 'mizd00464' }, { cid: 'mida00220' }, { cid: 'mida00215' },
-  { cid: 'mikr00022' }, { cid: 'h_1711maan01085' }, { cid: 'sivr00420' }, { cid: 'waaa00537' }, { cid: 'waaa00541' },
-  { cid: 'mimk00231' }, { cid: 'mida00217' }, { cid: 'xvsr00824' }, { cid: 'waaa00543' }, { cid: 'mida00225' },
-  { cid: 'mida00214' }, { cid: 'kavr00429' }, { cid: 'cawd00845' }, { cid: 'kwbd00403' }, { cid: 'mimk00230' },
+  { cid: 'ipzz00575' }, { cid: 'ipzz00613' }, { cid: 'ipzz00611' }, { cid: 'sone00786' }, { cid: 'ipzz00383' },
+  { cid: 'ipzz00605' }, { cid: 'sone00804' }, { cid: 'sone00812' }, { cid: 'ipzz00610' }, { cid: 'sone00780' },
+  { cid: 'ipzz00601' }, { cid: 'sone00798' }, { cid: 'sone00758' }, { cid: 'ipzz00604' }, { cid: 'dvaj00694' },
+  { cid: 'sone00790' }, { cid: 'apgh00039' }, { cid: 'dass00657' }, { cid: 'sone00746' }, { cid: 'rki00719' },
+  { cid: 'jur00380' }, { cid: 'davk00107' }, { cid: 'huntc00349' }, { cid: 'sone00802' }, { cid: 'mkmp00651' },
 ]
 
 export const FANZA_MORE_SALE_URL = 'https://video.dmm.co.jp/av/list/?campaign=6565&sort=suggest'
