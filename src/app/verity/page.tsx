@@ -31,6 +31,7 @@ import { MakerBadgesSection } from '@/components/MakerBadgesSection'
 import { MinamoMemorialBanner } from '@/components/MinamoMemorialBanner'
 import { FastestNewReleases } from '@/components/FastestNewReleases'
 import { SpotlightCard } from '@/components/SpotlightCard'
+import { WeeklyRankingsSection } from '@/components/WeeklyRankingsSection'
 import { EventHubCard } from '@/components/EventHubCard'
 import { TopSearchBar } from '@/components/TopSearchBar'
 import { TrendingNowSection } from '@/components/TrendingNowSection'
@@ -519,6 +520,25 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <FastestNewReleases />
         </Suspense>
       </section>
+
+      {/* ── 0b-2b. VERITY WEEKLY RANKINGS（毎週日曜23:30発表・5タブ / 未確定時は非表示） ── */}
+      <Suspense fallback={
+        <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-4">
+          <div className="h-6 w-56 animate-pulse rounded bg-[var(--surface-2)]" />
+          <div className="mt-3 flex gap-2">
+            {Array.from({ length: 5 }).map((_, i) => (
+              <div key={i} className="h-7 w-16 animate-pulse rounded-full bg-[var(--surface-2)]" />
+            ))}
+          </div>
+          <div className="mt-3 grid grid-cols-3 gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="aspect-square animate-pulse rounded-full bg-[var(--surface-2)]" />
+            ))}
+          </div>
+        </div>
+      }>
+        <WeeklyRankingsSection />
+      </Suspense>
 
       {/* ── 0b-3. VERITY Spotlight（最新編集特集バナー 2連） ─────────── */}
       <section id="spotlight">

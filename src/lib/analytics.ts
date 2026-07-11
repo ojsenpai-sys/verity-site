@@ -43,6 +43,13 @@ export type EventName =
   //   fanza_click … カルーセル文脈のFANZAクリック補助。遷移自体は既存 fanza_click で必ず記録。
   | 'hero_auto_slide_view'
   | 'hero_auto_fanza_click'
+  // VERITY WEEKLY RANKINGS（毎週日曜23:30発表）。既存 fanza_click は必ず併存（本イベントは補助計測）。
+  //   tab_view     … タブ切替（女優/作品/メーカー/新人/急上昇）。target なし・metadata.rankingType 等。
+  //   entity_click … 順位エントリのサイト内クリック（女優/作品/メーカーページ遷移）。target は文脈依存のため metadata で識別。
+  //   fanza_click  … 週間ランキング文脈からのFANZA遷移の補助計測（target_id=CID）。遷移自体は既存 fanza_click でも記録。
+  | 'weekly_ranking_tab_view'
+  | 'weekly_ranking_entity_click'
+  | 'weekly_ranking_fanza_click'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -77,6 +84,8 @@ const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' |
   // カルーセルも作品単位。target_id=CID / metadata.position 規約に揃える
   hero_auto_slide_view:     { type: 'article', idKey: 'cid' },
   hero_auto_fanza_click:    { type: 'article', idKey: 'cid' },
+  // 週間ランキングのFANZA補助計測は作品単位（target_id=CID / metadata.position 規約に揃える）
+  weekly_ranking_fanza_click: { type: 'article', idKey: 'cid' },
 }
 
 // target_id にマップされる構造キーは metadata から除外する
