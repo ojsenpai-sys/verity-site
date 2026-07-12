@@ -23,15 +23,6 @@ function proxyImg(raw?: string, fallbackCid?: string): string | null {
   return null
 }
 
-// 円形アバター(女優/新人/急上昇)は image_url が横長パッケージ(pl/ps・背表紙が中央)へ
-// フォールバックしがちで、正方トリミングだと背表紙が中央に来て中途半端に切れる。
-// その場合のみ表紙(右)へ寄せてズームし、顔が見えるようにする。縦長ポートレートや
-// 非DMM画像は従来どおり coverPosClass に委ねる（coverPosClass はサイト共通なので不変更）。
-function avatarObjectClass(url: string | null | undefined): string {
-  const isDmmSpread = !!url && /digital(%2F|\/)video/i.test(url) && /(pl|ps)\.jpg/i.test(url)
-  return isDmmSpread ? 'object-right scale-[1.35] origin-right' : coverPosClass(url)
-}
-
 function fmtDate(iso: string): string {
   try {
     const d = new Date(iso)
@@ -87,7 +78,6 @@ type Display = {
   degraded?: boolean           // maker等でリンク不能
   name: string
   image: string | null
-  circle: boolean              // 円形(女優) or 矩形(作品/メーカー)
   sub: string                  // サブ情報
   fanzaUrl?: string | null
   fanzaCid?: string
@@ -105,7 +95,6 @@ function toDisplay(row: WeeklyRankingRow): Display {
       href: str(md.slug) ? `/verity/articles/${str(md.slug)}` : null,
       name: row.entity_name,
       image: proxyImg(str(md.image_url), cid),
-      circle: false,
       sub: [str(md.actress_name), maker].filter(Boolean).join(' / ') || readers,
       fanzaUrl: fanza,
       fanzaCid: cid,
@@ -120,7 +109,6 @@ function toDisplay(row: WeeklyRankingRow): Display {
       degraded: !known,
       name: row.entity_name,
       image: proxyImg(str(md.rep_image_url), str(md.rep_cid)),
-      circle: false,
       sub: str(md.rep_title) ? `代表作: ${str(md.rep_title)}` : readers,
     }
   }
@@ -143,110 +131,17 @@ function toDisplay(row: WeeklyRankingRow): Display {
     href: `/verity/actresses/${row.entity_id}`,
     name: row.entity_name,
     image: proxyImg(str(md.image_url), latestCid),
-    circle: true,
     sub,
   }
 }
 
-// ── カード ──────────────────────────────────────────────────────────────────────
-function EntityMedia({ d, rank, big }: { d: Display; rank: number; big?: boolean }) {
-  const shape = d.circle ? 'rounded-full aspect-square' : 'rounded-xl aspect-[2/3]'
-  return (
-    <div className={`relative w-full overflow-hidden ${shape} border border-[var(--border)] bg-[var(--surface-2)] ${d.circle ? 'ring-1 ring-[var(--border)]' : ''}`}>
-      {d.image ? (
-        <ProxiedImage
-          src={d.image}
-          alt={d.name}
-          loading="lazy"
-          className={`absolute inset-0 h-full w-full object-cover ${d.circle ? avatarObjectClass(d.image) : coverPosClass(d.image)}`}
-        />
-      ) : <NowPrinting />}
-      <div className={`absolute ${big ? 'left-2 top-2' : 'left-1 top-1'}`}><RankBadge rank={rank} /></div>
-    </div>
-  )
-}
-
-function PodiumCard({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }) {
+// ── ランキングカード（全タブ共通）────────────────────────────────────────────────
+// 円形アバターは廃止。女優/新人/急上昇/作品/メーカーすべてを、サイト共通の作品カードと
+// 同じ aspect-[2/3] パッケージ表紙（表紙右トリミング）カードで統一表示する。
+function RankCard({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }) {
   const d = toDisplay(row)
   const onClick = () => trackEvent('weekly_ranking_entity_click', {
-    weekKey, rankingType: row.ranking_type, rank: row.rank, entityId: row.entity_id, entityName: row.entity_name, position: 'weekly_podium',
-  })
-  const inner = (
-    <>
-      <EntityMedia d={d} rank={row.rank} big />
-      <div className="mt-1.5 space-y-0.5">
-        <p className="line-clamp-1 text-[13px] font-bold text-[var(--text)]">{d.name}</p>
-        <p className="line-clamp-1 text-[10px] text-[var(--text-muted)]">{d.sub}</p>
-        <div className="flex items-center gap-1.5 pt-0.5">
-          <span className="text-[11px] font-black tabular-nums text-[var(--magenta)]">{row.unique_sessions.toLocaleString()}</span>
-          <span className="text-[9px] text-[var(--text-muted)]">読者</span>
-          <ChangeBadge row={row} />
-        </div>
-      </div>
-    </>
-  )
-  return (
-    <div className="flex flex-col">
-      {d.href ? (
-        <Link href={d.href} onClick={onClick} className="group block">{inner}</Link>
-      ) : (
-        <div className="opacity-95">{inner}</div>
-      )}
-      {row.ranking_type === 'work' && d.fanzaUrl && (
-        <FanzaLink
-          href={d.fanzaUrl}
-          targetId={d.fanzaCid ?? row.entity_id}
-          position="weekly_ranking_podium"
-          onClick={() => trackEvent('weekly_ranking_fanza_click', { cid: d.fanzaCid, weekKey, rankingType: row.ranking_type, rank: row.rank, position: 'weekly_ranking_podium' })}
-          className="mt-1 inline-flex items-center justify-center rounded-md bg-[var(--magenta)]/90 px-2 py-1 text-[10px] font-bold text-white hover:bg-[var(--magenta)]"
-        >
-          FANZAで見る
-        </FanzaLink>
-      )}
-    </div>
-  )
-}
-
-function CompactRow({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }) {
-  const d = toDisplay(row)
-  const onClick = () => trackEvent('weekly_ranking_entity_click', {
-    weekKey, rankingType: row.ranking_type, rank: row.rank, entityId: row.entity_id, entityName: row.entity_name, position: 'weekly_list',
-  })
-  const media = (
-    <div className={`relative shrink-0 overflow-hidden ${d.circle ? 'h-11 w-11 rounded-full' : 'h-14 w-10 rounded-md'} border border-[var(--border)] bg-[var(--surface-2)]`}>
-      {d.image ? (
-        <ProxiedImage src={d.image} alt={d.name} loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${d.circle ? avatarObjectClass(d.image) : coverPosClass(d.image)}`} />
-      ) : <NowPrinting />}
-    </div>
-  )
-  const body = (
-    <>
-      <span className="w-7 shrink-0 text-center"><RankBadge rank={row.rank} /></span>
-      {media}
-      <div className="min-w-0 flex-1">
-        <p className="line-clamp-1 text-[12px] font-semibold text-[var(--text)]">{d.name}</p>
-        <p className="line-clamp-1 text-[10px] text-[var(--text-muted)]">{d.sub}</p>
-      </div>
-      <div className="flex shrink-0 flex-col items-end gap-0.5">
-        <span className="text-[12px] font-black tabular-nums text-[var(--text)]">{row.unique_sessions.toLocaleString()}<span className="ml-0.5 text-[8px] font-normal text-[var(--text-muted)]">読者</span></span>
-        <ChangeBadge row={row} />
-      </div>
-    </>
-  )
-  return d.href ? (
-    <Link href={d.href} onClick={onClick} className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5 transition-colors hover:bg-[var(--surface-2)]">{body}</Link>
-  ) : (
-    <div className="flex items-center gap-2.5 rounded-lg px-1.5 py-1.5">{body}</div>
-  )
-}
-
-// ── 作品カード（ArticleCard 風・縦長パッケージ／作品タブ専用）────────────────────
-// 人物系(女優/新人/急上昇)の円形アバターとは別に、作品はサイト共通の作品カードと同じ
-// aspect-[2/3] 縦長パッケージ（表紙右トリミング）で表示し、デザインを統一する。
-function WorkCard({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }) {
-  const d = toDisplay(row)
-  const onClick = () => trackEvent('weekly_ranking_entity_click', {
-    weekKey, rankingType: row.ranking_type, rank: row.rank, entityId: row.entity_id, entityName: row.entity_name, position: 'weekly_work_card',
+    weekKey, rankingType: row.ranking_type, rank: row.rank, entityId: row.entity_id, entityName: row.entity_name, position: 'weekly_rank_card',
   })
   const media = (
     <div className="relative w-full aspect-[2/3] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]">
@@ -280,8 +175,8 @@ function WorkCard({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }) 
         <FanzaLink
           href={d.fanzaUrl}
           targetId={d.fanzaCid ?? row.entity_id}
-          position="weekly_ranking_work_card"
-          onClick={() => trackEvent('weekly_ranking_fanza_click', { cid: d.fanzaCid, weekKey, rankingType: row.ranking_type, rank: row.rank, position: 'weekly_ranking_work_card' })}
+          position="weekly_ranking_rank_card"
+          onClick={() => trackEvent('weekly_ranking_fanza_click', { cid: d.fanzaCid, weekKey, rankingType: row.ranking_type, rank: row.rank, position: 'weekly_ranking_rank_card' })}
           className="mt-1 inline-flex items-center justify-center rounded-md bg-[var(--magenta)]/90 px-2 py-1 text-[10px] font-bold text-white hover:bg-[var(--magenta)]"
         >
           FANZAで見る
@@ -295,8 +190,6 @@ function WorkCard({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }) 
 export function WeeklyRankingsTabs({ data, showArchiveLink = true }: { data: WeeklyRankings; showArchiveLink?: boolean }) {
   const [active, setActive] = useState<WeeklyRankingType>('actress')
   const rows = data.rankings[active] ?? []
-  const top3 = rows.filter((r) => r.rank <= 3)
-  const rest = rows.filter((r) => r.rank >= 4)
 
   // 新人タブ: fallback判定が多い場合はサブタイトルを緩める（修正2）
   const newcomerFallbackShare = (() => {
@@ -363,26 +256,11 @@ export function WeeklyRankingsTabs({ data, showArchiveLink = true }: { data: Wee
 
       {rows.length === 0 ? (
         <p className="py-6 text-center text-[12px] text-[var(--text-muted)]">このランキングは集計データが揃い次第表示されます</p>
-      ) : active === 'work' ? (
-        /* 作品タブ: サイト共通の作品カードと統一した縦長パッケージ（表紙右）カード */
-        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
-          {rows.map((r) => <WorkCard key={r.entity_id} row={r} weekKey={data.weekKey} />)}
-        </div>
       ) : (
-        <>
-          {/* 1〜3位（強調） */}
-          {top3.length > 0 && (
-            <div className="mt-3 grid grid-cols-3 gap-2.5 sm:gap-3">
-              {top3.map((r) => <PodiumCard key={r.entity_id} row={r} weekKey={data.weekKey} />)}
-            </div>
-          )}
-          {/* 4〜10位（コンパクト） */}
-          {rest.length > 0 && (
-            <div className="mt-2 divide-y divide-[var(--border)]/60">
-              {rest.map((r) => <CompactRow key={r.entity_id} row={r} weekKey={data.weekKey} />)}
-            </div>
-          )}
-        </>
+        /* 全タブ共通: パッケージ表紙カードのグリッド（円形アバター廃止・1〜3位は金銀銅バッジで強調） */
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+          {rows.map((r) => <RankCard key={r.entity_id} row={r} weekKey={data.weekKey} />)}
+        </div>
       )}
     </div>
   )
