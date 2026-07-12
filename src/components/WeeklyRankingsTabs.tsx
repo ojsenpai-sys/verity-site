@@ -231,6 +231,57 @@ function CompactRow({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }
   )
 }
 
+// ── 作品カード（ArticleCard 風・縦長パッケージ／作品タブ専用）────────────────────
+// 人物系(女優/新人/急上昇)の円形アバターとは別に、作品はサイト共通の作品カードと同じ
+// aspect-[2/3] 縦長パッケージ（表紙右トリミング）で表示し、デザインを統一する。
+function WorkCard({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }) {
+  const d = toDisplay(row)
+  const onClick = () => trackEvent('weekly_ranking_entity_click', {
+    weekKey, rankingType: row.ranking_type, rank: row.rank, entityId: row.entity_id, entityName: row.entity_name, position: 'weekly_work_card',
+  })
+  const media = (
+    <div className="relative w-full aspect-[2/3] overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)]">
+      {d.image ? (
+        <ProxiedImage
+          src={d.image}
+          alt={d.name}
+          loading="lazy"
+          className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(d.image)} transition-transform duration-300 ease-out group-hover:scale-105`}
+        />
+      ) : <NowPrinting />}
+      <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-transparent to-transparent" />
+      <div className="absolute left-1.5 top-1.5"><RankBadge rank={row.rank} /></div>
+      <div className="absolute right-1.5 top-1.5"><ChangeBadge row={row} /></div>
+    </div>
+  )
+  return (
+    <div className="flex flex-col">
+      {d.href ? (
+        <Link href={d.href} onClick={onClick} className="group block">{media}</Link>
+      ) : (
+        <div className="group">{media}</div>
+      )}
+      <p className="mt-1.5 line-clamp-2 text-[12px] font-bold leading-snug text-[var(--text)]">{d.name}</p>
+      <p className="mt-0.5 line-clamp-1 text-[10px] text-[var(--text-muted)]">{d.sub}</p>
+      <div className="mt-0.5 flex items-center gap-1">
+        <span className="text-[12px] font-black tabular-nums text-[var(--magenta)]">{row.unique_sessions.toLocaleString()}</span>
+        <span className="text-[9px] text-[var(--text-muted)]">読者</span>
+      </div>
+      {d.fanzaUrl && (
+        <FanzaLink
+          href={d.fanzaUrl}
+          targetId={d.fanzaCid ?? row.entity_id}
+          position="weekly_ranking_work_card"
+          onClick={() => trackEvent('weekly_ranking_fanza_click', { cid: d.fanzaCid, weekKey, rankingType: row.ranking_type, rank: row.rank, position: 'weekly_ranking_work_card' })}
+          className="mt-1 inline-flex items-center justify-center rounded-md bg-[var(--magenta)]/90 px-2 py-1 text-[10px] font-bold text-white hover:bg-[var(--magenta)]"
+        >
+          FANZAで見る
+        </FanzaLink>
+      )}
+    </div>
+  )
+}
+
 // ── メイン ────────────────────────────────────────────────────────────────────
 export function WeeklyRankingsTabs({ data, showArchiveLink = true }: { data: WeeklyRankings; showArchiveLink?: boolean }) {
   const [active, setActive] = useState<WeeklyRankingType>('actress')
@@ -303,6 +354,11 @@ export function WeeklyRankingsTabs({ data, showArchiveLink = true }: { data: Wee
 
       {rows.length === 0 ? (
         <p className="py-6 text-center text-[12px] text-[var(--text-muted)]">このランキングは集計データが揃い次第表示されます</p>
+      ) : active === 'work' ? (
+        /* 作品タブ: サイト共通の作品カードと統一した縦長パッケージ（表紙右）カード */
+        <div className="mt-3 grid grid-cols-2 gap-2.5 sm:grid-cols-3 sm:gap-3">
+          {rows.map((r) => <WorkCard key={r.entity_id} row={r} weekKey={data.weekKey} />)}
+        </div>
       ) : (
         <>
           {/* 1〜3位（強調） */}
