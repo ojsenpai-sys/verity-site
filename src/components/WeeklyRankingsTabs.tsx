@@ -23,6 +23,15 @@ function proxyImg(raw?: string, fallbackCid?: string): string | null {
   return null
 }
 
+// 円形アバター(女優/新人/急上昇)は image_url が横長パッケージ(pl/ps・背表紙が中央)へ
+// フォールバックしがちで、正方トリミングだと背表紙が中央に来て中途半端に切れる。
+// その場合のみ表紙(右)へ寄せてズームし、顔が見えるようにする。縦長ポートレートや
+// 非DMM画像は従来どおり coverPosClass に委ねる（coverPosClass はサイト共通なので不変更）。
+function avatarObjectClass(url: string | null | undefined): string {
+  const isDmmSpread = !!url && /digital(%2F|\/)video/i.test(url) && /(pl|ps)\.jpg/i.test(url)
+  return isDmmSpread ? 'object-right scale-[1.35] origin-right' : coverPosClass(url)
+}
+
 function fmtDate(iso: string): string {
   try {
     const d = new Date(iso)
@@ -149,7 +158,7 @@ function EntityMedia({ d, rank, big }: { d: Display; rank: number; big?: boolean
           src={d.image}
           alt={d.name}
           loading="lazy"
-          className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(d.image)}`}
+          className={`absolute inset-0 h-full w-full object-cover ${d.circle ? avatarObjectClass(d.image) : coverPosClass(d.image)}`}
         />
       ) : <NowPrinting />}
       <div className={`absolute ${big ? 'left-2 top-2' : 'left-1 top-1'}`}><RankBadge rank={rank} /></div>
@@ -206,7 +215,7 @@ function CompactRow({ row, weekKey }: { row: WeeklyRankingRow; weekKey: string }
   const media = (
     <div className={`relative shrink-0 overflow-hidden ${d.circle ? 'h-11 w-11 rounded-full' : 'h-14 w-10 rounded-md'} border border-[var(--border)] bg-[var(--surface-2)]`}>
       {d.image ? (
-        <ProxiedImage src={d.image} alt={d.name} loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${coverPosClass(d.image)}`} />
+        <ProxiedImage src={d.image} alt={d.name} loading="lazy" className={`absolute inset-0 h-full w-full object-cover ${d.circle ? avatarObjectClass(d.image) : coverPosClass(d.image)}`} />
       ) : <NowPrinting />}
     </div>
   )
