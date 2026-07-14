@@ -16,6 +16,55 @@ type MakerConfig = {
 
 const MAKERS: MakerConfig[] = [
   {
+    id: 's1',
+    label: 'エスワン',
+    // 2026-07-14 0時解禁の videoa 最新作（先頭ほど新しい）。全て単独主演・通常作品。
+    cids: [
+      'snos00361', 'snos00357', 'snos00334', 'snos00323', 'snos00321',
+      'snos00309', 'snos00306', 'snos00298', 'snos00297', 'snos00270',
+      'snos00246',
+    ],
+    actressMap: {
+      snos00361: '楓ふうあ',
+      snos00357: '川越にこ',
+      snos00334: '瀬戸環奈',
+      snos00323: '三田真鈴',
+      snos00321: '紫堂るい',
+      snos00309: '金松季歩',
+      snos00306: '安達夕莉',
+      snos00298: '園梨音',
+      snos00297: '雛形みくる',
+      snos00270: '博多彩葉',
+      snos00246: '鈴木希',
+    },
+  },
+  {
+    id: 'ideapocket',
+    label: 'アイデアポケット',
+    // 2026-07-14 0時解禁の videoa 最新作（先頭ほど新しい）。全て単独主演・通常作品。
+    cids: [
+      'ipzz00958', 'ipzz00946', 'ipzz00940', 'ipzz00932', 'ipzz00931',
+      'ipzz00929', 'ipzz00926', 'ipzz00925', 'ipzz00922', 'ipzz00919',
+      'ipzz00918', 'ipzz00915', 'ipzz00913', 'ipzz00910',
+    ],
+    actressMap: {
+      ipzz00958: 'ひなの花音',
+      ipzz00946: '永野紬',
+      ipzz00940: '仲村みう',
+      ipzz00932: '楓カレン',
+      ipzz00931: '西田瑞希',
+      ipzz00929: '美琴千緒',
+      ipzz00926: '佐々木さき',
+      ipzz00925: '瀬緒凛',
+      ipzz00922: '林芽依',
+      ipzz00919: '白石るな',
+      ipzz00918: '愛才りあ',
+      ipzz00915: '花咲澪',
+      ipzz00913: '辻みいな',
+      ipzz00910: '藤咲まい',
+    },
+  },
+  {
     id: 'moodyz',
     label: 'ムーディーズ',
     cids: [
@@ -69,19 +118,6 @@ const MAKERS: MakerConfig[] = [
       cawb00016: '結城りの',
       cawb00015: '齋藤かさね',
     },
-  },
-  {
-    id: 's1',
-    label: 'エスワン',
-    cids: [
-      'snos00300', 'snos00291', 'snos00261', 'ofje00653',
-      'snos00327', 'snos00271', 'snos00316', 'snos00301',
-      'snos00247', 'snos00312', 'snos00293', 'snos00263',
-      'snos00292', 'snos00296', 'snos00318', 'snos00370',
-      'snos00326', 'snos00308', 'snos00307', 'snos00320',
-      'ofje00647', 'ofje00648',
-    ],
-    actressMap: {},
   },
   {
     id: 'honchu',
