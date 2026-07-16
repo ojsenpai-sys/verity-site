@@ -10,9 +10,12 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const supabase = await createClient()
 
   const staticPages: MetadataRoute.Sitemap = [
-    { url: BASE,                    changeFrequency: 'daily',   priority: 1.0 },
-    { url: `${BASE}/actresses`,     changeFrequency: 'daily',   priority: 0.9 },
-    { url: `${BASE}/news`,          changeFrequency: 'daily',   priority: 0.8 },
+    { url: BASE,                            changeFrequency: 'daily',   priority: 1.0 },
+    { url: `${BASE}/actresses`,             changeFrequency: 'daily',   priority: 0.9 },
+    { url: `${BASE}/news`,                  changeFrequency: 'daily',   priority: 0.8 },
+    // VERITY Spotlight 特集
+    { url: `${BASE}/verity/features`,       changeFrequency: 'weekly',  priority: 0.6 },
+    { url: `${BASE}/spotlight/mens-esthe`,  changeFrequency: 'weekly',  priority: 0.7 },
   ]
 
   const { data: actresses } = await supabase

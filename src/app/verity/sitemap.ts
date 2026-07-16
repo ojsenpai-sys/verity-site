@@ -16,6 +16,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // イベントハブ — URL はページ側 canonical（/verity/events…）に合わせる
     { url: `${BASE}/verity/events`,         changeFrequency: 'weekly', priority: 0.6 },
     { url: `${BASE}/verity/events/tre2026`, changeFrequency: 'daily',  priority: 0.7 },
+    // VERITY Spotlight 特集
+    { url: `${BASE}/verity/features`,          changeFrequency: 'weekly', priority: 0.6 },
+    { url: `${BASE}/spotlight/mens-esthe`,     changeFrequency: 'weekly', priority: 0.7 },
   ]
 
   // 女優ページ（全件 range で取得）
