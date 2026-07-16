@@ -50,6 +50,12 @@ export type EventName =
   | 'weekly_ranking_tab_view'
   | 'weekly_ranking_entity_click'
   | 'weekly_ranking_fanza_click'
+  // VERITY Spotlight（編集特集）計測。汎用設計で全 Spotlight に再利用可能。
+  //   spotlight_view … 特集ページ表示（1表示1回・target なし・metadata に slug/件数等）。
+  //   storeos_click  … 特集内 StoreOS 導線クリック（1クリック1回・target なし・metadata に placement 等）。
+  // 作品カードクリックは既存 fanza_click を再利用（source='spotlight' 等を metadata 付与）。
+  | 'spotlight_view'
+  | 'storeos_click'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {

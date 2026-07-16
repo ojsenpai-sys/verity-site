@@ -19,6 +19,8 @@ import { ProxiedImage } from '@/components/ProxiedImage'
 import { NowPrinting } from '@/components/NowPrinting'
 import { RelatedWorksScored } from '@/components/RelatedWorksScored'
 import { RelatedArticlesSection } from '@/components/RelatedArticlesSection'
+import { SpotlightViewTracker } from '@/components/SpotlightViewTracker'
+import { StoreOsCtaLink } from '@/components/StoreOsCtaLink'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { isBadImageUrl, toHighResPackageUrl, cidToCdnUrl } from '@/lib/cidUtils'
@@ -28,7 +30,8 @@ import type { Article } from '@/lib/types'
 const BASE = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
 // 公開URLはベアパス（proxy が /verity/ へリライト）。記事ページと同じSEOパターン。
 const CANONICAL = `${BASE}/spotlight/mens-esthe`
-const STOREOS_URL = 'https://storeos-brown.vercel.app/mens-esthe'
+const STOREOS_URL =
+  'https://storeos-brown.vercel.app/mens-esthe?utm_source=verity&utm_medium=spotlight&utm_campaign=mens-esthe&ref=verity'
 
 // ── データ取得 ────────────────────────────────────────────────────────────────
 
@@ -199,38 +202,79 @@ function PointCard({ emoji, title, body }: { emoji: string; title: string; body:
 
 // ── 作品カード ────────────────────────────────────────────────────────────────
 
-function WorkCard({ article, fanzaUrl }: { article: Article; fanzaUrl: string | null }) {
+function WorkCard({
+  article,
+  fanzaUrl,
+  section,
+  index,
+}: {
+  article: Article
+  fanzaUrl: string | null
+  section: 'normal' | 'vr'
+  /** グループ内の 1 始まりの並び順 */
+  index: number
+}) {
   const imgSrc = proxiedJacket(article)
   const actresses = actressNames(article)
   const maker = makerName(article)
 
-  const card = (
+  // 作品カードクリック計測メタ（既存 fanza_click に付与。取得不能な値は省略する）。
+  // ※ position（UI導線文字列）は既存集計と互換のため温存し、1始まりの並び順は
+  //    予約キー position を汚さないよう spotlight_position に格納する。
+  const clickMeta: Record<string, unknown> = {
+    source: 'spotlight',
+    spotlight_slug: 'mens-esthe',
+    spotlight_section: section,
+    spotlight_position: index,
+    article_slug: article.slug,
+    work_title: article.title,
+    ...(actresses.length ? { actress_name: actresses.join('・') } : {}),
+    ...(maker ? { maker_name: maker } : {}),
+  }
+
+  // 表紙の中身（画像 + グラデ + ホバーラベル）。FanzaLink 内外で共有。
+  const cover = (
+    <>
+      <ProxiedImage
+        src={imgSrc!}
+        alt={article.title}
+        loading="lazy"
+        className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover:scale-105"
+      />
+      <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+      <div className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/0 transition-all duration-200 group-hover:bg-black/50 md:flex">
+        <span className="translate-y-1 scale-95 rounded-full bg-[#d4af37]/90 px-3 py-1 text-[10px] font-bold text-[#0a0800] opacity-0 shadow-lg transition-all duration-200 group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100">
+          ▶ FANZAで観る
+        </span>
+      </div>
+    </>
+  )
+
+  return (
     <article className="group relative flex flex-col overflow-hidden rounded-xl border border-[#d4af37]/20 bg-black/40 transition-all duration-200 hover:-translate-y-0.5 hover:border-[#d4af37]/50 hover:shadow-[0_0_28px_rgba(212,175,55,0.18)]">
-      {/* 表紙 */}
+      {/* 表紙（クリックで FANZA・fanza_click を1回だけ発火。アンカーのネストは避ける） */}
       <div className="relative aspect-[2/3] w-full overflow-hidden bg-[#0d0a00]">
-        {imgSrc ? (
-          <>
-            <ProxiedImage
-              src={imgSrc}
-              alt={article.title}
-              loading="lazy"
-              className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover:scale-105"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-          </>
-        ) : (
+        {!imgSrc ? (
           <NowPrinting />
+        ) : fanzaUrl ? (
+          <FanzaLink
+            href={fanzaUrl}
+            targetId={article.external_id}
+            position="spotlight_mens_esthe_image"
+            meta={clickMeta}
+            ariaLabel={`${article.title}をFANZAで観る`}
+            className="absolute inset-0 block h-full w-full"
+          >
+            {cover}
+          </FanzaLink>
+        ) : (
+          cover
         )}
-        <div className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/0 transition-all duration-200 group-hover:bg-black/50 md:flex">
-          <span className="translate-y-1 scale-95 rounded-full bg-[#d4af37]/90 px-3 py-1 text-[10px] font-bold text-[#0a0800] opacity-0 shadow-lg transition-all duration-200 group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100">
-            ▶ FANZAで観る
-          </span>
-        </div>
       </div>
 
       {/* 本文 */}
       <div className="flex flex-1 flex-col gap-2 p-3">
-        {/* タイトル */}
+        {/* タイトル（記事ページへ。遷移先で video_view が記録される） */}
         {article.slug ? (
           <Link href={`/verity/articles/${article.slug}`}>
             <p className="line-clamp-2 text-[11px] font-medium leading-snug text-white/85 transition-colors group-hover:text-[#d4af37]/90">
@@ -262,6 +306,7 @@ function WorkCard({ article, fanzaUrl }: { article: Article; fanzaUrl: string | 
               href={fanzaUrl}
               targetId={article.external_id}
               position="spotlight_mens_esthe"
+              meta={clickMeta}
               className="flex items-center justify-center gap-1.5 rounded-lg bg-gradient-to-r from-[#b8960c] to-[#d4af37] py-2 text-[10px] font-bold text-[#0a0800] transition-all hover:brightness-110"
             >
               FANZAで観る
@@ -280,14 +325,6 @@ function WorkCard({ article, fanzaUrl }: { article: Article; fanzaUrl: string | 
         </div>
       </div>
     </article>
-  )
-
-  return fanzaUrl ? (
-    <FanzaLink href={fanzaUrl} targetId={article.external_id} position="spotlight_mens_esthe_image" className="contents">
-      {card}
-    </FanzaLink>
-  ) : (
-    card
   )
 }
 
@@ -309,6 +346,15 @@ export default async function MensEstheSpotlightPage() {
 
   return (
     <div className="min-h-screen bg-[#0a0800]">
+      {/* 表示計測 — spotlight_view を1表示1回だけ送信（汎用トラッカー） */}
+      <SpotlightViewTracker
+        slug={MENS_ESTHE_META.slug}
+        title={MENS_ESTHE_META.title}
+        workCount={totalCount}
+        normalWorkCount={normalArticles.length}
+        vrWorkCount={vrArticles.length}
+      />
+
       {/* 構造化データ（Article + BreadcrumbList） */}
       <script
         type="application/ld+json"
@@ -522,8 +568,14 @@ export default async function MensEstheSpotlightPage() {
                 <span className="text-[11px] text-[#d4af37]/40">{normalArticles.length}件</span>
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                {normalArticles.map((article) => (
-                  <WorkCard key={article.id} article={article} fanzaUrl={affiliateUrl(article, isOverseas)} />
+                {normalArticles.map((article, i) => (
+                  <WorkCard
+                    key={article.id}
+                    article={article}
+                    fanzaUrl={affiliateUrl(article, isOverseas)}
+                    section="normal"
+                    index={i + 1}
+                  />
                 ))}
               </div>
             </div>
@@ -538,8 +590,14 @@ export default async function MensEstheSpotlightPage() {
                 <span className="text-[11px] text-[#d4af37]/40">{vrArticles.length}件</span>
               </div>
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                {vrArticles.map((article) => (
-                  <WorkCard key={article.id} article={article} fanzaUrl={affiliateUrl(article, isOverseas)} />
+                {vrArticles.map((article, i) => (
+                  <WorkCard
+                    key={article.id}
+                    article={article}
+                    fanzaUrl={affiliateUrl(article, isOverseas)}
+                    section="vr"
+                    index={i + 1}
+                  />
                 ))}
               </div>
             </div>
@@ -611,15 +669,16 @@ export default async function MensEstheSpotlightPage() {
               </div>
 
               <div className="pt-1">
-                <a
+                <StoreOsCtaLink
                   href={STOREOS_URL}
-                  target="_blank"
-                  rel="noopener noreferrer"
+                  slug={MENS_ESTHE_META.slug}
+                  placement="industry_support"
+                  destination="mens-esthe-lp"
                   className="inline-flex items-center gap-2 rounded-full border border-[#d4af37]/40 bg-[#d4af37]/10 px-5 py-2.5 text-sm font-bold text-[#d4af37] transition-all hover:border-[#d4af37]/70 hover:bg-[#d4af37]/20"
                 >
                   店舗運営者向けStoreOSはこちら
                   <ExternalLink size={13} />
-                </a>
+                </StoreOsCtaLink>
               </div>
             </div>
           </div>

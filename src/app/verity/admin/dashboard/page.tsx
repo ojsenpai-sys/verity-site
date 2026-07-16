@@ -3,7 +3,7 @@ export const revalidate = 0
 
 import type { Metadata } from 'next'
 import { createClient as createSupabaseClient } from '@supabase/supabase-js'
-import { Activity, BarChart3, TrendingUp, Zap, Users, Crown, MousePointerClick, Flame, Trophy } from 'lucide-react'
+import { Activity, BarChart3, TrendingUp, Zap, Users, Crown, MousePointerClick, Flame, Trophy, Sparkles } from 'lucide-react'
 
 export const metadata: Metadata = { title: 'Analytics V2 — VERITY Admin' }
 
@@ -54,6 +54,13 @@ const POSITION_LABELS: Record<string, string> = {
   actress_fav_lock:        '女優詳細：未ログインお気に入りロック',
   profile_fav_actress:     'マイページ：お気に入り女優クリック',
   profile_history_click:   'マイページ：閲覧履歴クリック',
+  // VERITY Spotlight（編集特集）
+  spotlight_mens_esthe:       'Spotlight：メンズエステCTA',
+  spotlight_mens_esthe_image: 'Spotlight：メンズエステ画像',
+  spotlight_feature:          'Spotlight：特集CTA',
+  spotlight_card_image:       'Spotlight：特集カード画像',
+  spotlight_main_cta:         'Spotlight：メインCTA',
+  spotlight_main_image:       'Spotlight：メイン画像',
   // その他（旧）
   actress_page_latest:     '女優詳細：注目作品（旧）',
   actress_page_maker:      '女優詳細：同メーカー（旧）',
@@ -138,7 +145,7 @@ export default async function AnalyticsDashboardPage({
   const h24Ago = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
 
   // ── バッチ1: イベント一括取得 ─────────────────────────────────────────────
-  const [eventsRes, actressViewsRes] = await Promise.all([
+  const [eventsRes, actressViewsRes, spotlightRes] = await Promise.all([
     supabase
       .from('user_events')
       .select('event_name, created_at, metadata, target_id')
@@ -149,6 +156,12 @@ export default async function AnalyticsDashboardPage({
       .select('target_id')
       .eq('event_name', 'actress_view')
       .gte('created_at', h24Ago),
+    // Spotlight 計測（PV / StoreOS）。作品クリックは fanza_click(source=spotlight) から集計。
+    supabase
+      .from('user_events')
+      .select('event_name, metadata')
+      .gte('created_at', since)
+      .in('event_name', ['spotlight_view', 'storeos_click']),
   ])
 
   if (eventsRes.error) console.error('[analytics/dashboard]', eventsRes.error.message)
@@ -173,6 +186,23 @@ export default async function AnalyticsDashboardPage({
   const periodActressViewMap: Record<string, number> = {}  // 期間内の actress_view (target_id = actress ext_id)
   const videoViewMap   = new Map<string, number>()          // article ext_id → video_view 回数
   const fanzaClickMap  = new Map<string, number>()          // article ext_id → fanza_click 回数
+
+  // ── Spotlight 集計 ─────────────────────────────────────────────────────────
+  type SpotAgg = {
+    slug: string; title: string; pv: number
+    workClicks: number; normalClicks: number; vrClicks: number
+    storeosClicks: number
+    works: Map<string, { title: string; clicks: number }>
+  }
+  const spotlightMap = new Map<string, SpotAgg>()
+  const ensureSpot = (slug: string): SpotAgg => {
+    let s = spotlightMap.get(slug)
+    if (!s) {
+      s = { slug, title: slug, pv: 0, workClicks: 0, normalClicks: 0, vrClicks: 0, storeosClicks: 0, works: new Map() }
+      spotlightMap.set(slug, s)
+    }
+    return s
+  }
 
   for (const raw of (eventsRes.data ?? []) as EventRow[]) {
     const jstTs = new Date(new Date(raw.created_at).getTime() + 9 * 60 * 60 * 1000)
@@ -205,6 +235,21 @@ export default async function AnalyticsDashboardPage({
       if (raw.target_id) {
         fanzaClickMap.set(raw.target_id, (fanzaClickMap.get(raw.target_id) ?? 0) + 1)
       }
+
+      // Spotlight 作品クリック（source=spotlight の fanza_click のみ集計。既存の position 集計とは独立）
+      const md = raw.metadata ?? {}
+      if (md.source === 'spotlight') {
+        const sslug = (md.spotlight_slug as string) ?? '(unknown)'
+        const s = ensureSpot(sslug)
+        s.workClicks += 1
+        if (md.spotlight_section === 'vr') s.vrClicks += 1
+        else if (md.spotlight_section === 'normal') s.normalClicks += 1
+        const wtitle = (md.work_title as string) ?? raw.target_id ?? '(unknown)'
+        const wkey   = (md.article_slug as string) ?? raw.target_id ?? wtitle
+        const w = s.works.get(wkey) ?? { title: wtitle, clicks: 0 }
+        w.clicks += 1
+        s.works.set(wkey, w)
+      }
     }
   }
 
@@ -213,6 +258,24 @@ export default async function AnalyticsDashboardPage({
   for (const row of (actressViewsRes.data ?? []) as { target_id: string | null }[]) {
     if (row.target_id) actressViewMap[row.target_id] = (actressViewMap[row.target_id] ?? 0) + 1
   }
+
+  // ── Spotlight PV / StoreOS 集計 ────────────────────────────────────────────
+  for (const raw of (spotlightRes.data ?? []) as { event_name: string; metadata: Record<string, unknown> | null }[]) {
+    const md = raw.metadata ?? {}
+    const sslug = (md.spotlight_slug as string) ?? '(unknown)'
+    const s = ensureSpot(sslug)
+    if (raw.event_name === 'spotlight_view') {
+      s.pv += 1
+      if (typeof md.spotlight_title === 'string' && md.spotlight_title) s.title = md.spotlight_title
+    } else if (raw.event_name === 'storeos_click') {
+      s.storeosClicks += 1
+    }
+  }
+  const spotlightRows = [...spotlightMap.values()].sort((a, b) => b.pv - a.pv || b.workClicks - a.workClicks)
+  const spotlightTopWorks = spotlightRows[0]
+    ? [...spotlightRows[0].works.values()].sort((a, b) => b.clicks - a.clicks).slice(0, 10)
+    : []
+  const pct1 = (num: number, den: number) => (den > 0 ? `${((num / den) * 100).toFixed(1)}%` : '—')
 
   const top10Ids      = Object.entries(actressViewMap).sort(([, a], [, b]) => b - a).slice(0, 10).map(([id]) => id)
   const top5ClickIds  = Object.entries(recentClickMap).sort(([, a], [, b]) => b - a).slice(0, 5).map(([id]) => id)
@@ -653,6 +716,75 @@ export default async function AnalyticsDashboardPage({
                 <span className="text-[10px] font-semibold" style={{ color: '#ff5533', opacity: 0.85 }}>100%</span>
               </div>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── VERITY Spotlight パフォーマンス ─────────────────────────────────── */}
+      <div className="space-y-3">
+        <h2 className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest" style={{ color: '#d4af37' }}>
+          <Sparkles size={12} /> VERITY Spotlight パフォーマンス（直近{period}日間）
+        </h2>
+        {spotlightRows.length === 0 ? (
+          <div className="rounded-xl px-6 py-10 text-center" style={{ border: '1px solid rgba(212,175,55,0.15)', background: 'var(--surface)' }}>
+            <Zap size={20} className="mx-auto mb-2 opacity-20" />
+            <p className="text-sm text-[var(--text-muted)]">Spotlight のデータがまだありません</p>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            {/* 特集別 KPI テーブル */}
+            <div className="rounded-xl overflow-x-auto" style={{ border: '1px solid rgba(212,175,55,0.2)', background: 'var(--surface)' }}>
+              <div className="min-w-[640px]">
+                <div className="grid gap-x-2 border-b border-[var(--border)] px-5 py-2 text-[8px] uppercase tracking-widest text-[var(--text-muted)]"
+                  style={{ gridTemplateColumns: '1fr 4.5rem 5.5rem 4.5rem 6rem 5rem' }}>
+                  <span>特集 / slug</span>
+                  <span className="text-right">PV</span>
+                  <span className="text-right">作品クリック</span>
+                  <span className="text-right">作品CTR</span>
+                  <span className="text-right">StoreOSクリック</span>
+                  <span className="text-right">StoreOS CTR</span>
+                </div>
+                {spotlightRows.map((r) => (
+                  <div key={r.slug} className="grid gap-x-2 items-center px-5 py-2.5 border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--surface-2)] transition-colors"
+                    style={{ gridTemplateColumns: '1fr 4.5rem 5.5rem 4.5rem 6rem 5rem' }}>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: '#d4af37' }}>{r.title}</p>
+                      <p className="text-[9px] font-mono text-[var(--text-muted)] truncate opacity-60">
+                        {r.slug} · 通常 {r.normalClicks.toLocaleString()} / VR {r.vrClicks.toLocaleString()}
+                      </p>
+                    </div>
+                    <span className="text-right text-xs font-black tabular-nums" style={{ color: '#aaff00' }}>{r.pv.toLocaleString()}</span>
+                    <span className="text-right text-xs font-black tabular-nums" style={{ color: '#ff5533' }}>{r.workClicks.toLocaleString()}</span>
+                    <span className="text-right text-[11px] font-bold tabular-nums text-[var(--text)]">{pct1(r.workClicks, r.pv)}</span>
+                    <span className="text-right text-xs font-black tabular-nums" style={{ color: '#22ccff' }}>{r.storeosClicks.toLocaleString()}</span>
+                    <span className="text-right text-[11px] font-bold tabular-nums text-[var(--text)]">{pct1(r.storeosClicks, r.pv)}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* クリック上位作品 TOP10（最上位特集） */}
+            {spotlightTopWorks.length > 0 && (
+              <div className="rounded-xl overflow-hidden" style={{ border: '1px solid rgba(212,175,55,0.15)', background: 'var(--surface)' }}>
+                <div className="px-5 py-2 border-b border-[var(--border)] text-[9px] uppercase tracking-widest text-[var(--text-muted)]">
+                  クリック上位作品 TOP10 — {spotlightRows[0].title}
+                </div>
+                {spotlightTopWorks.map((w, i) => (
+                  <div key={i} className="flex items-center gap-3 px-5 py-2 border-b border-[var(--border)] last:border-b-0 hover:bg-[var(--surface-2)] transition-colors">
+                    <span className="w-5 shrink-0 text-right text-xs font-black tabular-nums" style={{ color: i === 0 ? '#d4af37' : 'var(--text-muted)' }}>{i + 1}</span>
+                    <p className="flex-1 min-w-0 text-[12px] text-[var(--text)] truncate">{w.title}</p>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <MousePointerClick size={11} style={{ color: i === 0 ? '#d4af37' : 'var(--text-muted)' }} />
+                      <span className="text-xs font-black tabular-nums" style={{ color: '#ff5533' }}>{w.clicks.toLocaleString()}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+
+            <p className="text-[9px] text-[var(--text-muted)] italic">
+              ※ 作品クリック = source=spotlight の fanza_click。作品CTR = 作品クリック ÷ PV（spotlight_view）、StoreOS CTR = storeos_click ÷ PV。問い合わせ数は本スプリントでは未統合（StoreOS側実装後に別途）。
+            </p>
           </div>
         )}
       </div>
