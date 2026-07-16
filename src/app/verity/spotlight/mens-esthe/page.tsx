@@ -11,6 +11,7 @@ import {
   BookOpen,
   Store,
   Glasses,
+  Info,
 } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { FanzaLink } from '@/components/FanzaLink'
@@ -417,6 +418,31 @@ export default async function MensEstheSpotlightPage() {
               も異なり、その違いこそがメンズエステという文化の奥行きを生んでいます。
             </p>
           </ProseBlock>
+
+          {/* 編集部注記 — 実店舗と作品を混同させないための注意書き（警告色は使わず黒×金基調） */}
+          <div className="relative overflow-hidden rounded-2xl border border-[#d4af37]/20 bg-[#100d04]/60 p-5 backdrop-blur-sm sm:p-7">
+            <div
+              className="absolute left-0 top-0 h-full w-0.5 rounded-l-2xl"
+              style={{ background: 'linear-gradient(to bottom, #d4af37, rgba(212,175,55,0.08))' }}
+            />
+            <div className="mb-3.5 inline-flex items-center gap-1.5 rounded-full border border-[#d4af37]/35 bg-[#d4af37]/8 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-[#d4af37]">
+              <Info size={11} />
+              編集部より
+            </div>
+            <div className="space-y-3 text-[12.5px] leading-loose text-white/60 sm:text-[13px]">
+              <p>実際のメンズエステは、オイルトリートメントなどのリラクゼーションを提供するサービスです。</p>
+              <p>
+                本特集で紹介している作品に登場する性的な描写や本番行為などは、
+                <strong className="font-bold text-white/85">あくまでフィクションとして制作された映像作品の演出</strong>
+                であり、<strong className="font-bold text-white/85">実際の店舗で提供されるサービス内容とは異なります。</strong>
+              </p>
+              <p>
+                VERITYでは、作品のジャンルとして「メンズエステ作品」を紹介していますが、実際の店舗やセラピストの皆さまが
+                健全なサービスを提供されていることを尊重しています。
+              </p>
+              <p>VERITYでは作品だけでなく、実際に業界を支える店舗運営やサービスの発展にも関心を持っています。</p>
+            </div>
+          </div>
         </section>
 
         {/* ③ なぜメンズエステ作品は人気なのか */}
