@@ -212,6 +212,7 @@ function WorkCard({ article, fanzaUrl }: { article: Article; fanzaUrl: string | 
             <ProxiedImage
               src={imgSrc}
               alt={article.title}
+              loading="lazy"
               className="absolute inset-0 h-full w-full object-cover object-right transition-transform duration-300 group-hover:scale-105"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
