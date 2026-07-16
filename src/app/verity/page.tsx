@@ -547,6 +547,7 @@ export default async function DashboardPage({ searchParams }: PageProps) {
             <div className="space-y-4">
               <div className="h-52 sm:h-60 animate-pulse rounded-2xl bg-[var(--surface)]" />
               <div className="h-52 sm:h-60 animate-pulse rounded-2xl bg-[var(--surface)]" />
+              <div className="h-52 sm:h-60 animate-pulse rounded-2xl bg-[var(--surface)]" />
             </div>
           }
         >
