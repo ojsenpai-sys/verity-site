@@ -2,9 +2,10 @@ import Link from 'next/link'
 import { Sparkles } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
 import { ProxiedImage } from '@/components/ProxiedImage'
+import { SpotlightLink } from '@/components/SpotlightLink'
 import { isBadImageUrl, toHighResPackageUrl, cidToCdnUrl, coverPosClass } from '@/lib/cidUtils'
 import { getAllFeatures } from '@/lib/features'
-import { MENS_ESTHE_META } from '@/lib/mensEsthe'
+import { getAllSpotlights, type SpotlightMeta } from '@/lib/spotlights'
 import type { FeatureConfig } from '@/lib/features'
 import type { Article } from '@/lib/types'
 
@@ -118,12 +119,14 @@ function SingleCard({ feature, article }: { feature: FeatureConfig; article: Art
   )
 }
 
-// ── メンズエステ特集カード（ジャンル特集・SingleCard と同一構造を流用） ────────
+// ── Spotlight 特集カード（レジストリ駆動・SingleCard と同一構造を流用） ────────
 
-function MensEstheCard({ article }: { article: Article | null }) {
+function SpotlightRegistryCard({ meta, article }: { meta: SpotlightMeta; article: Article | null }) {
   return (
-    <Link
-      href={MENS_ESTHE_META.href}
+    <SpotlightLink
+      href={meta.href}
+      slug={meta.slug}
+      placement="home_card"
       className="group relative flex h-52 sm:h-60 w-full overflow-hidden rounded-2xl border border-[#d4af37]/25 bg-[#0a0800] transition-all duration-300 hover:border-[#d4af37]/60 hover:shadow-[0_0_40px_rgba(212,175,55,0.22)]"
     >
       {/* 背景画像 — トップページ LCP と競合させないため lazy・priority なし */}
@@ -131,7 +134,7 @@ function MensEstheCard({ article }: { article: Article | null }) {
         <div className="absolute inset-0">
           <ProxiedImage
             src={proxiedJacket(article)}
-            alt={MENS_ESTHE_META.title}
+            alt={meta.title}
             loading="lazy"
             className={`h-full w-full object-cover ${coverPosClass(article.image_url)} opacity-35 transition-transform duration-500 group-hover:scale-105`}
           />
@@ -159,43 +162,47 @@ function MensEstheCard({ article }: { article: Article | null }) {
       <div className="relative flex flex-col justify-center gap-3 px-6 py-6 max-w-sm">
         <div className="inline-flex items-center gap-1.5 self-start rounded-full border border-[#d4af37]/40 bg-[#d4af37]/10 px-3 py-1 text-[10px] font-bold tracking-widest uppercase text-[#d4af37]">
           <Sparkles size={10} />
-          {MENS_ESTHE_META.seriesLabel}
+          {meta.seriesLabel}
         </div>
 
         <div className="space-y-1.5">
           <p className="text-[11px] font-bold tracking-widest text-[#d4af37]/60 uppercase">
-            Genre Feature
+            {meta.kindLabel}
           </p>
           <h3
             className="text-2xl sm:text-3xl font-black tracking-tight text-[#d4af37]"
             style={{ textShadow: '0 0 32px rgba(212,175,55,0.45)' }}
           >
-            {MENS_ESTHE_META.title}
+            {meta.title}
           </h3>
         </div>
 
-        <p className="text-[12px] leading-relaxed text-white/55 line-clamp-2">
-          癒やし、距離感、空間演出。VERITYが厳選したメンズエステ作品88本を紹介。
-        </p>
+        <p className="text-[12px] leading-relaxed text-white/55 line-clamp-2">{meta.tagline}</p>
 
         <span className="inline-flex items-center gap-1 self-start text-[11px] font-bold text-[#d4af37]/70 transition-colors group-hover:text-[#d4af37]">
           特集を読む →
         </span>
       </div>
-    </Link>
+    </SpotlightLink>
   )
 }
 
-// ── 公開コンポーネント — 最新特集（メンズエステ）＋既存2件を上下連結で表示 ─────
+// ── 公開コンポーネント — Spotlight 特集（新しい順）＋女優特集2件を上下連結で表示 ──
 
 export async function SpotlightCard() {
+  const spotlights = getAllSpotlights()
   const features = getAllFeatures()
-
   const top2 = features.slice(0, 2)
 
-  // メンズエステ特集ヒーロー画像 + 既存特集の画像を並行取得
-  const [mensEstheHero, articles] = await Promise.all([
-    getArticleBySlug(MENS_ESTHE_META.heroSlug),
+  // 各 Spotlight のヒーロー画像 + 既存特集の画像を並行取得
+  const [spotlightHeroes, articles] = await Promise.all([
+    Promise.all(
+      spotlights.map((s) =>
+        s.heroSource.kind === 'byCid'
+          ? getArticleByCid(s.heroSource.value)
+          : getArticleBySlug(s.heroSource.value),
+      ),
+    ),
     Promise.all(
       top2.map((f) =>
         f.heroCid ? getArticleByCid(f.heroCid) : getLatestArticleForTag(f.actressTag),
@@ -205,8 +212,10 @@ export async function SpotlightCard() {
 
   return (
     <div className="space-y-4">
-      {/* 最新特集を先頭（最も目立つ位置）に配置 */}
-      <MensEstheCard article={mensEstheHero} />
+      {/* 最新の Spotlight を先頭（最も目立つ位置）に配置 */}
+      {spotlights.map((s, i) => (
+        <SpotlightRegistryCard key={s.slug} meta={s} article={spotlightHeroes[i]} />
+      ))}
       {top2.map((feature, i) => (
         <SingleCard key={feature.slug} feature={feature} article={articles[i]} />
       ))}

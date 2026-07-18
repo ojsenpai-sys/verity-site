@@ -54,7 +54,15 @@ export type EventName =
   //   spotlight_view … 特集ページ表示（1表示1回・target なし・metadata に slug/件数等）。
   //   storeos_click  … 特集内 StoreOS 導線クリック（1クリック1回・target なし・metadata に placement 等）。
   // 作品カードクリックは既存 fanza_click を再利用（source='spotlight' 等を metadata 付与）。
+  //   spotlight_click … Spotlight 導線のサイト内クリック（流入元・流出先を metadata で識別）。
+  //     metadata.placement    … 'home_card' | 'header_menu' | 'features_index'
+  //                             | 'page_actress' | 'page_ranking' | 'page_related_spotlight'
+  //                             | 'page_work_detail'
+  //     metadata.spotlight_slug … 対象 Spotlight の slug
+  //   ※ FANZA遷移は既存 fanza_click、作品詳細の閲覧は遷移先の video_view、
+  //     女優ページ閲覧は遷移先の actress_view で従来どおり記録される（本イベントは補助計測）。
   | 'spotlight_view'
+  | 'spotlight_click'
   | 'storeos_click'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────

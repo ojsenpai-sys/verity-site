@@ -4,7 +4,9 @@ import { useState, useEffect } from 'react'
 import Link from 'next/link'
 import { Menu, X, Map, Newspaper, Users, LayoutDashboard, Building2, LayoutGrid, Sparkles, Zap, Trophy, Search, CalendarDays } from 'lucide-react'
 import { LoginButton } from './LoginButton'
+import { SpotlightLink } from './SpotlightLink'
 import { withAffiliate } from '@/lib/affiliate'
+import { getAllSpotlights } from '@/lib/spotlights'
 
 const DMM_RANKING_URL = 'https://www.dmm.co.jp/digital/videoa/-/ranking/'
 const DMM_SALE_URL = 'https://video.dmm.co.jp/'
@@ -26,6 +28,16 @@ const NAV_LINKS = [
   { href: '/verity/genres',  label: 'GENRES',           icon: LayoutGrid },
   { href: '/verity/guide',   label: 'VERITYの遊び方',  icon: Map },
 ]
+
+// Spotlight 特集はレジストリ（lib/spotlights.ts）から生成し、特集追加時に
+// メニュー側の編集を不要にする。表示は公開日の新しい順。
+const SPOTLIGHT_LINKS = getAllSpotlights().map((s) => ({
+  href: s.href,
+  slug: s.slug,
+  label: s.title,
+  sub: 'Spotlight',
+  icon: Sparkles,
+}))
 
 const VERITY_CORNER_LINKS = [
   { href: '/verity/events',              label: 'イベント',       sub: 'Event Hub',       icon: CalendarDays },
@@ -170,6 +182,22 @@ export function Header() {
                   <span className="flex-1">{label}</span>
                   <span className="text-[9px] font-normal tracking-wider text-[#c5a059]/35 uppercase">{sub}</span>
                 </Link>
+              ))}
+
+              {/* 個別 Spotlight 特集（一覧の下に一段下げて列挙。特集追加時は自動反映） */}
+              {SPOTLIGHT_LINKS.map(({ href, slug, label, sub, icon: Icon }) => (
+                <SpotlightLink
+                  key={href}
+                  href={href}
+                  slug={slug}
+                  placement="header_menu"
+                  onClick={() => setIsOpen(false)}
+                  className="ml-3 flex items-center gap-3 rounded-xl border border-[#c5a059]/12 bg-[#c5a059]/[0.03] px-4 py-2.5 text-[13px] font-bold text-[#c5a059]/55 transition-all duration-200 hover:border-[#c5a059]/40 hover:bg-[#c5a059]/10 hover:text-[#c5a059] mb-1.5"
+                >
+                  <Icon size={13} className="shrink-0 text-[#c5a059]/45" />
+                  <span className="min-w-0 flex-1 truncate">{label}</span>
+                  <span className="shrink-0 text-[9px] font-normal tracking-wider text-[#c5a059]/30 uppercase">{sub}</span>
+                </SpotlightLink>
               ))}
             </div>
 

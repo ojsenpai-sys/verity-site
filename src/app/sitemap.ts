@@ -16,6 +16,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     // VERITY Spotlight 特集
     { url: `${BASE}/verity/features`,       changeFrequency: 'weekly',  priority: 0.6 },
     { url: `${BASE}/spotlight/mens-esthe`,  changeFrequency: 'weekly',  priority: 0.7 },
+    { url: `${BASE}/spotlight/satsuki-nao`, changeFrequency: 'weekly',  priority: 0.7 },
   ]
 
   const { data: actresses } = await supabase
