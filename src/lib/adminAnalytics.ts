@@ -233,6 +233,12 @@ export type KpiSnapshot = {
   user_events_total: number
   human_work_views: number | null   // 039 additive（未適用日は null）
   human_mau: number | null
+  audience_v3_dau: number | null    // 044 additive（backfill 前の日は null）
+  audience_v3_wau: number | null
+  audience_v3_mau: number | null
+  human_v3_work_views: number | null
+  human_v3_mau: number | null
+  human_v3_nonauto_events: number | null
 }
 export async function getKpiSnapshots(): Promise<KpiSnapshot[]> {
   const c = db(); if (!c) return []
@@ -279,4 +285,33 @@ export async function getAudienceV2(): Promise<Audience> {
     const r = (Array.isArray(data) ? data[0] : data) as { dau: number; wau: number; mau: number } | null
     return { dau: n(r?.dau), wau: n(r?.wau), mau: n(r?.mau) }
   } catch { return { dau: 0, wau: 0, mau: 0 } }
+}
+
+// ── Human v3（能動ベース・044 get_audience_counts_v3）─────────────────────────────
+// v3 = bot UA除外 ∧ (能動イベント>=1 OR distinct page_path(page_view)>=2)。自動発火は判定に不算入。
+// 既存 v2 は温存し並行運用。RPC 未適用時は 0 でグレースフル（v2 のみ表示に劣化）。
+export async function getAudienceV3(): Promise<Audience> {
+  const c = db(); if (!c) return { dau: 0, wau: 0, mau: 0 }
+  try {
+    const { data } = await c.rpc('get_audience_counts_v3')
+    const r = (Array.isArray(data) ? data[0] : data) as { dau: number; wau: number; mau: number } | null
+    return { dau: n(r?.dau), wau: n(r?.wau), mau: n(r?.mau) }
+  } catch { return { dau: 0, wau: 0, mau: 0 } }
+}
+
+// ── Human v3 エンゲージメント（044 get_human_engagement_counts_v3）─────────────────
+// human_nonauto_events は Session Depth v3 の分子（自動イベントを分子からも除外＝整合）。
+// RPC 未適用 or human_mau=0 時は null でカード非表示にグレースフル。
+export type HumanEngagementV3 = {
+  human_work_views: number; human_actress_views: number; human_fanza_clicks: number
+  human_total_events: number; human_nonauto_events: number
+  human_unique_work_viewers: number; human_mau: number
+}
+export async function getHumanEngagementV3(): Promise<HumanEngagementV3 | null> {
+  const c = db(); if (!c) return null
+  try {
+    const { data } = await c.rpc('get_human_engagement_counts_v3')
+    const r = (Array.isArray(data) ? data[0] : data) as HumanEngagementV3 | null
+    return r && r.human_mau > 0 ? r : null
+  } catch { return null }
 }

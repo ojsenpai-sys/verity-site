@@ -3,6 +3,7 @@ import { BarChart3 } from 'lucide-react'
 import {
   getDailyMetrics, getOverview, getEngagement, getFanza, getTags, getPreference, getInvestor,
   getCronStatus, getPreferenceWeights, getAudience, getAudienceV2, getKpiSnapshots, getHumanEngagement,
+  getAudienceV3, getHumanEngagementV3,
 } from '@/lib/adminAnalytics'
 import { AnalyticsCharts } from './AnalyticsCharts'
 import { PreferenceWeightsEditor } from './PreferenceWeightsEditor'
@@ -35,10 +36,18 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default async function AnalyticsPage() {
   const daily = await getDailyMetrics()
   // Audience MAU(=distinct session_id) を先に取得し、母集団別の平均指標の分母に使う。
-  const [audience, audienceV2, kpiTrend, humanEng] = await Promise.all([getAudience(), getAudienceV2(), getKpiSnapshots(), getHumanEngagement()])
+  const [audience, audienceV2, audienceV3, kpiTrend, humanEng, humanEngV3] = await Promise.all([
+    getAudience(), getAudienceV2(), getAudienceV3(), getKpiSnapshots(), getHumanEngagement(), getHumanEngagementV3(),
+  ])
   // Human版（30日/30日）。additive・RPC未適用時は humanEng=null でカード非表示。
   const avgViewsPerHumanAudience = humanEng && humanEng.human_mau > 0 ? Math.round((humanEng.human_work_views / humanEng.human_mau) * 10) / 10 : 0
   const humanSessionDepth        = humanEng && humanEng.human_mau > 0 ? Math.round((humanEng.human_total_events / humanEng.human_mau) * 10) / 10 : 0
+  // Human v3（能動ベース・beta）。Session Depth v3 は分子も自動イベント除外（human_nonauto_events）で整合。
+  const avgViewsPerHumanV3 = humanEngV3 && humanEngV3.human_mau > 0 ? Math.round((humanEngV3.human_work_views / humanEngV3.human_mau) * 10) / 10 : 0
+  const humanSessionDepthV3 = humanEngV3 && humanEngV3.human_mau > 0 ? Math.round((humanEngV3.human_nonauto_events / humanEngV3.human_mau) * 10) / 10 : 0
+  const v3Stickiness = audienceV3.mau > 0 ? Math.round((audienceV3.dau / audienceV3.mau) * 1000) / 10 : 0
+  const v3VsRaw = audience.mau > 0 ? Math.round((1 - audienceV3.mau / audience.mau) * 1000) / 10 : 0
+  const v3VsV2  = audienceV2.mau > 0 ? Math.round((1 - audienceV3.mau / audienceV2.mau) * 1000) / 10 : 0
   const [overview, engagement, fanza, tags, preference, investor, cron, weights] = await Promise.all([
     getOverview(daily), getEngagement(daily, audience.mau), getFanza(daily), getTags(), getPreference(), getInvestor(daily, audience.mau),
     getCronStatus(), getPreferenceWeights(),
@@ -72,6 +81,7 @@ export default async function AnalyticsPage() {
                   <th className="px-2.5 py-1.5 font-semibold">日付</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">会員 計/活</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">Aud v2 D/W/M</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold" style={{ color: '#aaff00' }}>v3 MAU (beta)</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">Raw MAU</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">Pref</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">Fav W/A</th>
@@ -87,6 +97,7 @@ export default async function AnalyticsPage() {
                     <td className="px-2.5 py-1.5 font-semibold text-[var(--text)]">{s.snapshot_date}</td>
                     <td className="px-2.5 py-1.5 text-right">{s.members_total}/{s.members_active}</td>
                     <td className="px-2.5 py-1.5 text-right font-bold" style={{ color: '#aaff00' }}>{s.audience_v2_dau}/{s.audience_v2_wau}/{s.audience_v2_mau}</td>
+                    <td className="px-2.5 py-1.5 text-right font-bold" style={{ color: '#aaff00' }}>{s.audience_v3_mau != null ? fmt(s.audience_v3_mau) : '—'}</td>
                     <td className="px-2.5 py-1.5 text-right text-[var(--text-muted)]">{fmt(s.audience_raw_mau)}</td>
                     <td className="px-2.5 py-1.5 text-right">{s.preference_profiles}</td>
                     <td className="px-2.5 py-1.5 text-right">{s.favorite_work_events}/{s.favorite_actress_events}</td>
@@ -133,6 +144,31 @@ export default async function AnalyticsPage() {
           <Stat label="Audience MAU (v2)" value={fmt(audienceV2.mau)} sub={`生値 ${fmt(audience.mau)}`} />
           <Stat label="Audience Stickiness" value={`${audienceStickiness}%`} sub="v2 DAU÷MAU" />
         </div>
+      </Section>
+
+      {/* Audience v3（能動ベース・beta）— 自動発火イベントを判定から除外 */}
+      <Section title="Audience v3（能動ベース・beta）">
+        <p className="-mt-1 text-[11px] text-[var(--text-muted)]">
+          ※ <strong style={{ color: '#aaff00' }}>Human v3（beta）</strong>：bot UA除外に加え、<strong className="text-[var(--text)]">能動イベント≥1（クリック/お気に入り/登録等）</strong> または{' '}
+          <strong className="text-[var(--text)]">複数ページ回遊（distinct page_path≥2）</strong> のセッションのみを Human とする。
+          トップの自動カルーセル <code>hero_auto_slide_view</code> 等の自動発火は判定に算入しない（v2 はこれで約5倍に膨張していた）。
+          {v3VsV2 > 0 && <> v2 から <strong style={{ color: '#fbbf24' }}>−{v3VsV2}%</strong>、生値から <strong style={{ color: '#fbbf24' }}>−{v3VsRaw}%</strong> を自動発火/未捕捉botとして除外。</>}
+          <br />既存 <strong className="text-[var(--text)]">Raw / Human v2</strong> は温存し比較用に並行運用。
+        </p>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          <Stat label="Audience DAU (v3)" value={fmt(audienceV3.dau)} sub={`v2 ${fmt(audienceV2.dau)} / 生 ${fmt(audience.dau)}`} />
+          <Stat label="Audience WAU (v3)" value={fmt(audienceV3.wau)} sub={`v2 ${fmt(audienceV2.wau)} / 生 ${fmt(audience.wau)}`} />
+          <Stat label="Audience MAU (v3)" value={fmt(audienceV3.mau)} sub={`v2 ${fmt(audienceV2.mau)} / 生 ${fmt(audience.mau)}`} />
+          <Stat label="Stickiness (v3)" value={`${v3Stickiness}%`} sub="v3 DAU÷MAU" />
+        </div>
+        {humanEngV3 && (
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Stat label="Human v3 作品閲覧" value={fmt(humanEngV3.human_work_views)} sub="30日・Human v3内" />
+            <Stat label="Human v3 女優閲覧" value={fmt(humanEngV3.human_actress_views)} sub="30日・Human v3内" />
+            <Stat label="Avg Views / Human v3" value={fmt(avgViewsPerHumanV3)} sub="30日Human v3閲覧 ÷ v3 MAU" />
+            <Stat label="Session Depth v3" value={fmt(humanSessionDepthV3)} sub="非自動イベント ÷ v3 MAU（分子も自動除外）" />
+          </div>
+        )}
       </Section>
 
       {/* Funnel（登録転換）— データ検証中のため非公開 */}
