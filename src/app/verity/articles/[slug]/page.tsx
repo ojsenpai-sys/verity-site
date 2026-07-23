@@ -11,6 +11,8 @@ import { LogView } from '@/components/LogView'
 import { GenreScoreTracker } from '@/components/GenreScoreTracker'
 import { FanzaLink } from '@/components/FanzaLink'
 import { RelatedWorksScored } from '@/components/RelatedWorksScored'
+import { RecentlyViewedRecorder } from '@/components/RecentlyViewedRecorder'
+import { RecentlyViewedSection } from '@/components/RecentlyViewedSection'
 import { GenreDiscoveryBlock } from '@/components/GenreDiscoveryBlock'
 import { PopularityBadge } from '@/components/PopularityBadge'
 import { PositioningBlock } from '@/components/PositioningBlock'
@@ -364,6 +366,18 @@ export default async function ArticlePage({
   const actressNameSet = new Set(actresses.map((ac) => ac.name))
   const genreTags = (a.tags ?? []).filter((t2) => !actressNameSet.has(t2))
 
+  // 「最近見た作品」記録用スナップショット（localStorage）。
+  // 画像は表示ロジックと同じく image_url → 同人書影 の順で解決する。
+  const recordImageUrl =
+    a.image_url && a.image_url.trim() && a.image_url !== 'NOW PRINTING'
+      ? a.image_url
+      : isDoujinArticle && metaDirectUrl
+        ? (() => {
+            const m = metaDirectUrl.match(/\/cid=([^/?]+)/)
+            return m ? `https://pics.dmm.co.jp/digital/comic/${m[1]}/${m[1]}pl.jpg` : null
+          })()
+        : null
+
   // ── Breadcrumb data ─────────────────────────────────────────────────────────
 
   const BASE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
@@ -397,6 +411,14 @@ export default async function ArticlePage({
   return (
     <div className="mx-auto max-w-3xl px-4 py-10 space-y-8">
       <LogView targetType="article" targetId={a.external_id} />
+      <RecentlyViewedRecorder
+        cid={a.external_id}
+        slug={a.slug}
+        title={a.title}
+        img={recordImageUrl}
+        actress={actresses[0]?.name}
+        fz={rawFanzaUrl}
+      />
       <GenreScoreTracker genreTags={genreTags} weight={1} />
 
       {/* BreadcrumbList 構造化データ */}
@@ -688,6 +710,9 @@ export default async function ArticlePage({
 
       {/* スコアベース関連作品（女優+10/シリーズ+8/メーカー+5/ジャンル+3/発売日近い+1） */}
       <RelatedWorksScored article={a} />
+
+      {/* 最近見た作品（localStorage・現在の作品は除外 / 履歴あり時のみ表示） */}
+      <RecentlyViewedSection source="work_page" excludeCid={a.external_id} />
 
       {/* ジャンル発見ブロック — 人気/急上昇タグから他作品へ */}
       <GenreDiscoveryBlock

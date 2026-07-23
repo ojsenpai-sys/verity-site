@@ -37,6 +37,7 @@ import { TopSearchBar } from '@/components/TopSearchBar'
 import { TrendingNowSection } from '@/components/TrendingNowSection'
 import { TrendingWidget } from '@/components/TrendingWidget'
 import { FanzaChijoSaleBanner } from '@/components/FanzaChijoSaleBanner'
+import { RecentlyViewedSection } from '@/components/RecentlyViewedSection'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -539,6 +540,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       }>
         <WeeklyRankingsSection />
       </Suspense>
+
+      {/* ── 0b-2c. 最近見た作品（localStorage・履歴あり時のみ表示 / 再訪回遊） ── */}
+      <RecentlyViewedSection source="home" />
 
       {/* ── 0b-3. VERITY Spotlight（最新編集特集バナー 2連） ─────────── */}
       <section id="spotlight">
