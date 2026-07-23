@@ -19,6 +19,11 @@ export type EventName =
   | 'signup_start'
   | 'signup_complete'
   | 'actress_view'      // = view_work の女優版: view_actress
+  // 女優ページへの内部回遊クリック（計測専用）。actress_view（遷移先ページロード時発火・受動）と
+  // 別に、クリック元 placement を判別するために使う。target_id=女優 external_id（actress_view と同規約）。
+  // ※ is_active_event()（Human v3 能動判定）には現時点で含めない。将来能動に含める場合は
+  //   forward-fix migration で is_active_event() に追加が必要（本イベント追加は client のみ・DB変更なし）。
+  | 'actress_click'
   | 'video_view'        // = view_work
   | 'fanza_click'       // = click_fanza
   | 'page_view'         // 主要ページ閲覧（target_typeなし・metadata.pageType）
@@ -82,6 +87,8 @@ export interface TrackPayload {
 // ── イベント → DB ターゲット マッピング ────────────────────────────────────────
 const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' | 'cid' }>> = {
   actress_view:     { type: 'actress', idKey: 'actressId' },
+  // actress_click も女優単位。target_id=女優 external_id / それ以外は metadata（actress_view と同規約）。
+  actress_click:    { type: 'actress', idKey: 'actressId' },
   video_view:       { type: 'article', idKey: 'cid'       },
   fanza_click:      { type: 'article', idKey: 'cid'       },
   favorite_work:      { type: 'article', idKey: 'cid'       },

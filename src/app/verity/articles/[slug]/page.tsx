@@ -13,6 +13,9 @@ import { FanzaLink } from '@/components/FanzaLink'
 import { RelatedWorksScored } from '@/components/RelatedWorksScored'
 import { RecentlyViewedRecorder } from '@/components/RecentlyViewedRecorder'
 import { RecentlyViewedSection } from '@/components/RecentlyViewedSection'
+import { WorkActressLinks } from '@/components/WorkActressLinks'
+import { SameActressWorks } from '@/components/SameActressWorks'
+import { actressHrefFromMeta } from '@/lib/actressUrl'
 import { GenreDiscoveryBlock } from '@/components/GenreDiscoveryBlock'
 import { PopularityBadge } from '@/components/PopularityBadge'
 import { PositioningBlock } from '@/components/PositioningBlock'
@@ -569,6 +572,9 @@ export default async function ArticlePage({
         </div>
       )}
 
+      {/* 出演女優への内部回遊導線（作品上部・chip＋プロフィールCTA） */}
+      <WorkActressLinks actresses={actresses} sourceCid={a.external_id} sourceSlug={a.slug} />
+
       {/* Metadata card */}
       <dl className="rounded-xl border border-[var(--border)] bg-[var(--surface)] p-5 space-y-4">
         {actresses.length > 0 && (
@@ -576,7 +582,7 @@ export default async function ArticlePage({
             {actresses.map((act) => (
               <Link
                 key={act.id}
-                href={act.id > 0 ? `/actresses/dmm-actress-${act.id}` : `/?tag=${encodeURIComponent(act.name)}`}
+                href={actressHrefFromMeta(act)}
                 className="inline-flex items-center rounded-full border border-[var(--magenta)]/40 bg-[var(--magenta)]/10 px-2.5 py-0.5 text-[13px] font-semibold text-[var(--magenta)] hover:bg-[var(--magenta)]/25 transition-colors"
               >
                 {act.name}
@@ -692,6 +698,9 @@ export default async function ArticlePage({
 
       {/* Affiliate links from DB */}
       <AffiliateLinkBlock links={links} />
+
+      {/* この女優の出演作品（主要女優優先・動画優先・現作品除外・女優ページ導線） */}
+      <SameActressWorks actresses={actresses} currentSlug={a.slug} currentCid={a.external_id} />
 
       {/* Raw metadata (dev only) */}
       {process.env.NODE_ENV === 'development' && a.metadata && (
