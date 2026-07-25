@@ -8,6 +8,7 @@ import { ProxiedImage } from '@/components/ProxiedImage'
 import { FanzaLink } from '@/components/FanzaLink'
 import { ActressLink } from '@/components/ActressLink'
 import { actressExternalIdFromNumericId, actressPageHref } from '@/lib/actressUrl'
+import { buildActressSearchNames } from '@/lib/actressSearch'
 import type { Article } from '@/lib/types'
 
 const BASE_SELECT =
@@ -74,10 +75,31 @@ export async function SameActressWorks({ actresses, currentSlug, currentCid }: P
   const externalId = hasPage ? actressExternalIdFromNumericId(primary.id) : null
 
   const supabase = await createClient()
+
+  // alias 対応: 作品 metadata の primary.name だけでは、女優ページ側 tags の表記揺れ
+  // （例: 河北彩花）で取りこぼす。女優レコードの正規名 + metadata.aliases を取り込み、
+  // 女優ページと同じ searchNames 方式で overlaps 検索する。Analytics target_id / 表示名は
+  // primary（作品 metadata 由来）を維持するため、検索範囲のみを拡張する。
+  let searchNames = buildActressSearchNames(primary.name)
+  if (externalId) {
+    const { data: actressRow } = await supabase
+      .from('actresses')
+      .select('name, metadata')
+      .eq('external_id', externalId)
+      .maybeSingle()
+    if (actressRow) {
+      searchNames = buildActressSearchNames(
+        primary.name,
+        actressRow.metadata as Record<string, unknown> | null,
+        actressRow.name as string | undefined,
+      )
+    }
+  }
+
   const { data } = await supabase
     .from('articles')
     .select(BASE_SELECT)
-    .overlaps('tags', [primary.name])
+    .overlaps('tags', searchNames)
     .neq('slug', currentSlug)
     .eq('is_active', true)
     .order('published_at', { ascending: false })
