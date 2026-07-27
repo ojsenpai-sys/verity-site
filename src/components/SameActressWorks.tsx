@@ -8,7 +8,6 @@ import { ProxiedImage } from '@/components/ProxiedImage'
 import { FanzaLink } from '@/components/FanzaLink'
 import { ActressLink } from '@/components/ActressLink'
 import { actressExternalIdFromNumericId, actressPageHref } from '@/lib/actressUrl'
-import { buildActressSearchNames } from '@/lib/actressSearch'
 import type { Article } from '@/lib/types'
 
 const BASE_SELECT =
@@ -59,51 +58,44 @@ type Props = {
 
 /**
  * 「この女優の出演作品」セクション。
- *   - 主要女優 1 名（最初の id>0、無ければ最初の女優）を優先し、その出演作品を最大 6 件表示。
- *   - 抽出: tags に女優名を含む(overlaps) ∧ is_active ∧ 現作品除外。動画作品を優先し
- *     同一品番は digital 優先で重複排除。
+ *   - 主要女優 1 名（最初の id>0 の女優）を優先し、その出演作品を最大 6 件表示。
+ *   - 抽出: metadata.actress 配列に primary.id を含む作品（JSONB containment
+ *     `metadata->actress @> [{"id": <primary.id>}]`）∧ is_active ∧ 現作品除外。
+ *     tags overlaps 方式（表記揺れ・別名で取りこぼす）から ID 一致方式へ切替済み
+ *     （Phase 1-2.3）。ID 方式は旧 tags 方式の完全上位集合のため tags フォールバックは無い。
+ *     動画作品を優先し同一品番は digital 優先で重複排除。
+ *   - metadata.actress[].id の有効性（>0）と、actresses テーブルに対応レコードが
+ *     実在するかは別物（本番実測: サンプル3313件中585件が孤立ID＝レコード無し）。
+ *     検索は ID 方式のみで行うが、女優ページへのリンクは actresses レコードが実在する
+ *     場合のみ生成する（無ければ従来通りタグ検索フォールバックへ）。
  *   - カードは画像/タイトル→VERITY内作品ページ（内部回遊優先）、別途 FANZA ボタン。
  *   - 見出しの女優名リンクと末尾 CTA から女優ページへ（actress_click 計測）。
- *   - 女優情報が無い / 該当作品が無い場合は何も表示しない。
+ *   - primary.id が正の有限数でない（＝作品側に女優IDが無い）場合は検索自体を行わずセクション
+ *     非表示。該当作品が無い場合も同様。
  */
 export async function SameActressWorks({ actresses, currentSlug, currentCid }: Props) {
   const named = actresses.filter((a) => a.name && a.name.trim().length > 0)
   if (named.length === 0) return null
 
-  const primary = named.find((a) => a.id > 0) ?? named[0]
-  const hasPage = primary.id > 0
-  const externalId = hasPage ? actressExternalIdFromNumericId(primary.id) : null
+  const primary = named.find((a) => Number.isFinite(a.id) && a.id > 0)
+  if (!primary) return null
+  const externalId = actressExternalIdFromNumericId(primary.id)
 
   const supabase = await createClient()
 
-  // alias 対応: 作品 metadata の primary.name だけでは、女優ページ側 tags の表記揺れ
-  // （例: 河北彩花）で取りこぼす。女優レコードの正規名 + metadata.aliases を取り込み、
-  // 女優ページと同じ searchNames 方式で overlaps 検索する。Analytics target_id / 表示名は
-  // primary（作品 metadata 由来）を維持するため、検索範囲のみを拡張する。
-  let searchNames = buildActressSearchNames(primary.name)
-  if (externalId) {
-    const { data: actressRow } = await supabase
-      .from('actresses')
-      .select('name, metadata')
-      .eq('external_id', externalId)
-      .maybeSingle()
-    if (actressRow) {
-      searchNames = buildActressSearchNames(
-        primary.name,
-        actressRow.metadata as Record<string, unknown> | null,
-        actressRow.name as string | undefined,
-      )
-    }
-  }
-
-  const { data } = await supabase
-    .from('articles')
-    .select(BASE_SELECT)
-    .overlaps('tags', searchNames)
-    .neq('slug', currentSlug)
-    .eq('is_active', true)
-    .order('published_at', { ascending: false })
-    .limit(24)
+  // リンク制御用の実在確認（検索とは独立）と、関連作品検索（ID方式）を並行実行。
+  const [{ data: actressRow }, { data }] = await Promise.all([
+    supabase.from('actresses').select('external_id').eq('external_id', externalId).maybeSingle(),
+    supabase
+      .from('articles')
+      .select(BASE_SELECT)
+      .filter('metadata->actress', 'cs', JSON.stringify([{ id: primary.id }]))
+      .neq('slug', currentSlug)
+      .eq('is_active', true)
+      .order('published_at', { ascending: false })
+      .limit(24),
+  ])
+  const hasPage = !!actressRow
 
   let rows = (data ?? []) as Article[]
   rows = deduplicateDigitalFirst(rows).filter((r) => r.external_id !== currentCid)
@@ -112,14 +104,14 @@ export async function SameActressWorks({ actresses, currentSlug, currentCid }: P
 
   if (works.length === 0) return null
 
-  const ctaHref = hasPage ? actressPageHref(externalId!) : `/?tag=${encodeURIComponent(primary.name)}`
+  const ctaHref = hasPage ? actressPageHref(externalId) : `/?tag=${encodeURIComponent(primary.name)}`
 
   return (
     <section className="space-y-4 border-t border-[var(--border)] pt-8">
       <div className="flex items-center gap-2.5">
         <Clapperboard size={15} className="text-[var(--magenta)]" />
         <h2 className="text-base font-bold tracking-tight text-[var(--text)]">
-          {hasPage && externalId ? (
+          {hasPage ? (
             <ActressLink
               href={actressPageHref(externalId)}
               actressId={externalId}
@@ -196,7 +188,7 @@ export async function SameActressWorks({ actresses, currentSlug, currentCid }: P
       </div>
 
       {/* 女優ページ CTA */}
-      {hasPage && externalId ? (
+      {hasPage ? (
         <ActressLink
           href={actressPageHref(externalId)}
           actressId={externalId}
