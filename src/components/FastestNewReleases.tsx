@@ -10,6 +10,10 @@ import type { Article } from '@/lib/types'
 type MakerConfig = {
   id: string
   label: string
+  // このメーカー枠の最新作CIDリストを最後に更新した日時（JST, ISO8601）。
+  // maker-sync cron（scripts/maker-sync.mjs）の jstIso() 形式に合わせる。
+  // 表示順はこの値の降順（同時刻は配列順を維持する安定ソート）。
+  updatedAt: string
   cids: readonly string[]
   actressMap: Record<string, string>
 }
@@ -18,6 +22,7 @@ const MAKERS: MakerConfig[] = [
   {
     id: 'moodyz',
     label: 'ムーディーズ',
+    updatedAt: '2026-07-21T10:32:57+09:00',
     cids: [
       'mida00681', 'mida00703', 'mida00741', 'mida00742', 'mida00743',
       'mida00746', 'mida00747', 'mida00748', 'mida00752', 'mida00753',
@@ -47,10 +52,18 @@ const MAKERS: MakerConfig[] = [
   {
     id: 'honchu',
     label: '本中',
+    updatedAt: '2026-07-28T00:15:00+09:00',
+    // 2026-07-28 昨晩解禁分5作を先頭に追加。
     cids: [
+      'hmn00886', 'hmn00884', 'hmn00898', 'hmn00897', 'hmn00893',
       'hmn00899', 'hmn00895', 'hmn00900', 'hndb00282', 'hmn00896',
     ],
     actressMap: {
+      hmn00886: '彩月七緒・羽月乃蒼',
+      hmn00884: '東條なつ',
+      hmn00898: '香水じゅん',
+      hmn00897: 'ひなたなつ',
+      hmn00893: '倉本すみれ',
       hmn00899: '鈴の家りん',
       hmn00895: '朝比奈紗良',
       hmn00900: '竹内有紀',
@@ -61,6 +74,7 @@ const MAKERS: MakerConfig[] = [
   {
     id: 'premium',
     label: 'プレミアム',
+    updatedAt: '2026-07-21T10:32:57+09:00',
     cids: [
       'pred00884', 'pbd00523', 'pred00889', 'pred00891', 'pred00887',
       'pred00892', 'pred00882', 'prwf00015', 'pred00871', 'pred00888',
@@ -84,6 +98,7 @@ const MAKERS: MakerConfig[] = [
   {
     id: 'ebody',
     label: 'E-BODY',
+    updatedAt: '2026-07-21T10:32:57+09:00',
     cids: [
       'ebwh00356', 'ebwh00354', 'ebwh00343', 'ebwh00350', 'eyan00228',
       'mkck00427', 'mkck00428', 'ebwh00353',
@@ -102,6 +117,7 @@ const MAKERS: MakerConfig[] = [
   {
     id: 'oppai',
     label: 'OPPAI',
+    updatedAt: '2026-07-21T10:32:57+09:00',
     cids: [
       'ppbd00322', 'pppe00444', 'pppe00436', 'pppe00438', 'pppe00437',
       'pppe00435', 'pppe00434', 'pppe00433',
@@ -120,15 +136,42 @@ const MAKERS: MakerConfig[] = [
   {
     id: 's1',
     label: 'エスワン',
-    // 2026-07-14 0時解禁の videoa 全作（DMM配信日順＝先頭ほど新しい）。
-    // 単独作に加え、共演作・オールスター総集編も本日解禁分として網羅。
+    updatedAt: '2026-07-28T00:30:00+09:00',
+    // 2026-07-28 昨晩解禁分21作を先頭に追加（DMM配信日順＝先頭ほど新しい）。
+    // 2026-07-14 0時解禁の videoa 全作は後続。単独作に加え、共演作・オールスター総集編も網羅。
     cids: [
+      'snos00333', 'snos00360', 'snos00365', 'snos00362', 'snos00356',
+      'snos00369', 'snos00335', 'snos00345', 'snos00409', 'snos00373',
+      'snos00346', 'snos00290', 'snos00311', 'snos00315', 'snos00317',
+      'snos00371', 'snos00340', 'snos00145',
+      'ofje00649', 'ofje00655', 'ofje00654',
       'snos00361', 'snos00357', 'snos00353', 'snos00334', 'snos00332',
       'snos00323', 'snos00321', 'snos00309', 'snos00306', 'snos00298',
       'snos00297', 'snos00270', 'snos00246', 'snos00065',
       'ofje00652', 'ofje00651', 'ofje00650',
     ],
     actressMap: {
+      snos00333: '渚あいり',
+      snos00360: '浅野こころ',
+      snos00365: '白上咲花',
+      snos00362: '夏生なつ',
+      snos00356: '兒玉七海',
+      snos00369: '七ツ森りり',
+      snos00335: '木村愛心',
+      snos00345: '鷲尾めい',
+      snos00409: '星空ねる',
+      snos00373: '早坂奏音',
+      snos00346: '初美なのか',
+      snos00290: '白石透羽',
+      snos00311: '渡部ほの',
+      snos00315: '白花にあ',
+      snos00317: '蜜このは',
+      snos00371: '河北彩花',
+      snos00340: '新木希空',
+      snos00145: '倉木華',
+      ofje00649: '桜乃りの',
+      ofje00655: '紫堂るい 他',
+      ofje00654: '雛形みくる 他',
       snos00361: '楓ふうあ',
       snos00357: '川越にこ',
       snos00353: '村上悠華・miru',
@@ -149,6 +192,7 @@ const MAKERS: MakerConfig[] = [
   {
     id: 'ideapocket',
     label: 'アイデアポケット',
+    updatedAt: '2026-07-14T11:13:05+09:00',
     // 2026-07-14 0時解禁の videoa 全作（DMM配信日順＝先頭ほど新しい）。
     // 単独作に加え、アイポケBEST総集編も本日解禁分として網羅。
     cids: [
@@ -187,6 +231,7 @@ const MAKERS: MakerConfig[] = [
   {
     id: 'kawaii',
     label: 'kawaii',
+    updatedAt: '2026-07-07T20:14:58+09:00',
     cids: [
       'cawb00023', 'cawb00018', 'cawb00022', 'cawb00026', 'cawb00012',
       'cawd00999', 'cawd00989', 'cawb00025', 'cawb00021', 'cawb00017',
@@ -208,6 +253,12 @@ const MAKERS: MakerConfig[] = [
     },
   },
 ]
+
+// 最終更新日時 (updatedAt) の降順。Array.prototype.sort は安定ソートなので
+// 同時刻のメーカーは MAKERS 内の元の並び順を維持する。
+const MAKERS_BY_RECENCY = [...MAKERS].sort(
+  (a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+)
 
 const ALL_CIDS = MAKERS.flatMap((m) => [...m.cids])
 
@@ -252,7 +303,7 @@ export async function FastestNewReleases() {
   const articleMap = await getAllArticles()
 
   // DB記事があれば優先、無ければCIDから直接カード化（解禁直後でDB未登録でも表示）。
-  const makerSections = MAKERS.map((maker) => ({
+  const makerSections = MAKERS_BY_RECENCY.map((maker) => ({
     id:    maker.id,
     label: maker.label,
     cards: maker.cids.map((cid) => {
