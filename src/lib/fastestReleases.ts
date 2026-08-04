@@ -2,12 +2,12 @@
  * 最新作最速更新情報 — 自動抽出ロジック(Phase B / A案)。
  *
  * 対象8メーカーの articles を「is_active=true かつ metadata.floor='videoa'」に限定して
- * メーカーごとに fetched_at 降順で直近 MAX_CARDS_PER_MAKER 件を取得する。
+ * メーカーごとに fetched_at 降順で直近 TOP_PAGE_CARDS_PER_MAKER 件を取得する。
  *
  * 「並び順」と「表示件数」は分離する(2026-08-04 オーナー指示):
  *   - 並び順  : メーカー内最新 fetched_at(JST日付)の降順。更新されたメーカーほど上に来る。
  *               同日は下記 TARGET_MAKERS の配列順(既存 MAKERS 基本順を踏襲)で安定表示する。
- *   - 表示件数: 「最新入荷日と同じ日付」に絞り込まない。メーカーごと直近 MAX_CARDS_PER_MAKER 件
+ *   - 表示件数: 「最新入荷日と同じ日付」に絞り込まない。メーカーごと直近 TOP_PAGE_CARDS_PER_MAKER 件
  *               (fetched_at降順)をそのまま表示する。更新数の多いメーカー(例: S1)で表示件数が
  *               急に減らないようにするため。
  *
@@ -44,6 +44,8 @@ export type FastestMakerSection = {
   updateDateKey: string
   source: 'auto' | 'fallback'
   cards: FastestCard[]
+  /** 「もっと見る」内部リンク先(既存 /verity/makers/[makerId]) */
+  moreUrl: string
 }
 
 type TargetMaker = { id: number; key: FastestMakerKey; label: string }
@@ -63,9 +65,11 @@ const TARGET_MAKERS: TargetMaker[] = [
   { id: 4469, key: 'kawaii',     label: 'kawaii' },
 ]
 
-// メーカーごとの表示件数(オーナー指定)。「最新入荷日と同じ日付」への絞り込みは行わない
-// (更新数の多いメーカーで表示件数が急に減るのを避けるため)。fetched_at 降順で直近40件をそのまま採用する。
-const MAX_CARDS_PER_MAKER = 40
+// トップページ初期表示のメーカーごと件数(2026-08-04 性能最適化・オーナー指定)。
+// 「最新入荷日と同じ日付」への絞り込みは行わない(fetched_at降順で直近N件をそのまま採用)。
+// 残りは /verity/makers/[makerId](既存の全件一覧ページ)への「もっと見る」導線に委ねる。
+// サーバー側の取得件数自体をこの値に絞る(Client Componentへ全件渡してCSSで隠す方式は禁止)。
+const TOP_PAGE_CARDS_PER_MAKER = 10
 
 // ── 手動フォールバック配列(元 FastestNewReleases.tsx から移設。削除しない) ──────────────
 type FallbackMakerConfig = {
@@ -337,7 +341,7 @@ async function fetchMakerRowsRaw(makerId: number): Promise<ArticleRow[]> {
     .eq('metadata->>floor', 'videoa')
     .contains('metadata', { maker: [{ id: makerId }] })
     .order('fetched_at', { ascending: false })
-    .limit(MAX_CARDS_PER_MAKER)
+    .limit(TOP_PAGE_CARDS_PER_MAKER)
   if (error) throw new Error(`maker=${makerId} select error: ${error.message}`)
   return (data ?? []) as ArticleRow[]
 }
@@ -400,12 +404,17 @@ function rowToCard(row: ArticleRow): FastestCard {
 /**
  * 1メーカー分の自動抽出。
  * 並び順に使う updateDateKey は「最新1件の fetched_at」の JST日付のみを表す。
- * 表示件数はこの日付に絞り込まない — 直近 MAX_CARDS_PER_MAKER 件をそのまま採用する
+ * 表示件数はこの日付に絞り込まない — 直近 TOP_PAGE_CARDS_PER_MAKER 件をそのまま採用する
  * (2026-08-04 オーナー指示: 「並び順」と「表示件数」を分離)。
  *
  * 戻り値 null = 自動取得結果が0件(=呼び出し側でフォールバックへ切り替える)。
  * 例外を投げた場合も呼び出し側でフォールバックへ切り替える(Supabaseエラー・タイムアウト等)。
  */
+// 「もっと見る」内部リンク先。既存 /verity/makers/[makerId](maker_idベースの全件一覧・ページネーション済み)を再利用する。
+function moreUrl(maker: TargetMaker): string {
+  return `/verity/makers/${maker.id}`
+}
+
 async function getAutoMakerSection(maker: TargetMaker): Promise<FastestMakerSection | null> {
   const rows = await getCachedMakerRows(maker.id)
   const valid = rows.filter((r) => rowHasVideoUrl(r) && !!r.external_id && !!r.title)
@@ -417,6 +426,7 @@ async function getAutoMakerSection(maker: TargetMaker): Promise<FastestMakerSect
     updateDateKey: toJstDateKey(valid[0].fetched_at),
     source: 'auto',
     cards: valid.map(rowToCard),
+    moreUrl: moreUrl(maker),
   }
 }
 
@@ -426,9 +436,10 @@ function buildFallbackSection(
 ): FastestMakerSection {
   const manual = FALLBACK_MAKERS.find((m) => m.id === maker.key)
   if (!manual) {
-    return { id: maker.key, label: maker.label, updateDateKey: '0000-00-00', source: 'fallback', cards: [] }
+    return { id: maker.key, label: maker.label, updateDateKey: '0000-00-00', source: 'fallback', cards: [], moreUrl: moreUrl(maker) }
   }
-  const cards: FastestCard[] = manual.cids.map((cid) => {
+  // フォールバック時もトップページ表示は TOP_PAGE_CARDS_PER_MAKER 件まで(手動配列自体は全件保持)。
+  const cards: FastestCard[] = manual.cids.slice(0, TOP_PAGE_CARDS_PER_MAKER).map((cid) => {
     const row = articleMap?.get(cid) ?? null
     const cover = effectiveCoverUrl(cid, row?.image_url ?? null)
     return {
@@ -447,6 +458,7 @@ function buildFallbackSection(
     updateDateKey: manual.updatedAt.slice(0, 10),
     source: 'fallback',
     cards,
+    moreUrl: moreUrl(maker),
   }
 }
 

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { Flame, ExternalLink } from 'lucide-react'
+import { Flame, ExternalLink, ChevronRight } from 'lucide-react'
 import { FanzaLink } from '@/components/FanzaLink'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { coverPosClass } from '@/lib/cidUtils'
@@ -33,9 +33,18 @@ export async function FastestNewReleases() {
       {/* ── メーカー別セクション ─────────────────────────────────────── */}
       {makerSections.map((section) => (
         <div key={section.id} className="space-y-3">
-          <span className="rounded-full bg-orange-500/15 px-2.5 py-0.5 text-[10px] font-bold text-orange-400 border border-orange-500/30 tracking-wider">
-            {section.label}
-          </span>
+          <div className="flex items-center justify-between gap-2">
+            <span className="rounded-full bg-orange-500/15 px-2.5 py-0.5 text-[10px] font-bold text-orange-400 border border-orange-500/30 tracking-wider">
+              {section.label}
+            </span>
+            <Link
+              href={section.moreUrl}
+              className="flex items-center gap-0.5 text-[11px] font-medium text-[var(--text-muted)] hover:text-[var(--magenta)] transition-colors"
+            >
+              {section.label}の作品をもっと見る
+              <ChevronRight size={12} />
+            </Link>
+          </div>
 
           <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 sm:overflow-visible lg:grid-cols-5">
             {section.cards.map((card) => {
