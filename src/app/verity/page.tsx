@@ -38,6 +38,7 @@ import { TrendingNowSection } from '@/components/TrendingNowSection'
 import { TrendingWidget } from '@/components/TrendingWidget'
 import { FanzaChijoSaleBanner } from '@/components/FanzaChijoSaleBanner'
 import { RecentlyViewedSection } from '@/components/RecentlyViewedSection'
+import { MypagePromoSection } from '@/components/MypagePromoSection'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -539,6 +540,11 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </div>
       }>
         <WeeklyRankingsSection />
+      </Suspense>
+
+      {/* ── 0b-2b2. マイページ登録促進（会員価値の明示・登録CV導線） ────────── */}
+      <Suspense fallback={<div className="h-56 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+        <MypagePromoSection />
       </Suspense>
 
       {/* ── 0b-2c. 最近見た作品（localStorage・履歴あり時のみ表示 / 再訪回遊） ── */}

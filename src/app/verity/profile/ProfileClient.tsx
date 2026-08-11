@@ -19,6 +19,7 @@ import { FanzaLink } from '@/components/FanzaLink'
 import { withAffiliate } from '@/lib/affiliate'
 import { coverPosClass } from '@/lib/cidUtils'
 import { GenreProfilingModal } from '@/components/GenreProfilingModal'
+import { NotificationSettingsSection } from '@/components/NotificationSettingsSection'
 
 type Props = {
   user:                  { id: string; email: string }
@@ -51,6 +52,7 @@ type Props = {
   genreScores:           Record<string, number>
   profilingDone:         boolean
   favoritedAtMap:        Record<string, string>
+  notificationSettings:  { notify_new_work: boolean; notify_weekly: boolean }
 }
 
 // ── ユーティリティ ─────────────────────────────────────────────────────────────
@@ -279,7 +281,7 @@ export function ProfileClient({
   axisScores, topAxis, recommendedProduct, actressHistory,
   workHistory, favoriteArticles,
   genreScores: initialGenreScores, profilingDone: initialProfilingDone,
-  favoritedAtMap,
+  favoritedAtMap, notificationSettings,
 }: Props) {
   const [showProfilingModal, setShowProfilingModal] = useState(false)
   const [localGenreScores,   setLocalGenreScores]   = useState<Record<string, number>>(initialGenreScores)
@@ -447,6 +449,9 @@ export function ProfileClient({
             {saveMsg && <p className="text-center text-xs text-emerald-400">{saveMsg}</p>}
           </div>
         </section>
+
+        {/* ── メール通知設定 ── */}
+        <NotificationSettingsSection initialSettings={notificationSettings} />
 
         {/* ── 認定ジャンル ── */}
         {topCertified.length > 0 ? (

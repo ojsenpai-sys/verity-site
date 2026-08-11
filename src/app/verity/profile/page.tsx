@@ -142,6 +142,7 @@ export default async function ProfilePage() {
     favDatesResult,
     videoViewHistoryResult,
     favArticlesResult,
+    notifSettingsResult,
   ] = await Promise.all([
     favIds.length > 0
       ? supabase.from('actresses')
@@ -192,6 +193,11 @@ export default async function ProfilePage() {
       .limit(50),
     // DB 永続化された作品お気に入り（ログインユーザー）
     supabase.rpc('get_my_favorite_articles', { p_user_id: user.id }),
+    // メール通知設定（行が無いユーザーはアプリ側の既定値で解釈する）
+    supabase.from('favorite_notification_settings')
+      .select('notify_new_work, notify_weekly')
+      .eq('user_id', user.id)
+      .maybeSingle(),
   ])
 
   let favoriteActresses = (actressResult.data ?? []) as Actress[]
@@ -272,6 +278,13 @@ export default async function ProfilePage() {
 
   // ── DB 永続化された作品お気に入り ─────────────────────────────────────────────
   const favoriteArticles = (favArticlesResult.data ?? []) as FavoriteArticle[]
+
+  // ── メール通知設定（行が無ければPhase A方針の初期値で解釈: 新作ON / 週間ランキングOFF） ──
+  const notifSettingsRow = notifSettingsResult.data as { notify_new_work: boolean; notify_weekly: boolean } | null
+  const notificationSettings = {
+    notify_new_work: notifSettingsRow?.notify_new_work ?? true,
+    notify_weekly:   notifSettingsRow?.notify_weekly   ?? false,
+  }
 
   // ── セカンダリ並列クエリ ────────────────────────────────────────────────────
   const favNames        = favoriteActresses.map(a => a.name)
@@ -649,6 +662,7 @@ export default async function ProfilePage() {
         genreScores={resolvedProfile?.genre_scores ?? {}}
         profilingDone={resolvedProfile?.profiling_done ?? false}
         favoritedAtMap={favoritedAtMap}
+        notificationSettings={notificationSettings}
       />
     </div>
   )

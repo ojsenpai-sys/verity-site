@@ -84,6 +84,9 @@ export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: 
             <p className="text-xs text-[var(--text-muted)] leading-relaxed">
               無料登録するだけで推し女優をお気に入り登録できます。毎日ログインで LP が貯まります。
             </p>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              お気に入り登録すると、新作情報をメールで受け取れます。
+            </p>
             <Link
               href="/verity/login"
               className="block w-full rounded-xl py-3 text-center text-sm font-bold text-white transition-all hover:opacity-90 active:scale-[0.98]"
