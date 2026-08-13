@@ -8,6 +8,9 @@ const BRAND_ID    = process.env.NEXT_PUBLIC_BRAND_ID    ?? 'verity'
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL             ?? ''
 const SITE_URL    = process.env.NEXT_PUBLIC_SITE_URL    ?? 'https://verity-official.com'
 const GALLERY_LIMIT = 20
+// notify.verity-official.com がResendでドメイン認証済みになったため、Phase 4.2でこの管理者通知も
+// scripts/notify-*.mjs と同じFromへ統一する（NOTIFY_FROM_EMAIL優先・未設定時はこの既定値）。
+const NOTIFY_FROM_EMAIL = process.env.NOTIFY_FROM_EMAIL ?? 'VERITY <notify@notify.verity-official.com>'
 
 type RawPost = {
   id:           string
@@ -128,7 +131,7 @@ export async function notifyAdminMissingSns(
   try {
     const resend = new Resend(process.env.RESEND_API_KEY)
     await resend.emails.send({
-      from:    'VERITY <noreply@verity-official.com>',
+      from:    NOTIFY_FROM_EMAIL,
       to:      ADMIN_EMAIL,
       subject: `[VERITY] SNS捜索依頼: ${actressName}`,
       html: `

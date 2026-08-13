@@ -1,71 +1,55 @@
 #!/usr/bin/env node
 // ═════════════════════════════════════════════════════════════════════════════
-// notify-weekly-ranking.mjs — VERITY週間ランキング更新メール通知（Phase 3）
+// notify-weekly-ranking.mjs — VERITY週間ランキング更新メール通知（Phase 3 / Phase 4更新）
 // ═════════════════════════════════════════════════════════════════════════════
 // 「週間ランキング生成済みデータ検出 → notify_weekly=trueのユーザー抽出 →
 //  week_key単位で冪等化 → Resend用メール生成」までの実装。
 //
-// 重要（Phase 3の制約。破らないこと）:
-//   ・本番全会員への自動送信はまだ行わない。--send は必ず --test-user とセットでのみ動作する
-//     （--test-user 無しの --send はエラーで拒否する。scripts/notify-actress-new-release.mjs と同じ安全策）。
+// Phase 4での変更点:
+//   ・env読込/PostgREST/GoTrue/mask/sanitize/Resend送信/unsubscribe token を
+//     scripts/lib/notification-mailer.mjs（共通モジュール。notify-actress-new-release.mjs
+//     と共有）へ集約。
+//   ・List-Unsubscribe / List-Unsubscribe-Post ヘッダーを送信メールへ付与。
+//   ・本文footerに「この通知を停止する」（token付きワンクリックリンク）を追加。
+//   ・notification_email_status（bounce/complained/suppressed）を送信前に確認し、
+//     該当ユーザーを対象から除外（テーブル未適用の間は何も抑止しない＝既存挙動維持）。
+//   ・production安全ガード: Fromがsandbox(*.resend.dev)のままtest-user以外に
+//     送ろうとした場合は例外を投げて停止する。
+//
+// 重要（引き続き有効な制約）:
+//   ・本番全会員への自動送信はまだ行わない。--send は必ず --test-user とセットでのみ動作する。
 //   ・cron登録はまだ行わない（本スクリプトは手動実行のみを想定）。
-//   ・generate-weekly-rankings.mjs / weekly ranking DB schema / 集計ロジックには一切触れない（読み取りのみ）。
+//   ・generate-weekly-rankings.mjs / weekly ranking DB schema / 集計ロジックには一切触れない。
 //   ・test-userのnotify_weekly=falseを一時的に上書きして検証することはしない（実設定を尊重する）。
 //
-// 使い方:
-//   node scripts/notify-weekly-ranking.mjs                                # dry-run（既定・最新の公開済み完全週）
-//   node scripts/notify-weekly-ranking.mjs --week=2026-08-03              # 対象週を明示（backfill/再実行）
-//   node scripts/notify-weekly-ranking.mjs --test-user=<uuid>             # 指定ユーザーだけ dry-run で詳細表示
-//   node scripts/notify-weekly-ranking.mjs --test-user=<uuid> --send      # 指定ユーザーへ実送信
-//   node scripts/notify-weekly-ranking.mjs --list-unnotified              # 公開済みだが未送信の週を検出する読み取り専用レポート（送信なし）
+// 使い方: Phase 3から変更なし（--dry-run既定 / --week / --test-user=<uuid> / --send / --list-unnotified）
 //
-// 依存: なし（Node v18+ の global fetch のみ）。
-// env読み込み/PostgREST呼び出しの idiom は scripts/maker-sync.mjs / scripts/notify-actress-new-release.mjs と同一だが、
-// 既に本番へcommit/push済みのPhase 2スクリプトを壊すリスクを避けるため、あえて共有モジュール化せず本ファイル内に複製する
-// （このプロジェクトの既存運用スクリプト群がもともと採用している「小さなインフラ部分は逐語複製」という慣習に合わせる）。
+// env（新規）:
+//   NOTIFY_REPLY_TO                   … 未設定なら reply_to を付けない
+//   NOTIFICATION_UNSUBSCRIBE_SECRET   … --send 時必須（unsubscribe token署名用）
 // ═════════════════════════════════════════════════════════════════════════════
-import fs from 'node:fs'
-import path from 'node:path'
-import { createRequire } from 'node:module'
+import {
+  loadAllEnv, jstIso, makeSupabaseHelpers, maskEmail, sanitizeError,
+  escapeHtml, buildTrackedUrl, unsubscribeUrl, assertProductionSafeFrom, sendViaResend, isSuppressed,
+  DEFAULT_NOTIFY_FROM_EMAIL,
+} from './lib/notification-mailer.mjs'
 
+const CWD = process.cwd()
 const ARGV = process.argv.slice(2)
 const SEND = ARGV.includes('--send')
 const LIST_UNNOTIFIED = ARGV.includes('--list-unnotified')
-const CWD = process.cwd()
 const argVal = (name) => {
   const hit = ARGV.find((a) => a.startsWith(`--${name}=`))
   return hit ? hit.slice(name.length + 3) : null
 }
 const TEST_USER = argVal('test-user')
-const DRY_RUN = !SEND
 
 if (SEND && !TEST_USER) {
   console.error('FATAL --send には --test-user=<uuid> が必須です（Phase 3では全会員への一括送信は未実装）。')
   process.exit(2)
 }
 
-// ── env ローダ（maker-sync.mjs / notify-actress-new-release.mjs と同一idiom）────
-function loadEnvFile(file) {
-  try {
-    for (const raw of fs.readFileSync(path.join(CWD, file), 'utf8').split(/\r?\n/)) {
-      const line = raw.trim()
-      if (!line || line.startsWith('#')) continue
-      const eq = line.indexOf('='); if (eq === -1) continue
-      const k = line.slice(0, eq).trim()
-      const v = line.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
-      if (k && process.env[k] === undefined) process.env[k] = v
-    }
-  } catch {}
-}
-function loadEcosystemEnv(file) {
-  try {
-    const require = createRequire(import.meta.url)
-    const cfg = require(path.join(CWD, file))
-    const env = cfg?.apps?.[0]?.env ?? {}
-    for (const [k, v] of Object.entries(env)) if (process.env[k] === undefined) process.env[k] = String(v)
-  } catch {}
-}
-loadEnvFile('.env.local'); loadEnvFile('.env'); loadEcosystemEnv('ecosystem.config.js')
+loadAllEnv(CWD)
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -74,12 +58,20 @@ for (const [k, v] of [['NEXT_PUBLIC_SUPABASE_URL', SB_URL], ['SUPABASE_SERVICE_R
 }
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
-const FROM_ADDR = process.env.NOTIFY_FROM_EMAIL ?? 'onboarding@resend.dev'
+const FROM_ADDR = process.env.NOTIFY_FROM_EMAIL ?? DEFAULT_NOTIFY_FROM_EMAIL
+const REPLY_TO = process.env.NOTIFY_REPLY_TO || undefined
+const UNSUB_SECRET = process.env.NOTIFICATION_UNSUBSCRIBE_SECRET
 
 if (SEND && !RESEND_API_KEY) {
   console.error('FATAL --send には RESEND_API_KEY が必須です')
   process.exit(2)
 }
+if (SEND && !UNSUB_SECRET) {
+  console.error('FATAL --send には NOTIFICATION_UNSUBSCRIBE_SECRET が必須です（List-Unsubscribeリンク署名用）')
+  process.exit(2)
+}
+
+const { sbSelect, sbSelectOptional, sbInsert, sbUpdate, fetchAuthUser } = makeSupabaseHelpers(SB_URL, SB_KEY)
 
 const NOTIFICATION_TYPE = 'weekly_ranking'
 const STALE_PENDING_MINUTES = 30
@@ -88,77 +80,7 @@ const RANKING_LABEL = { actress: '女優ランキング', work: '作品ランキ
 // readVp()（src/lib/analytics.ts）は ?vp= を16文字にslice するため、この範囲に収める。
 const VP_CODE = 'email_weekly'
 
-// ── 時刻ヘルパ ───────────────────────────────────────────────────────────────
-const jstIso = (d = new Date()) =>
-  new Date(d.getTime() + 9 * 3600 * 1000).toISOString().replace(/\.\d+Z$/, '').replace(/Z$/, '') + '+09:00'
-
-// ── Supabase PostgREST / GoTrue Admin（service_role・supabase-js不要）───────────
-const SB_HEADERS = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' }
-
-async function sbSelect(tableAndQuery) {
-  const res = await fetch(`${SB_URL}/rest/v1/${tableAndQuery}`, { headers: SB_HEADERS })
-  const text = await res.text()
-  if (!res.ok) throw new Error(`SELECT ${tableAndQuery.split('?')[0]} HTTP ${res.status}: ${text.slice(0, 300)}`)
-  return text ? JSON.parse(text) : []
-}
-
-async function sbInsert(table, rows, prefer = 'return=representation') {
-  const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
-    method: 'POST', headers: { ...SB_HEADERS, Prefer: prefer }, body: JSON.stringify(rows),
-  })
-  const text = await res.text()
-  return { ok: res.ok, status: res.status, body: text ? JSON.parse(text) : null, raw: text }
-}
-
-async function sbUpdate(table, matchQuery, patch) {
-  const res = await fetch(`${SB_URL}/rest/v1/${table}?${matchQuery}`, {
-    method: 'PATCH', headers: { ...SB_HEADERS, Prefer: 'return=minimal' }, body: JSON.stringify(patch),
-  })
-  const text = await res.text()
-  if (!res.ok) throw new Error(`UPDATE ${table} HTTP ${res.status}: ${text.slice(0, 300)}`)
-}
-
-async function fetchAuthUser(userId) {
-  const res = await fetch(`${SB_URL}/auth/v1/admin/users/${userId}`, { headers: SB_HEADERS })
-  if (res.status === 404) return null
-  if (!res.ok) throw new Error(`GoTrue admin HTTP ${res.status}`)
-  return res.json()
-}
-
-function maskEmail(email) {
-  if (!email) return '(none)'
-  const [local, domain] = email.split('@')
-  if (!domain) return '***'
-  const head = local.slice(0, 1)
-  return `${head}${'*'.repeat(Math.max(local.length - 1, 2))}@${domain}`
-}
-
-function sanitizeError(err) {
-  const msg = String(err?.message ?? err ?? 'unknown error')
-  return msg
-    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]')
-    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
-    .replace(/\b(re_|sk_|SUPABASE_|SERVICE_ROLE)[\w-]{6,}/g, '[redacted-key]')
-    .slice(0, 500)
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
-}
-
-// src/lib/social/attribution.ts buildTrackedUrl と同じロジック（.mjsからTSを直import出来ないため複製）。
-function buildTrackedUrl(url, code) {
-  if (!url || !code) return url
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}vp=${encodeURIComponent(code)}`
-}
-
 // ── 対象週の解決 ─────────────────────────────────────────────────────────────
-// 「公開成立」= published_at<=now() かつ 5カテゴリ(actress/work/maker/newcomer/rising)全てに
-// 最低1行存在する week_key。apply_weekly_rankings() は all-or-nothing 設計のため通常は
-// 存在する行=5カテゴリ完全のはずだが、二重防御としてここでも明示的に検証する。
 async function resolveTargetWeek(explicitWeek) {
   const nowIso = new Date().toISOString()
   let candidateKeys
@@ -194,7 +116,9 @@ function top1Map(rows) {
 }
 
 // ── メール本文生成（全ユーザー共通・パーソナライズなし） ────────────────────────
-function buildEmail(top1) {
+// unsubUrl: 週間ランキング通知だけを止める人間向けリンク（List-Unsubscribeヘッダーも同じ種別）。
+// unsubAllUrl: VERITYの全メール通知を停止する人間向けリンク（本文内リンクのみ・One-Clickの対象にはしない）。
+function buildEmail(top1, unsubUrl, unsubAllUrl) {
   const subject = '【VERITY WEEKLY】今週の人気ランキングを公開しました'
   const rankingUrl = buildTrackedUrl(`${SITE_URL}/verity/rankings/weekly`, VP_CODE)
   const profileUrl = `${SITE_URL}/verity/profile`
@@ -223,6 +147,8 @@ function buildEmail(top1) {
     '通知設定はマイページからいつでも変更できます。',
     `通知設定を変更する: ${profileUrl}`,
   )
+  if (unsubUrl) textLines.push(`週間ランキング通知を停止する: ${unsubUrl}`)
+  if (unsubAllUrl) textLines.push(`すべてのメール通知を停止する: ${unsubAllUrl}`)
 
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:auto;color:#1a1a1a">
@@ -234,6 +160,8 @@ function buildEmail(top1) {
       <p style="font-size:12px;color:#999">
         通知設定はマイページからいつでも変更できます。<br/>
         <a href="${profileUrl}" style="color:#999">通知設定を変更する</a>
+        ${unsubUrl ? ` ／ <a href="${unsubUrl}" style="color:#999">週間ランキング通知を停止する</a>` : ''}
+        ${unsubAllUrl ? ` ／ <a href="${unsubAllUrl}" style="color:#999">すべてのメール通知を停止する</a>` : ''}
       </p>
     </div>`
 
@@ -309,20 +237,22 @@ async function main() {
     return
   }
 
-  const email = buildEmail(top1)
-  console.log('\n─── 生成メールプレビュー ───')
-  console.log(`件名: ${email.subject}`)
-  console.log('本文(text):\n' + email.text)
-
   // ── notify_weekly=true のユーザー抽出。設定行なし＝false（Phase 1 UI仕様と完全一致）。──
   const settingsRows = await sbSelect(`favorite_notification_settings?select=user_id&notify_weekly=eq.true`)
   let eligibleUserIds = settingsRows.map((r) => r.user_id)
-  console.log(`\nnotify_weekly=true ユーザー: ${eligibleUserIds.length}人`)
+
+  // ── bounce/complaint抑止（notification_email_status。Phase 4新規・未適用なら何も抑止しない） ──
+  const suppressedIds = new Set()
+  for (const uid of eligibleUserIds) {
+    if (await isSuppressed({ sbSelectOptional }, uid)) suppressedIds.add(uid)
+  }
+  if (suppressedIds.size > 0) eligibleUserIds = eligibleUserIds.filter((uid) => !suppressedIds.has(uid))
+  console.log(`\nnotify_weekly=true ユーザー: ${eligibleUserIds.length}人（bounce/complaint抑止${suppressedIds.size}人除外済み）`)
 
   if (TEST_USER) {
     eligibleUserIds = eligibleUserIds.filter((uid) => uid === TEST_USER)
     if (eligibleUserIds.length === 0) {
-      console.log(`\ntest-user ${TEST_USER} は notify_weekly=true ではありません（対象外）。マイページで設定してから再実行してください。`)
+      console.log(`\ntest-user ${TEST_USER} は notify_weekly=true ではありません、または配信抑止対象です（対象外）。マイページで設定してから再実行してください。`)
       printDone(t0, { users: 0, emails: 0 })
       return
     }
@@ -330,8 +260,14 @@ async function main() {
 
   console.log(`生成予定メール件数: ${eligibleUserIds.length}通${TEST_USER ? '（test-user限定）' : '（dry-run。Phase 3では --test-user 無しの実送信は未実装）'}`)
 
+  const previewUnsubUrl = TEST_USER && UNSUB_SECRET ? unsubscribeUrl(SITE_URL, UNSUB_SECRET, TEST_USER, NOTIFICATION_TYPE) : null
+  const previewUnsubAllUrl = TEST_USER && UNSUB_SECRET ? unsubscribeUrl(SITE_URL, UNSUB_SECRET, TEST_USER, 'all') : null
+  const email = buildEmail(top1, previewUnsubUrl, previewUnsubAllUrl)
+  console.log('\n─── 生成メールプレビュー ───')
+  console.log(`件名: ${email.subject}`)
+  console.log('本文(text):\n' + email.text)
+
   if (!TEST_USER) {
-    // 非test-userの完全バッチはdry-runのみ（Phase 3では--send不可）。宛先一覧はマスクして表示。
     for (const uid of eligibleUserIds.slice(0, 20)) {
       const u = await fetchAuthUser(uid)
       console.log(`  user=${uid.slice(0, 8)}… email=${maskEmail(u?.email)}`)
@@ -356,6 +292,7 @@ async function main() {
     return
   }
 
+  assertProductionSafeFrom(FROM_ADDR, true) // true = test-user mode
   const payload = buildAuditPayload(target.weekKey, target.publishedAt, top1)
   const wasSent = await sendToTestUser(TEST_USER, authUser.email, email, payload, target.weekKey)
   printDone(t0, { users: 1, emails: wasSent ? 1 : 0 })
@@ -382,7 +319,7 @@ async function sendToTestUser(userId, email, emailContent, payload, groupKey) {
     } else {
       console.log(`\n既存status=${row.status}の行を再試行します。`)
     }
-    return await resendAndUpdate(row.id, email, emailContent)
+    return await resendAndUpdate(row.id, userId, email, emailContent)
   }
 
   const ins = await sbInsert('notification_deliveries', [{
@@ -397,23 +334,18 @@ async function sendToTestUser(userId, email, emailContent, payload, groupKey) {
     throw new Error(`INSERT notification_deliveries failed: HTTP ${ins.status} ${ins.raw?.slice(0, 200)}`)
   }
   const id = ins.body?.[0]?.id
-  return await resendAndUpdate(id, email, emailContent)
+  return await resendAndUpdate(id, userId, email, emailContent)
 }
 
-async function resendAndUpdate(deliveryId, email, emailContent) {
+async function resendAndUpdate(deliveryId, userId, email, emailContent) {
   console.log(`\n*** TEST MODE: Resendへ実送信します — to=${maskEmail(email)} from=${FROM_ADDR} ***`)
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: FROM_ADDR, to: [email], subject: emailContent.subject,
-        html: emailContent.html, text: emailContent.text,
-      }),
+    const unsubUrl = unsubscribeUrl(SITE_URL, UNSUB_SECRET, userId, NOTIFICATION_TYPE)
+    const json = await sendViaResend({
+      apiKey: RESEND_API_KEY, from: FROM_ADDR, to: email, replyTo: REPLY_TO,
+      subject: emailContent.subject, html: emailContent.html, text: emailContent.text,
+      unsubscribeUrl: unsubUrl,
     })
-    const raw = await res.text()
-    if (!res.ok) throw new Error(`Resend HTTP ${res.status}: ${raw.slice(0, 300)}`)
-    const json = raw ? JSON.parse(raw) : {}
     if (deliveryId) {
       await sbUpdate('notification_deliveries', `id=eq.${deliveryId}`, { status: 'sent', sent_at: new Date().toISOString() })
     }

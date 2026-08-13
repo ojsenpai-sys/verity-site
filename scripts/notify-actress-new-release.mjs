@@ -1,79 +1,54 @@
 #!/usr/bin/env node
 // ═════════════════════════════════════════════════════════════════════════════
-// notify-actress-new-release.mjs — お気に入り女優 新作メール通知（Phase 2）
+// notify-actress-new-release.mjs — お気に入り女優 新作メール通知（Phase 2 / Phase 4更新）
 // ═════════════════════════════════════════════════════════════════════════════
 // 「新規videoa作品を検出 → お気に入り女優とIDで照合 → ユーザーごとに1日1通へ集約
 //  → notification_deliveriesで冪等化 → Resend用メール生成」までの実装。
 //
-// 重要（Phase 2の制約。破らないこと）:
-//   ・本番全会員への自動送信はまだ行わない。--send は必ず --test-user とセットでのみ動作する
-//     （--test-user 無しの --send はエラーで拒否する。これはコードレベルの安全策）。
+// Phase 4での変更点:
+//   ・env読込/PostgREST/GoTrue/mask/sanitize/Resend送信/unsubscribe token を
+//     scripts/lib/notification-mailer.mjs（共通モジュール）へ集約。
+//   ・List-Unsubscribe / List-Unsubscribe-Post ヘッダーを送信メールへ付与。
+//   ・本文footerに「この通知を停止する」（token付きワンクリックリンク）を追加
+//     （「通知設定を変更する」→/verity/profile とは役割を分離）。
+//   ・notification_email_status（bounce/complained/suppressed）を送信前に確認し、
+//     該当ユーザーを対象から除外（テーブル未適用の間は何も抑止しない＝既存挙動維持）。
+//   ・production安全ガード: Fromがsandbox(*.resend.dev)のままtest-user以外に
+//     送ろうとした場合は例外を投げて停止する。
+//
+// 重要（引き続き有効な制約）:
+//   ・本番全会員への自動送信はまだ行わない。--send は必ず --test-user とセットでのみ動作する。
 //   ・cron登録はまだ行わない（本スクリプトは手動実行のみを想定）。
 //   ・maker-sync / weekly ranking / 既存お気に入り機能には一切触れない（読み取りのみ）。
-//   ・ウォーターマークの永続化（notification_job_state への書き込み）は、
-//     test-user に限定しない完全バッチ実行でのみ行う設計だが、Phase 2の
-//     CLIは --send に --test-user を必須化しているため、このフェーズでは
-//     実際には書き込まれない（読み取りのみ発生する）。
 //
-// 使い方:
-//   node scripts/notify-actress-new-release.mjs                          # dry-run（既定・DB書込みなし）
-//   node scripts/notify-actress-new-release.mjs --dry-run                # 同上（明示形）
-//   node scripts/notify-actress-new-release.mjs --test-user=<uuid>       # 指定ユーザーだけ dry-run で詳細表示
-//   node scripts/notify-actress-new-release.mjs --test-user=<uuid> --send  # 指定ユーザーへ実送信（Resend実行・notification_deliveries書込み）
-//   node scripts/notify-actress-new-release.mjs --as-of=2026-08-11T09:00:00+09:00   # 実行時刻を上書き（テスト用）
-//   node scripts/notify-actress-new-release.mjs --watermark=2026-08-10T09:00:00+09:00 # ウォーターマーク下限を上書き（テスト用。DB保存値より優先）
-//   node scripts/notify-actress-new-release.mjs --lookback-hours=48      # 初回実行時（保存ウォーターマーク無し）の遡り時間。既定24
+// 使い方: Phase 2から変更なし（--dry-run既定 / --test-user=<uuid> / --send / --as-of / --watermark / --lookback-hours）
 //
-// 依存: なし（Node v18+ の global fetch のみ。maker-sync.mjs / generate-weekly-rankings.mjs と同一idiom）。
-//
-// env 取得順（未設定キーのみ補完）: process.env → ./.env.local → ./.env →
-//   ./ecosystem.config.js の apps[].env（本番の権威ソース）
-//   必要キー: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
-//   --send 時のみ追加で必要: RESEND_API_KEY
+// env（新規）:
+//   NOTIFY_REPLY_TO                   … 未設定なら reply_to を付けない
+//   NOTIFICATION_UNSUBSCRIBE_SECRET   … --send 時必須（unsubscribe token署名用）
 // ═════════════════════════════════════════════════════════════════════════════
-import fs from 'node:fs'
-import path from 'node:path'
-import { createRequire } from 'node:module'
+import {
+  loadAllEnv, jstIso, jstDateKey, makeSupabaseHelpers, maskEmail, sanitizeError,
+  escapeHtml, buildTrackedUrl, unsubscribeUrl, assertProductionSafeFrom, sendViaResend, isSuppressed,
+  DEFAULT_NOTIFY_FROM_EMAIL,
+} from './lib/notification-mailer.mjs'
 
+const CWD = process.cwd()
 const ARGV = process.argv.slice(2)
 const SEND = ARGV.includes('--send')
-const CWD = process.cwd()
 const argVal = (name) => {
   const hit = ARGV.find((a) => a.startsWith(`--${name}=`))
   return hit ? hit.slice(name.length + 3) : null
 }
 const TEST_USER = argVal('test-user')
-// --dry-run は既定動作の明示形。--send が無ければ常に dry-run（書込みなし）。
 const DRY_RUN = !SEND
 
-// ── 安全策: --send は --test-user 必須（Phase 2では全会員配信を実装しない）───────
 if (SEND && !TEST_USER) {
   console.error('FATAL --send には --test-user=<uuid> が必須です（Phase 2では全会員への一括送信は未実装）。')
   process.exit(2)
 }
 
-// ── env ローダ（maker-sync.mjs / generate-weekly-rankings.mjs と同一idiom）──────
-function loadEnvFile(file) {
-  try {
-    for (const raw of fs.readFileSync(path.join(CWD, file), 'utf8').split(/\r?\n/)) {
-      const line = raw.trim()
-      if (!line || line.startsWith('#')) continue
-      const eq = line.indexOf('='); if (eq === -1) continue
-      const k = line.slice(0, eq).trim()
-      const v = line.slice(eq + 1).trim().replace(/^["']|["']$/g, '')
-      if (k && process.env[k] === undefined) process.env[k] = v
-    }
-  } catch {}
-}
-function loadEcosystemEnv(file) {
-  try {
-    const require = createRequire(import.meta.url)
-    const cfg = require(path.join(CWD, file))
-    const env = cfg?.apps?.[0]?.env ?? {}
-    for (const [k, v] of Object.entries(env)) if (process.env[k] === undefined) process.env[k] = String(v)
-  } catch {}
-}
-loadEnvFile('.env.local'); loadEnvFile('.env'); loadEcosystemEnv('ecosystem.config.js')
+loadAllEnv(CWD)
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -82,15 +57,20 @@ for (const [k, v] of [['NEXT_PUBLIC_SUPABASE_URL', SB_URL], ['SUPABASE_SERVICE_R
 }
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
-// onboarding@resend.dev はアカウント所有者宛にのみ送信可能なResendサンドボックスFrom。
-// verity-official.com ドメイン検証後、NOTIFY_FROM_EMAIL を本番Fromへ差し替える想定
-// （src/app/verity/api/contact/route.ts の CONTACT_FROM_EMAIL と同じ考え方）。
-const FROM_ADDR = process.env.NOTIFY_FROM_EMAIL ?? 'onboarding@resend.dev'
+const FROM_ADDR = process.env.NOTIFY_FROM_EMAIL ?? DEFAULT_NOTIFY_FROM_EMAIL
+const REPLY_TO = process.env.NOTIFY_REPLY_TO || undefined
+const UNSUB_SECRET = process.env.NOTIFICATION_UNSUBSCRIBE_SECRET
 
 if (SEND && !RESEND_API_KEY) {
   console.error('FATAL --send には RESEND_API_KEY が必須です')
   process.exit(2)
 }
+if (SEND && !UNSUB_SECRET) {
+  console.error('FATAL --send には NOTIFICATION_UNSUBSCRIBE_SECRET が必須です（List-Unsubscribeリンク署名用）')
+  process.exit(2)
+}
+
+const { sbSelect, sbSelectOptional, sbInsert, sbUpdate, sbUpsert, fetchAuthUser } = makeSupabaseHelpers(SB_URL, SB_KEY)
 
 const JOB_NAME = 'actress_new_release'
 const NOTIFICATION_TYPE = 'actress_new_release'
@@ -99,13 +79,6 @@ const STALE_PENDING_MINUTES = 30
 // readVp()（src/lib/analytics.ts）は ?vp= を16文字にslice するため、この範囲に収める。
 const VP_CODE = 'email_anr'
 
-// ── 時刻ヘルパ ───────────────────────────────────────────────────────────────
-const jstIso = (d = new Date()) =>
-  new Date(d.getTime() + 9 * 3600 * 1000).toISOString().replace(/\.\d+Z$/, '').replace(/Z$/, '') + '+09:00'
-const jstDateKey = (d = new Date()) => {
-  const j = new Date(d.getTime() + 9 * 3600 * 1000)
-  return j.toISOString().slice(0, 10)
-}
 const jstDateLabel = (iso) => {
   if (!iso) return null
   const j = new Date(new Date(iso).getTime() + 9 * 3600 * 1000)
@@ -119,74 +92,6 @@ const AS_OF = (() => {
   if (isNaN(d.getTime())) { console.error('FATAL --as-of must be a valid ISO datetime'); process.exit(2) }
   return d
 })()
-
-// ── Supabase PostgREST / GoTrue Admin（service_role・supabase-js不要）───────────
-const SB_HEADERS = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' }
-
-async function sbSelect(tableAndQuery) {
-  const res = await fetch(`${SB_URL}/rest/v1/${tableAndQuery}`, { headers: SB_HEADERS })
-  const text = await res.text()
-  if (!res.ok) throw new Error(`SELECT ${tableAndQuery.split('?')[0]} HTTP ${res.status}: ${text.slice(0, 300)}`)
-  return text ? JSON.parse(text) : []
-}
-
-// 404 PGRST205（テーブル未作成 = migration未適用）は「テーブル無し」として扱い、呼び出し側でフォールバックする。
-async function sbSelectOptional(tableAndQuery) {
-  const res = await fetch(`${SB_URL}/rest/v1/${tableAndQuery}`, { headers: SB_HEADERS })
-  if (res.status === 404) return { missing: true, rows: [] }
-  const text = await res.text()
-  if (!res.ok) throw new Error(`SELECT ${tableAndQuery.split('?')[0]} HTTP ${res.status}: ${text.slice(0, 300)}`)
-  return { missing: false, rows: text ? JSON.parse(text) : [] }
-}
-
-async function sbInsert(table, rows, prefer = 'return=representation') {
-  const res = await fetch(`${SB_URL}/rest/v1/${table}`, {
-    method: 'POST', headers: { ...SB_HEADERS, Prefer: prefer }, body: JSON.stringify(rows),
-  })
-  const text = await res.text()
-  return { ok: res.ok, status: res.status, body: text ? JSON.parse(text) : null, raw: text }
-}
-
-async function sbUpdate(table, matchQuery, patch) {
-  const res = await fetch(`${SB_URL}/rest/v1/${table}?${matchQuery}`, {
-    method: 'PATCH', headers: { ...SB_HEADERS, Prefer: 'return=minimal' }, body: JSON.stringify(patch),
-  })
-  const text = await res.text()
-  if (!res.ok) throw new Error(`UPDATE ${table} HTTP ${res.status}: ${text.slice(0, 300)}`)
-}
-
-async function sbUpsert(table, row, onConflict) {
-  const res = await fetch(`${SB_URL}/rest/v1/${table}?on_conflict=${onConflict}`, {
-    method: 'POST', headers: { ...SB_HEADERS, Prefer: 'resolution=merge-duplicates,return=minimal' }, body: JSON.stringify([row]),
-  })
-  const text = await res.text()
-  if (!res.ok) throw new Error(`UPSERT ${table} HTTP ${res.status}: ${text.slice(0, 300)}`)
-}
-
-// GoTrue Admin API — 対象ユーザーのみ個別取得（全件listはしない）。
-async function fetchAuthUser(userId) {
-  const res = await fetch(`${SB_URL}/auth/v1/admin/users/${userId}`, { headers: SB_HEADERS })
-  if (res.status === 404) return null
-  if (!res.ok) throw new Error(`GoTrue admin HTTP ${res.status}`)
-  return res.json()
-}
-
-function maskEmail(email) {
-  if (!email) return '(none)'
-  const [local, domain] = email.split('@')
-  if (!domain) return '***'
-  const head = local.slice(0, 1)
-  return `${head}${'*'.repeat(Math.max(local.length - 1, 2))}@${domain}`
-}
-
-function sanitizeError(err) {
-  const msg = String(err?.message ?? err ?? 'unknown error')
-  return msg
-    .replace(/[\w.+-]+@[\w-]+\.[\w.-]+/g, '[redacted-email]')
-    .replace(/Bearer\s+\S+/gi, 'Bearer [redacted]')
-    .replace(/\b(re_|sk_|SUPABASE_|SERVICE_ROLE)[\w-]{6,}/g, '[redacted-key]')
-    .slice(0, 500)
-}
 
 // ── videoa / DVD判定（src/lib/fastestReleases.ts rowHasVideoUrl と逐語一致）──────
 function rowHasVideoUrl(metadata) {
@@ -203,20 +108,18 @@ function actressEntriesToExternalIds(actressArr) {
     .map((a) => ({ externalId: `dmm-actress-${a.id}`, name: a.name }))
 }
 
-// src/lib/social/attribution.ts buildTrackedUrl と同じロジック（.mjsからTSを直import出来ないため複製）。
-function buildTrackedUrl(url, code) {
-  if (!url || !code) return url
-  const sep = url.includes('?') ? '&' : '?'
-  return `${url}${sep}vp=${encodeURIComponent(code)}`
-}
-
 function articleHref(slug) {
   return buildTrackedUrl(`${SITE_URL}/verity/articles/${slug}`, VP_CODE)
 }
 
 // ── メール本文生成 ───────────────────────────────────────────────────────────
 // groups: [{ label: '彩月七緒さん', articles: [{ title, slug, publishedAt }] }]
-function buildEmail(groups) {
+// unsubUrl: この通知種別だけを止める人間向けリンク（null可＝dry-runプレビュー時など）
+// unsubAllUrl: VERITYの全メール通知を停止する人間向けリンク（同上）
+// ※ List-Unsubscribe（One-Click）は必ずこの通知種別のみを対象にする。
+//    「すべて停止」はメール本文内の明示クリックからのみ到達させ、
+//    メールクライアントのワンクリック操作だけで全停止にならないようにする。
+function buildEmail(groups, unsubUrl, unsubAllUrl) {
   const totalArticles = groups.reduce((s, g) => s + g.articles.length, 0)
   const subject = totalArticles <= 1
     ? '【VERITY】お気に入り女優の最新作情報が到着しました！'
@@ -252,6 +155,8 @@ function buildEmail(groups) {
   }
 
   textLines.push('通知はいつでもマイページからOFFにできます。', `通知設定を変更する: ${profileUrl}`)
+  if (unsubUrl) textLines.push(`この新作通知を停止する: ${unsubUrl}`)
+  if (unsubAllUrl) textLines.push(`すべてのメール通知を停止する: ${unsubAllUrl}`)
 
   const html = `
     <div style="font-family:sans-serif;max-width:600px;margin:auto;color:#1a1a1a">
@@ -262,16 +167,12 @@ function buildEmail(groups) {
       <p style="font-size:12px;color:#999">
         通知はいつでもマイページからOFFにできます。<br/>
         <a href="${profileUrl}" style="color:#999">通知設定を変更する</a>
+        ${unsubUrl ? ` ／ <a href="${unsubUrl}" style="color:#999">この新作通知を停止する</a>` : ''}
+        ${unsubAllUrl ? ` ／ <a href="${unsubAllUrl}" style="color:#999">すべてのメール通知を停止する</a>` : ''}
       </p>
     </div>`
 
   return { subject, text: textLines.join('\n'), html }
-}
-
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
 }
 
 // ── メイン ───────────────────────────────────────────────────────────────────
@@ -310,7 +211,6 @@ async function main() {
     order: 'fetched_at.asc',
     limit: '2000',
   })
-  // PostgREST は同名クエリキーの2条件(gt/lte)を別々に付与する必要がある
   const rawCandidates = await sbSelect(`articles?${q.toString()}&fetched_at=${encodeURIComponent('lte.' + AS_OF.toISOString())}`)
 
   const candidates = rawCandidates.filter((a) =>
@@ -323,7 +223,7 @@ async function main() {
 
   // ── 候補記事から参照される女優 external_id を収集 ─────────────────────────────
   const actressExtIdSet = new Set()
-  const articleActressMap = new Map() // external_id(article) -> [{externalId, name}]
+  const articleActressMap = new Map()
   for (const a of candidates) {
     const entries = actressEntriesToExternalIds(a.metadata.actress)
     articleActressMap.set(a.external_id, entries)
@@ -338,10 +238,8 @@ async function main() {
     return
   }
 
-  // ── actresses: external_id -> {id, name} ────────────────────────────────────
   const extIdList = [...actressExtIdSet]
   const actressRows = await sbSelectChunked('actresses', 'id,external_id,name', 'external_id', extIdList, 'eq.true')
-  const extToInternal = new Map(actressRows.map((r) => [r.external_id, r]))
   console.log(`actresses table 一致: ${actressRows.length}人`)
 
   if (actressRows.length === 0) {
@@ -351,7 +249,6 @@ async function main() {
     return
   }
 
-  // ── favorite_actresses: 対象女優をお気に入りしているユーザー ─────────────────
   const internalIds = actressRows.map((r) => r.id)
   const favRows = await sbSelectChunked('favorite_actresses', 'user_id,actress_id', 'actress_id', internalIds)
   console.log(`favorite_actresses 一致行: ${favRows.length}件`)
@@ -367,17 +264,22 @@ async function main() {
     return
   }
 
-  // ── favorite_notification_settings: notify_new_work 判定（行なし=true既定。Phase A/Phase1と同一解釈） ──
+  // ── favorite_notification_settings: notify_new_work 判定（行なし=true既定） ──
   const settingsRows = await sbSelectChunked('favorite_notification_settings', 'user_id,notify_new_work', 'user_id', userIds)
   const settingsMap = new Map(settingsRows.map((r) => [r.user_id, r.notify_new_work]))
-  const eligibleUserIds = userIds.filter((uid) => settingsMap.get(uid) !== false)
-  console.log(`notify_new_work対象: ${eligibleUserIds.length}/${userIds.length}人（false明示のみ除外。未設定=trueとして扱う）`)
+  let eligibleUserIds = userIds.filter((uid) => settingsMap.get(uid) !== false)
 
-  // ── internal actress id -> {externalId, name} 逆引き ─────────────────────────
+  // ── bounce/complaint抑止（notification_email_status。Phase 4新規・未適用なら何も抑止しない） ──
+  const suppressedIds = new Set()
+  for (const uid of eligibleUserIds) {
+    if (await isSuppressed({ sbSelectOptional }, uid)) suppressedIds.add(uid)
+  }
+  if (suppressedIds.size > 0) eligibleUserIds = eligibleUserIds.filter((uid) => !suppressedIds.has(uid))
+  console.log(`notify_new_work対象: ${eligibleUserIds.length}/${userIds.length}人（false明示除外・bounce/complaint抑止${suppressedIds.size}人除外）`)
+
   const internalToExtName = new Map(actressRows.map((r) => [r.id, { externalId: r.external_id, name: r.name }]))
 
-  // ── ユーザーごとの favorite actress externalId 集合 ───────────────────────────
-  const userFavActressExtIds = new Map() // user_id -> Set<externalId>
+  const userFavActressExtIds = new Map()
   for (const r of relevantFav) {
     if (!eligibleUserIds.includes(r.user_id)) continue
     const info = internalToExtName.get(r.actress_id)
@@ -386,8 +288,7 @@ async function main() {
     userFavActressExtIds.get(r.user_id).add(info.externalId)
   }
 
-  // ── ユーザー×作品 マッチング（同一作品は1回だけ、該当女優名を結合） ─────────────
-  const userArticles = new Map() // user_id -> Map<cid, {article, matchedNames:Set}>
+  const userArticles = new Map()
   for (const a of candidates) {
     const entries = articleActressMap.get(a.external_id) ?? []
     if (entries.length === 0) continue
@@ -409,12 +310,11 @@ async function main() {
   const digestUserIds = [...userArticles.keys()]
   console.log(`ダイジェスト対象ユーザー: ${digestUserIds.length}人`)
 
-  // ── ユーザーごとに groups（女優名結合ラベル単位）を構築 ────────────────────────
-  const digests = new Map() // user_id -> { groups, totalArticles }
+  const digests = new Map()
   for (const uid of digestUserIds) {
     const bucket = userArticles.get(uid)
     const groupOrder = []
-    const groupMap = new Map() // label -> articles[]
+    const groupMap = new Map()
     for (const { article, matchedNames, matchedExtIds } of bucket.values()) {
       const label = [...matchedNames].join('さん、') + 'さん'
       if (!groupMap.has(label)) { groupMap.set(label, []); groupOrder.push(label) }
@@ -428,7 +328,6 @@ async function main() {
     digests.set(uid, { groups, totalArticles })
   }
 
-  // ── dry-run 表示 ─────────────────────────────────────────────────────────────
   console.log('\n─── 対象ユーザー内訳 ───')
   let shown = 0
   for (const [uid, digest] of digests) {
@@ -444,12 +343,15 @@ async function main() {
   if (TEST_USER) {
     const digest = digests.get(TEST_USER)
     if (!digest) {
-      console.log(`\ntest-user ${TEST_USER} は今回の対象になりません（お気に入り女優の新作なし、または notify_new_work=false、またはお気に入り未登録）。`)
+      console.log(`\ntest-user ${TEST_USER} は今回の対象になりません（お気に入り女優の新作なし、notify_new_work=false、bounce/complaint抑止、またはお気に入り未登録）。`)
       await finalizeWatermark(watermark)
       printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: digests.size, emails: 0 })
       return
     }
-    const email = buildEmail(digest.groups)
+
+    const previewUnsubUrl = UNSUB_SECRET ? unsubscribeUrl(SITE_URL, UNSUB_SECRET, TEST_USER, NOTIFICATION_TYPE) : null
+    const previewUnsubAllUrl = UNSUB_SECRET ? unsubscribeUrl(SITE_URL, UNSUB_SECRET, TEST_USER, 'all') : null
+    const email = buildEmail(digest.groups, previewUnsubUrl, previewUnsubAllUrl)
     console.log('\n─── 生成メールプレビュー（test-user） ───')
     console.log(`件名: ${email.subject}`)
     console.log('本文(text):\n' + email.text)
@@ -468,18 +370,17 @@ async function main() {
       return
     }
 
+    assertProductionSafeFrom(FROM_ADDR, true) // true = test-user mode
     const wasSent = await sendToTestUser(TEST_USER, authUser.email, email, digest.groups)
     printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: digests.size, emails: wasSent ? 1 : 0 })
     return
   }
 
-  // ── 非test-userの完全バッチ dry-run（Phase 2では --send 不可） ─────────────────
   console.log(`\n生成予定メール件数: ${digests.size}通（dry-run。Phase 2では --test-user 無しの実送信は未実装）`)
   await finalizeWatermark(watermark)
   printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: digests.size, emails: 0 })
 }
 
-// IN句のチャンク化ヘルパ（100件ずつ）。isActiveFilter は 'eq.true' 等を渡すと actresses.is_active を絞る。
 async function sbSelectChunked(table, select, inColumn, values, isActiveFilterForActresses) {
   const out = []
   for (let i = 0; i < values.length; i += 100) {
@@ -493,11 +394,6 @@ async function sbSelectChunked(table, select, inColumn, values, isActiveFilterFo
   return out
 }
 
-// ── ウォーターマーク前進 ─────────────────────────────────────────────────────
-// Phase 2のCLI制約上（--send は --test-user 必須）、この関数は実際には
-// 「完全バッチ・非test-user・非dry-run」の組み合わせでしか書き込みを行わない設計であり、
-// Phase 2時点でその組み合わせを満たす実行経路は存在しない（＝実質未到達コード）。
-// Phase 3以降、cron化された完全バッチが実装されたときに機能する。
 async function finalizeWatermark(oldWatermark) {
   if (DRY_RUN || TEST_USER) return
   try {
@@ -508,7 +404,6 @@ async function finalizeWatermark(oldWatermark) {
   }
 }
 
-// ── test-user 実送信（冪等性・状態遷移込み） ───────────────────────────────────
 async function sendToTestUser(userId, email, emailContent, groups) {
   const groupKey = jstDateKey(AS_OF)
   const matchQuery = `user_id=eq.${userId}&notification_type=eq.${NOTIFICATION_TYPE}&group_key=eq.${groupKey}`
@@ -530,10 +425,9 @@ async function sendToTestUser(userId, email, emailContent, groups) {
     } else {
       console.log(`\n既存status=${row.status}の行を再試行します。`)
     }
-    return await resendAndUpdate(row.id, userId, email, emailContent, groupKey)
+    return await resendAndUpdate(row.id, userId, email, emailContent)
   }
 
-  // 新規: INSERT pending で送信権を取得（UNIQUE制約が排他制御を兼ねる）
   const payload = buildAuditPayload(emailContent, groupKey, groups)
   const ins = await sbInsert('notification_deliveries', [{
     user_id: userId, notification_type: NOTIFICATION_TYPE, group_key: groupKey,
@@ -547,35 +441,25 @@ async function sendToTestUser(userId, email, emailContent, groups) {
     throw new Error(`INSERT notification_deliveries failed: HTTP ${ins.status} ${ins.raw?.slice(0, 200)}`)
   }
   const id = ins.body?.[0]?.id
-  return await resendAndUpdate(id, userId, email, emailContent, groupKey)
+  return await resendAndUpdate(id, userId, email, emailContent)
 }
 
 function buildAuditPayload(emailContent, groupKey, groups) {
-  // メール本文全体・メールアドレス等の個人情報は保存しない。
-  // 監査(何を通知したか・二重通知調査・問い合わせ対応・将来のCTR分析)に必要な最小構造のみ保存する。
   const articles = groups.flatMap((g) => g.articles).map((a) => ({
-    cid: a.cid,
-    slug: a.slug,
-    actress_ids: a.actressIds,
-    actress_names: a.actressNames,
+    cid: a.cid, slug: a.slug, actress_ids: a.actressIds, actress_names: a.actressNames,
   }))
   return { date: groupKey, subject: emailContent.subject, articles }
 }
 
-async function resendAndUpdate(deliveryId, userId, email, emailContent, groupKey) {
+async function resendAndUpdate(deliveryId, userId, email, emailContent) {
   console.log(`\n*** TEST MODE: Resendへ実送信します — to=${maskEmail(email)} from=${FROM_ADDR} ***`)
   try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        from: FROM_ADDR, to: [email], subject: emailContent.subject,
-        html: emailContent.html, text: emailContent.text,
-      }),
+    const unsubUrl = unsubscribeUrl(SITE_URL, UNSUB_SECRET, userId, NOTIFICATION_TYPE)
+    const json = await sendViaResend({
+      apiKey: RESEND_API_KEY, from: FROM_ADDR, to: email, replyTo: REPLY_TO,
+      subject: emailContent.subject, html: emailContent.html, text: emailContent.text,
+      unsubscribeUrl: unsubUrl,
     })
-    const raw = await res.text()
-    if (!res.ok) throw new Error(`Resend HTTP ${res.status}: ${raw.slice(0, 300)}`)
-    const json = raw ? JSON.parse(raw) : {}
     if (deliveryId) {
       await sbUpdate('notification_deliveries', `id=eq.${deliveryId}`, { status: 'sent', sent_at: new Date().toISOString() })
     }
