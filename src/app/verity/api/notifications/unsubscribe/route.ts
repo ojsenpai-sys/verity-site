@@ -8,6 +8,10 @@ import { verifyUnsubscribeToken } from '@/lib/notificationUnsubscribe'
 // 悪用されても影響は「対象ユーザーの通知が1種類OFFになる」に留まり、
 // 個人情報の露出や不可逆な破壊的操作は発生しない）。
 
+// リバースプロキシ配下では request.url が内部バインド値（localhost等）を反映するため、
+// リダイレクト先は必ず公開ドメイン(NEXT_PUBLIC_SITE_URL)を基準に組み立てる。
+const SITE_URL = (process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com').replace(/\/+$/, '')
+
 function statelessAnonClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -46,7 +50,7 @@ export async function GET(request: NextRequest) {
   const token = request.nextUrl.searchParams.get('token')
   const result = await processUnsubscribe(token)
 
-  const dest = new URL('/verity/unsubscribe', request.url)
+  const dest = new URL('/verity/unsubscribe', SITE_URL)
   if (result.ok) {
     dest.searchParams.set('type', result.notificationType)
   } else {
