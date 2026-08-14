@@ -16,44 +16,63 @@
 //   ・production安全ガード: Fromがsandbox(*.resend.dev)のままtest-user以外に
 //     送ろうとした場合は例外を投げて停止する。
 //
+// Phase 5Aでの変更点（全会員送信CLIの安全解禁準備。まだ実送信はできない）:
+//   ・--production-send + --confirm-production-send + --max-send=<n> による
+//     全会員送信モードを追加。--send / --test-user 単独では従来どおり全会員へは送れない。
+//   ・production-sendは NOTIFICATION_RUNTIME=production （VPS専用・未設定ならFATAL）
+//     が無いと実行できない。ローカルには意図的に設定しない。
+//   ・全会員dry-run（--test-user無し）で対象人数・抑止内訳・生成予定メール数を実データで表示。
+//   ・email_confirmed_at未確認ユーザーをproduction-send対象から除外。
+//   ・notification_job_stateのwatermarkは production-send が失敗0件で完了した場合のみ前進。
+//
 // 重要（引き続き有効な制約）:
-//   ・本番全会員への自動送信はまだ行わない。--send は必ず --test-user とセットでのみ動作する。
 //   ・cron登録はまだ行わない（本スクリプトは手動実行のみを想定）。
 //   ・maker-sync / weekly ranking / 既存お気に入り機能には一切触れない（読み取りのみ）。
+//   ・test-userモードのロジック（sendToTestUser/resendAndUpdate）はPhase 2から変更しない。
 //
-// 使い方: Phase 2から変更なし（--dry-run既定 / --test-user=<uuid> / --send / --as-of / --watermark / --lookback-hours）
+// 使い方:
+//   dry-run（全会員・実データ集計）: node notify-actress-new-release.mjs --dry-run
+//   dry-run（単一ユーザープレビュー）: node notify-actress-new-release.mjs --dry-run --test-user=<uuid>
+//   test-user実送信: node notify-actress-new-release.mjs --send --test-user=<uuid>
+//   全会員本番送信（Phase 5B以降・VPS専用）:
+//     node notify-actress-new-release.mjs --send --production-send --confirm-production-send [--max-send=<n>]
 //
-// env（新規）:
+// env:
 //   NOTIFY_REPLY_TO                   … 未設定なら reply_to を付けない
 //   NOTIFICATION_UNSUBSCRIBE_SECRET   … --send 時必須（unsubscribe token署名用）
+//   NOTIFICATION_RUNTIME              … production-send時は "production" が必須（VPS専用ガード）
 // ═════════════════════════════════════════════════════════════════════════════
 import {
   loadAllEnv, jstIso, jstDateKey, makeSupabaseHelpers, maskEmail, sanitizeError,
   escapeHtml, buildTrackedUrl, unsubscribeUrl, assertProductionSafeFrom, sendViaResend, isSuppressed,
-  DEFAULT_NOTIFY_FROM_EMAIL,
+  DEFAULT_NOTIFY_FROM_EMAIL, resolveSendMode, assertProductionRuntimeGuard, assertProductionSendPreconditions,
+  classifyUsersForDryRun, lookupDeliveryStatuses, runWithConcurrency, PRODUCTION_SEND_CONCURRENCY, exceedsMaxSend,
 } from './lib/notification-mailer.mjs'
 
+const SCRIPT_LABEL = 'notify-anr'
 const CWD = process.cwd()
 const ARGV = process.argv.slice(2)
-const SEND = ARGV.includes('--send')
 const argVal = (name) => {
   const hit = ARGV.find((a) => a.startsWith(`--${name}=`))
   return hit ? hit.slice(name.length + 3) : null
 }
-const TEST_USER = argVal('test-user')
-const DRY_RUN = !SEND
-
-if (SEND && !TEST_USER) {
-  console.error('FATAL --send には --test-user=<uuid> が必須です（Phase 2では全会員への一括送信は未実装）。')
-  process.exit(2)
-}
+const SEND_MODE = resolveSendMode(ARGV, SCRIPT_LABEL)
+const MODE = SEND_MODE.mode // 'dry-run' | 'test-user' | 'production' | 'production-dry-run'
+// SEND: RESEND_API_KEY/UNSUB_SECRETの存在を必須とするモードか（実送信するmodeだけでなく、
+// production-dry-runもenv検証の一環として必須とする＝Step 4「env validation」）。
+// 実際にResendへ到達し得るのは 'test-user' と 'production' のみ（production-dry-runは
+// sendToTestUser/resendAndUpdateを一切呼ばない構造のため到達不可能）。
+const SEND = MODE !== 'dry-run'
+const TEST_USER = SEND_MODE.testUser
+const MAX_SEND = SEND_MODE.maxSend
+const DRY_RUN = MODE === 'dry-run'
 
 loadAllEnv(CWD)
 
 const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 for (const [k, v] of [['NEXT_PUBLIC_SUPABASE_URL', SB_URL], ['SUPABASE_SERVICE_ROLE_KEY', SB_KEY]]) {
-  if (!v) { console.error(`FATAL notify-actress-new-release missing env ${k}`); process.exit(2) }
+  if (!v) { console.error(`FATAL[${SCRIPT_LABEL}] missing env ${k}`); process.exit(2) }
 }
 const RESEND_API_KEY = process.env.RESEND_API_KEY
 const SITE_URL = process.env.NEXT_PUBLIC_SITE_URL ?? 'https://verity-official.com'
@@ -62,11 +81,11 @@ const REPLY_TO = process.env.NOTIFY_REPLY_TO || undefined
 const UNSUB_SECRET = process.env.NOTIFICATION_UNSUBSCRIBE_SECRET
 
 if (SEND && !RESEND_API_KEY) {
-  console.error('FATAL --send には RESEND_API_KEY が必須です')
+  console.error(`FATAL[${SCRIPT_LABEL}] --send には RESEND_API_KEY が必須です`)
   process.exit(2)
 }
 if (SEND && !UNSUB_SECRET) {
-  console.error('FATAL --send には NOTIFICATION_UNSUBSCRIBE_SECRET が必須です（List-Unsubscribeリンク署名用）')
+  console.error(`FATAL[${SCRIPT_LABEL}] --send には NOTIFICATION_UNSUBSCRIBE_SECRET が必須です（List-Unsubscribeリンク署名用）`)
   process.exit(2)
 }
 
@@ -178,8 +197,22 @@ function buildEmail(groups, unsubUrl, unsubAllUrl) {
 // ── メイン ───────────────────────────────────────────────────────────────────
 async function main() {
   const t0 = Date.now()
-  console.log(`\nSTART notify-actress-new-release started_at=${jstIso()} mode=${SEND ? 'SEND' : 'DRY-RUN'}${TEST_USER ? ` test_user=${TEST_USER}` : ''}`)
+  console.log(`\nSTART notify-actress-new-release started_at=${jstIso()} mode=${MODE.toUpperCase()}${TEST_USER ? ` test_user=${TEST_USER}` : ''}${MAX_SEND ? ` max_send=${MAX_SEND}` : ''}`)
   if (TEST_USER) console.log('*** TEST MODE — 対象は指定ユーザー1名のみ ***')
+  if (MODE === 'production' || MODE === 'production-dry-run') {
+    console.log(MODE === 'production'
+      ? '*** PRODUCTION SEND MODE — 全会員が対象です（安全ガード通過後のみ送信） ***'
+      : '*** PRODUCTION DRY-RUN — 対象抽出・env検証・max-send検証のみ。Resend呼び出し・DB書込みは一切行いません ***')
+    // production-dry-runもVPS専用ガードを通す（Step 4）。ただしこのモードは
+    // sendToTestUser/resendAndUpdateを一度も呼ばない構造のため、ガードにバグがあっても
+    // 実送信には到達し得ない（Resend呼び出しコード自体がこの分岐に存在しない）。
+    assertProductionRuntimeGuard(SCRIPT_LABEL)
+    await assertProductionSendPreconditions({
+      scriptLabel: SCRIPT_LABEL, resendApiKey: RESEND_API_KEY, fromAddr: FROM_ADDR,
+      unsubSecret: UNSUB_SECRET, siteUrl: SITE_URL, sbSelectOptional,
+    })
+    console.log('production安全条件チェック: OK')
+  }
 
   // ── ウォーターマーク解決 ────────────────────────────────────────────────────
   let watermark
@@ -233,7 +266,7 @@ async function main() {
 
   if (actressExtIdSet.size === 0) {
     console.log('対象女優なし — 送信対象0件で終了')
-    await finalizeWatermark(watermark)
+    await finalizeWatermark(watermark, MODE === 'production')
     printDone(t0, { articles: 0, actresses: 0, users: 0, emails: 0 })
     return
   }
@@ -244,7 +277,7 @@ async function main() {
 
   if (actressRows.length === 0) {
     console.log('VERITY女優テーブルに一致する行なし — 送信対象0件で終了')
-    await finalizeWatermark(watermark)
+    await finalizeWatermark(watermark, MODE === 'production')
     printDone(t0, { articles: candidates.length, actresses: 0, users: 0, emails: 0 })
     return
   }
@@ -259,7 +292,7 @@ async function main() {
   const userIds = [...new Set(relevantFav.map((r) => r.user_id))]
   if (userIds.length === 0) {
     console.log('対象お気に入りユーザーなし — 送信対象0件で終了')
-    await finalizeWatermark(watermark)
+    await finalizeWatermark(watermark, MODE === 'production')
     printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: 0, emails: 0 })
     return
   }
@@ -328,23 +361,29 @@ async function main() {
     digests.set(uid, { groups, totalArticles })
   }
 
-  console.log('\n─── 対象ユーザー内訳 ───')
-  let shown = 0
-  for (const [uid, digest] of digests) {
-    shown++
-    const isTarget = !TEST_USER || uid === TEST_USER
-    if (!isTarget) continue
-    const cids = digest.groups.flatMap((g) => g.articles.map((a) => a.cid)).join(',')
-    const names = digest.groups.map((g) => g.label).join(' / ')
-    console.log(`user=${uid.slice(0, 8)}… articles=${digest.totalArticles} actresses=[${names}] cids=[${cids}]`)
-  }
-  if (!TEST_USER && shown > 20) console.log(`  …他${shown - 20}人省略なし（上記全件表示済み）`)
+  const groupKeyToday = jstDateKey(AS_OF)
 
+  // ── production-send / production-dry-run: 送信開始前にmax-send上限チェック（Step 11）──
+  // 超過分だけ打ち切ることはしない（全件送るか0件かのみ許可）。純粋関数exceedsMaxSendは
+  // I/O無しで単体テスト可能（インシデント対応 Step 6）。
+  if ((MODE === 'production' || MODE === 'production-dry-run') && exceedsMaxSend(digestUserIds.length, MAX_SEND)) {
+    throw new Error(
+      `[${SCRIPT_LABEL}] 対象ユーザー数(${digestUserIds.length})が --max-send=${MAX_SEND} を超過しました。` +
+      '安全のため送信を中止します（0通・全件送るか0件かのみ許可）。',
+    )
+  }
+
+  // ── test-userモード（Phase 2から変更なし。ロジックを壊さない） ────────────────────
   if (TEST_USER) {
+    console.log('\n─── 対象ユーザー内訳 ───')
     const digest = digests.get(TEST_USER)
+    if (digest) {
+      const cids = digest.groups.flatMap((g) => g.articles.map((a) => a.cid)).join(',')
+      const names = digest.groups.map((g) => g.label).join(' / ')
+      console.log(`user=${TEST_USER.slice(0, 8)}… articles=${digest.totalArticles} actresses=[${names}] cids=[${cids}]`)
+    }
     if (!digest) {
       console.log(`\ntest-user ${TEST_USER} は今回の対象になりません（お気に入り女優の新作なし、notify_new_work=false、bounce/complaint抑止、またはお気に入り未登録）。`)
-      await finalizeWatermark(watermark)
       printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: digests.size, emails: 0 })
       return
     }
@@ -376,9 +415,148 @@ async function main() {
     return
   }
 
-  console.log(`\n生成予定メール件数: ${digests.size}通（dry-run。Phase 2では --test-user 無しの実送信は未実装）`)
-  await finalizeWatermark(watermark)
-  printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: digests.size, emails: 0 })
+  // ── production-send モード（Phase 5A新規。Phase 5Aでは呼ばれ得ない — NOTIFICATION_RUNTIME
+  //    未設定のためVPSでも到達しない。コードとしてはここまで実装しておく） ─────────────
+  if (MODE === 'production') {
+    console.log(`\n*** PRODUCTION SEND — 対象${digestUserIds.length}人へ送信します（max-send=${MAX_SEND}） ***`)
+    const summary = await runProductionSend(digestUserIds, digests, groupKeyToday)
+    printSendSummary(summary, t0)
+    if (summary.failed === 0) {
+      await finalizeWatermark(watermark, true)
+    } else {
+      console.log(`\n${summary.failed}件の失敗があったため watermark を前進させません（次回実行時にfailed分をretryします。sent済みユーザーはskipされます）。`)
+      process.exitCode = 1
+    }
+    printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: digestUserIds.length, emails: summary.sent })
+    return
+  }
+
+  // ── production-dry-run（インシデント対応で新設）。sendToTestUser/resendAndUpdate/
+  //    runProductionSendのいずれも呼ばない＝Resend呼び出しコード自体がこの分岐に存在しない。
+  //    対象抽出・env検証・max-send検証はproduction-sendと完全同一ロジック（上のmax-send
+  //    チェック・上のガード呼び出しを共有）。DB書込み・watermark前進も一切行わない。 ─────
+  if (MODE === 'production-dry-run') {
+    console.log(`\n*** PRODUCTION DRY-RUN 結果 — max-send=${MAX_SEND}以内、対象${digestUserIds.length}人（実送信0・DB書込み0） ***`)
+    if (digestUserIds.length === 0) {
+      console.log('対象ユーザー0人')
+    } else {
+      const authMap = await classifyUsersForDryRun(digestUserIds, fetchAuthUser)
+      const deliveryMap = await lookupDeliveryStatuses(sbSelect, NOTIFICATION_TYPE, groupKeyToday, digestUserIds)
+      printFullDryRunReport(digestUserIds, digests, authMap, deliveryMap)
+    }
+    printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: digestUserIds.length, emails: 0 })
+    return
+  }
+
+  // ── dry-run（全会員・実データ集計。Phase 5A新規強化） ───────────────────────────
+  console.log('\n─── 全会員dry-run 集計 ───')
+  if (digestUserIds.length === 0) {
+    console.log('対象ユーザー0人')
+  } else {
+    const authMap = await classifyUsersForDryRun(digestUserIds, fetchAuthUser)
+    const deliveryMap = await lookupDeliveryStatuses(sbSelect, NOTIFICATION_TYPE, groupKeyToday, digestUserIds)
+    printFullDryRunReport(digestUserIds, digests, authMap, deliveryMap)
+  }
+  printDone(t0, { articles: candidates.length, actresses: actressRows.length, users: digestUserIds.length, emails: 0 })
+}
+
+// ── 全会員dry-run集計・表示（Step 8 / Step 10） ─────────────────────────────────
+function printFullDryRunReport(digestUserIds, digests, authMap, deliveryMap) {
+  let noEmail = 0, unconfirmed = 0, noAccount = 0, sentAlready = 0, pendingRecent = 0, retryCount = 0, newCount = 0
+  const rows = []
+  for (const uid of digestUserIds) {
+    const info = authMap.get(uid)
+    const delivery = deliveryMap.get(uid)
+    let reason
+    if (info.status === 'no_account') { noAccount++; reason = 'no_account' }
+    else if (info.status === 'no_email') { noEmail++; reason = 'no_email' }
+    else if (info.status === 'unconfirmed') { unconfirmed++; reason = 'unconfirmed' }
+    else if (delivery?.status === 'sent') { sentAlready++; reason = 'already_sent' }
+    else if (delivery?.status === 'pending') {
+      const ageMin = (Date.now() - new Date(delivery.created_at).getTime()) / 60000
+      if (ageMin < STALE_PENDING_MINUTES) { pendingRecent++; reason = 'pending_recent' }
+      else { retryCount++; newCount++; reason = 'stale_pending_retry' }
+    } else if (delivery?.status === 'failed') { retryCount++; newCount++; reason = 'failed_retry' }
+    else { newCount++; reason = 'new' }
+    rows.push({ uid, email: info.authUser?.email, reason, digest: digests.get(uid) })
+  }
+
+  console.log(`対象ユーザー数(候補): ${digestUserIds.length}`)
+  console.log(`  生成予定メール数: ${newCount}（うちfailed/stale-pending retry候補: ${retryCount}）`)
+  console.log(`  既にsent済み(スキップ): ${sentAlready}`)
+  console.log(`  pending処理中・直近${STALE_PENDING_MINUTES}分以内(スキップ): ${pendingRecent}`)
+  console.log(`  emailなし(スキップ): ${noEmail}`)
+  console.log(`  email未確認(スキップ): ${unconfirmed}`)
+  console.log(`  authアカウントなし(スキップ): ${noAccount}`)
+
+  console.log('\n─── 対象ユーザー内訳（先頭20件、メールはマスク） ───')
+  for (const r of rows.slice(0, 20)) {
+    const names = r.digest.groups.map((g) => g.label).join(' / ')
+    console.log(`  user=${r.uid.slice(0, 8)}… email=${maskEmail(r.email)} articles=${r.digest.totalArticles} actresses=[${names}] reason=${r.reason}`)
+  }
+  if (rows.length > 20) console.log(`  …他${rows.length - 20}人`)
+}
+
+// ── production-send 実行本体（Step 15-18）。sendToTestUser/resendAndUpdateは変更せず再利用。──
+async function runProductionSend(digestUserIds, digests, groupKey) {
+  const summary = {
+    total_candidates: digestUserIds.length, sent: 0, skipped_sent: 0, skipped_pending_recent: 0,
+    skipped_no_email: 0, skipped_unconfirmed: 0, skipped_no_account: 0, failed: 0, pending_retried: 0,
+  }
+  await runWithConcurrency(digestUserIds, PRODUCTION_SEND_CONCURRENCY, async (uid) => {
+    const authUser = await fetchAuthUser(uid)
+    const cls = authUser && !authUser.deleted_at
+      ? (!authUser.email ? 'no_email' : (!authUser.email_confirmed_at ? 'unconfirmed' : 'ok'))
+      : 'no_account'
+    if (cls === 'no_account') { summary.skipped_no_account++; return }
+    if (cls === 'no_email') { summary.skipped_no_email++; return }
+    if (cls === 'unconfirmed') { summary.skipped_unconfirmed++; return }
+
+    const digest = digests.get(uid)
+    const unsubUrlForUser = unsubscribeUrl(SITE_URL, UNSUB_SECRET, uid, NOTIFICATION_TYPE)
+    const unsubAllUrlForUser = unsubscribeUrl(SITE_URL, UNSUB_SECRET, uid, 'all')
+    const emailContent = buildEmail(digest.groups, unsubUrlForUser, unsubAllUrlForUser)
+
+    const matchQuery = `user_id=eq.${uid}&notification_type=eq.${NOTIFICATION_TYPE}&group_key=eq.${groupKey}`
+    const existing = await sbSelect(`notification_deliveries?select=id,status,created_at&${matchQuery}`)
+
+    if (existing.length > 0) {
+      const row = existing[0]
+      if (row.status === 'sent') { summary.skipped_sent++; return }
+      if (row.status === 'pending') {
+        const ageMin = (Date.now() - new Date(row.created_at).getTime()) / 60000
+        if (ageMin < STALE_PENDING_MINUTES) { summary.skipped_pending_recent++; return }
+        summary.pending_retried++
+      }
+      const ok = await resendAndUpdate(row.id, uid, authUser.email, emailContent)
+      if (ok) summary.sent++; else summary.failed++
+      return
+    }
+
+    const payload = buildAuditPayload(emailContent, groupKey, digest.groups)
+    const ins = await sbInsert('notification_deliveries', [{
+      user_id: uid, notification_type: NOTIFICATION_TYPE, group_key: groupKey,
+      entity_type: 'daily_digest', payload, status: 'pending',
+    }])
+    if (!ins.ok) {
+      if (ins.status === 409) { summary.skipped_pending_recent++; return }
+      console.error(`INSERT失敗 user=${uid.slice(0, 8)}… HTTP ${ins.status}`)
+      summary.failed++
+      return
+    }
+    const id = ins.body?.[0]?.id
+    const ok = await resendAndUpdate(id, uid, authUser.email, emailContent)
+    if (ok) summary.sent++; else summary.failed++
+  })
+  return summary
+}
+
+function printSendSummary(summary, t0) {
+  console.log('\n─── send summary ───')
+  console.log(`total_candidates=${summary.total_candidates} sent=${summary.sent} skipped_sent=${summary.skipped_sent} ` +
+    `skipped_pending_recent=${summary.skipped_pending_recent} skipped_no_email=${summary.skipped_no_email} ` +
+    `skipped_unconfirmed=${summary.skipped_unconfirmed} skipped_no_account=${summary.skipped_no_account} ` +
+    `failed=${summary.failed} pending_retried=${summary.pending_retried} duration=${((Date.now() - t0) / 1000).toFixed(1)}s`)
 }
 
 async function sbSelectChunked(table, select, inColumn, values, isActiveFilterForActresses) {
@@ -394,8 +572,10 @@ async function sbSelectChunked(table, select, inColumn, values, isActiveFilterFo
   return out
 }
 
-async function finalizeWatermark(oldWatermark) {
-  if (DRY_RUN || TEST_USER) return
+// forceAdvance=true のときのみ実際に前進する（production-send成功時のみ呼び出し元がtrueを渡す）。
+// dry-run/test-userは常にfalse相当のため、この関数は事実上何もしない（Step 9/13）。
+async function finalizeWatermark(oldWatermark, forceAdvance = false) {
+  if (!forceAdvance) return
   try {
     await sbUpsert('notification_job_state', { job_name: JOB_NAME, watermark: AS_OF.toISOString(), updated_at: new Date().toISOString() }, 'job_name')
     console.log(`watermark advanced: ${jstIso(oldWatermark)} -> ${jstIso(AS_OF)}`)
@@ -452,7 +632,7 @@ function buildAuditPayload(emailContent, groupKey, groups) {
 }
 
 async function resendAndUpdate(deliveryId, userId, email, emailContent) {
-  console.log(`\n*** TEST MODE: Resendへ実送信します — to=${maskEmail(email)} from=${FROM_ADDR} ***`)
+  console.log(`\n*** [${MODE.toUpperCase()}] Resendへ実送信します — to=${maskEmail(email)} from=${FROM_ADDR} ***`)
   try {
     const unsubUrl = unsubscribeUrl(SITE_URL, UNSUB_SECRET, userId, NOTIFICATION_TYPE)
     const json = await sendViaResend({
@@ -476,7 +656,7 @@ async function resendAndUpdate(deliveryId, userId, email, emailContent) {
 
 function printDone(t0, stats) {
   console.log(
-    `\nDONE notify-actress-new-release mode=${SEND ? 'SEND' : 'DRY-RUN'} ` +
+    `\nDONE notify-actress-new-release mode=${MODE.toUpperCase()} ` +
     `articles=${stats.articles} actresses=${stats.actresses} users=${stats.users} emails_sent=${stats.emails} ` +
     `finished_at=${jstIso()} elapsed=${((Date.now() - t0) / 1000).toFixed(1)}s`,
   )

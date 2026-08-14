@@ -212,3 +212,223 @@ export async function isSuppressed(helpers, userId) {
   if (missing || rows.length === 0) return false
   return rows[0].status === 'bounced' || rows[0].status === 'complained' || rows[0].status === 'suppressed'
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// Phase 5A — 全会員送信CLIの安全解禁準備
+// ═════════════════════════════════════════════════════════════════════════════
+// このセクションは「--send単独 / --production-send単独では絶対に全会員へ送信できない」
+// という誤操作防止を、notify-actress-new-release.mjs と notify-weekly-ranking.mjs の
+// 両方で完全に同一のルールとして強制するために存在する（スクリプトごとに微妙に異なる
+// ガード実装になることを防ぐ）。Phase 5Aでは --production-send を実際に有効化する
+// NOTIFICATION_RUNTIME=production はVPSへ未設定のため、本番送信は依然として実行不可能。
+// ═════════════════════════════════════════════════════════════════════════════
+
+// 誤設定で数千〜数万通飛ぶ事故を防ぐための既定上限（Step 11）。
+export const DEFAULT_MAX_SEND = 100
+
+// production-send時にSITE_URLが本当に公開ドメインを指しているかの照合先（Step 4-5）。
+export const PRODUCTION_SITE_URL = 'https://verity-official.com'
+
+// production-send実行を許可する唯一の環境（Step 3）。VPSの .env / ecosystem.config.js
+// にのみ設定し、ローカルには意図的に設定しない運用とする。
+export const PRODUCTION_RUNTIME_VALUE = 'production'
+
+// ═════════════════════════════════════════════════════════════════════════════
+// インシデント対応（Phase 5A再開時）: 2026-08-14、ガード検証テスト中に
+// 「NOTIFICATION_RUNTIME=production をコマンド1回だけ付与」という単一条件の突破により、
+// ローカルPCから実在の一般会員1名へ週間ランキングメールが実送信される事故が発生した。
+// 原因は (1) production-send可否の判定が環境変数1個だけに依存していたこと、
+// (2) ガード確認のテストに実際の --send 経路（本物のResend API呼び出しに到達し得るコード
+// パス）を使ってしまったこと、の2点。
+// 再発防止として:
+//   ・production-send実行ガードを4条件の複合判定に強化（下記PRODUCTION_CWD等）。
+//   ・「production-dry-run」を新設し、対象抽出・env検証・max-send検証は本番送信と
+//     完全に同一ロジックを通しつつ、Resend呼び出し・DB書込みへ絶対に到達しない
+//     コードパス（sendToTestUser/resendAndUpdateを一切呼ばない）として構造的に分離した。
+//   ・ガード自体の動作確認（「拒否されること」の実証）は必ずこのproduction-dry-run、
+//     または--send無しの経路で行う。実Resend APIに到達し得る--sendは、VPS上で
+//     実際に送るとき以外に使わない。
+// ═════════════════════════════════════════════════════════════════════════════
+
+// production-send実行を許可する本番VPS上の実行パス（Step 2-B）。
+export const PRODUCTION_CWD = '/home/veritysite/verity-official.com/app'
+
+// production-send実行を許可するsentinelファイル（Step 2-C・3）。VPS専用に手動配置し、
+// deploy.sh（app/配下をtar転送）の対象外パスに置くことで、deployでは絶対に生成されず、
+// Gitにも一切含まれない（リポジトリ外パス）。中身に秘密情報は不要（存在有無のみ判定）。
+export const PRODUCTION_SENTINEL_PATH = '/home/veritysite/verity-official.com/.notification-production'
+
+// ── CLIフラグの組み合わせ解決（Step 2 / インシデント対応でproduction-dry-run追加） ──
+// 曖昧な組み合わせは全てFATAL(exit 2)。
+// 戻り値の mode は 'dry-run' | 'test-user' | 'production' | 'production-dry-run'。
+// production-dry-run は --send を一切伴わない専用フラグとし、Resend呼び出しへ到達し得る
+// コードパス（sendToTestUser/resendAndUpdate）を呼び出し元スクリプトが物理的に呼ばない
+// 設計とセットで、production-sendのガード・対象抽出ロジックだけを安全に検証できる。
+export function resolveSendMode(argv, scriptLabel) {
+  const has = (name) => argv.includes(`--${name}`)
+  const val = (name) => {
+    const hit = argv.find((a) => a.startsWith(`--${name}=`))
+    return hit ? hit.slice(name.length + 3) : null
+  }
+  const send = has('send')
+  const testUser = val('test-user')
+  const productionSend = has('production-send')
+  const confirmProductionSend = has('confirm-production-send')
+  const productionDryRun = has('production-dry-run')
+  const maxSendRaw = val('max-send')
+
+  if (productionDryRun) {
+    if (send || productionSend || confirmProductionSend) {
+      console.error(`FATAL[${scriptLabel}] --production-dry-run は --send / --production-send / --confirm-production-send と併用できません（dry-runはRealSendパスと完全に分離するため）。`)
+      process.exit(2)
+    }
+    const maxSend = maxSendRaw != null ? Number(maxSendRaw) : DEFAULT_MAX_SEND
+    if (!Number.isFinite(maxSend) || !Number.isInteger(maxSend) || maxSend <= 0) {
+      console.error(`FATAL[${scriptLabel}] --max-send は正の整数で指定してください（指定値: ${maxSendRaw}）。`)
+      process.exit(2)
+    }
+    return { mode: 'production-dry-run', testUser: null, maxSend }
+  }
+
+  // --production-send 単独（--send を伴わない）は事故防止のため明示エラーにする。
+  // dry-runへ黙って読み替えると「production-sendを付けたのに何も起きなかった」という
+  // 誤解を生み、後で本当に送るときの見落としにつながるため。
+  if (productionSend && !send) {
+    console.error(`FATAL[${scriptLabel}] --production-send は --send と同時指定が必須です。`)
+    process.exit(2)
+  }
+  if (!send) {
+    return { mode: 'dry-run', testUser: testUser ?? null, maxSend: null }
+  }
+  if (testUser && productionSend) {
+    console.error(`FATAL[${scriptLabel}] --test-user と --production-send は同時指定できません（曖昧な組み合わせのため拒否）。`)
+    process.exit(2)
+  }
+  if (!testUser && !productionSend) {
+    console.error(`FATAL[${scriptLabel}] --send には --test-user=<uuid> または --production-send のいずれかが必須です。`)
+    process.exit(2)
+  }
+  if (productionSend) {
+    if (!confirmProductionSend) {
+      console.error(`FATAL[${scriptLabel}] --production-send には --confirm-production-send の明示指定が必須です（誤操作防止の二段階確認）。`)
+      process.exit(2)
+    }
+    const maxSend = maxSendRaw != null ? Number(maxSendRaw) : DEFAULT_MAX_SEND
+    if (!Number.isFinite(maxSend) || !Number.isInteger(maxSend) || maxSend <= 0) {
+      console.error(`FATAL[${scriptLabel}] --max-send は正の整数で指定してください（指定値: ${maxSendRaw}）。`)
+      process.exit(2)
+    }
+    return { mode: 'production', testUser: null, maxSend }
+  }
+  return { mode: 'test-user', testUser, maxSend: null }
+}
+
+// 対象件数がmax-sendを超過しているかどうかの純粋関数（I/O無し・単体テスト用。Step 6）。
+export function exceedsMaxSend(candidateCount, maxSend) {
+  return candidateCount > maxSend
+}
+
+// ── VPS専用実行ガード（Step 2）───────────────────────────────────────────────
+// 2026-08-14のインシデント（環境変数1個だけの一致でproduction-sendが通ってしまった）を
+// 受け、単一条件を廃止し4条件の複合判定にした。1つでも欠ければfail-closed。
+// hostname単独判定は環境依存で偽装・変動しやすいため採用しない。
+export function assertProductionRuntimeGuard(scriptLabel) {
+  const problems = []
+  if (process.env.NOTIFICATION_RUNTIME !== PRODUCTION_RUNTIME_VALUE) {
+    problems.push(`NOTIFICATION_RUNTIME=${PRODUCTION_RUNTIME_VALUE} が未設定です`)
+  }
+  if (process.platform !== 'linux') {
+    problems.push(`process.platform が linux ではありません（現在: ${process.platform}）`)
+  }
+  if (process.cwd() !== PRODUCTION_CWD) {
+    problems.push(`実行cwdが本番VPS正規パス(${PRODUCTION_CWD})と一致しません`)
+  }
+  if (!fs.existsSync(PRODUCTION_SENTINEL_PATH)) {
+    problems.push('production sentinelファイルが存在しません（VPS専用・Git管理外・deploy対象外）')
+  }
+  if (problems.length > 0) {
+    throw new Error(
+      `[${scriptLabel}] production-send実行環境の検証に失敗しました（4条件中${4 - problems.length}/4のみ合致）:\n` +
+      ` - ${problems.join('\n - ')}`,
+    )
+  }
+}
+
+// ── production-send前の必須安全条件（Step 4） ───────────────────────────────────
+// 1つでも欠落していれば例外を投げ、呼び出し元は「送信0通・DB書込み0」で終了する。
+export async function assertProductionSendPreconditions({ scriptLabel, resendApiKey, fromAddr, unsubSecret, siteUrl, sbSelectOptional }) {
+  const problems = []
+  if (!resendApiKey) problems.push('RESEND_API_KEY が未設定です')
+  if (!fromAddr) problems.push('NOTIFY_FROM_EMAIL が未設定です')
+  if (fromAddr && (/@resend\.dev$/i.test(fromAddr) || /<[^>]*@resend\.dev>/i.test(fromAddr))) {
+    problems.push('Fromがsandboxドメイン(*.resend.dev)のままです')
+  }
+  if (!unsubSecret) problems.push('NOTIFICATION_UNSUBSCRIBE_SECRET が未設定です')
+  if (siteUrl !== PRODUCTION_SITE_URL) problems.push(`SITE_URLが本番URL(${PRODUCTION_SITE_URL})と一致しません`)
+
+  for (const table of ['notification_email_status', 'notification_deliveries']) {
+    try {
+      const res = await sbSelectOptional(`${table}?select=user_id&limit=1`)
+      if (res.missing) problems.push(`${table} テーブルに疎通できません（未作成の可能性）`)
+    } catch (err) {
+      problems.push(`${table} の疎通確認でエラー: ${sanitizeError(err)}`)
+    }
+  }
+
+  if (problems.length > 0) {
+    throw new Error(`[${scriptLabel}] production-send 安全条件を満たしていません:\n - ${problems.join('\n - ')}`)
+  }
+}
+
+// ── auth.users 状態の分類（Step 5-6: email_confirmed_at条件） ───────────────────
+export function classifyAuthUser(authUser) {
+  if (!authUser || authUser.deleted_at) return 'no_account'
+  if (!authUser.email) return 'no_email'
+  if (!authUser.email_confirmed_at) return 'unconfirmed'
+  return 'ok'
+}
+
+// ── 限定並列実行（Step 16）。Resend APIへの同時大量リクエストを避ける。 ───────────
+export const PRODUCTION_SEND_CONCURRENCY = 5
+
+export async function runWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length)
+  let idx = 0
+  async function runOne() {
+    while (idx < items.length) {
+      const current = idx++
+      results[current] = await worker(items[current], current)
+    }
+  }
+  const workers = Array.from({ length: Math.max(1, Math.min(limit, items.length)) }, runOne)
+  await Promise.all(workers)
+  return results
+}
+
+// ── dry-run集計ヘルパー（Step 7-8）。全会員dry-runで実数を出すために使う。 ──────────
+// GoTrue Admin APIはuser_idごとに個別呼び出しが必要（Admin一覧APIはメール検索に
+// 向かないためこの構造を維持。会員規模が数千〜のオーダーになった場合は
+// バッチ化/RPC化を再検討する。Phase 5Aでは実測件数を報告するに留め、DDLは追加しない）。
+export async function classifyUsersForDryRun(userIds, fetchAuthUser, concurrency = PRODUCTION_SEND_CONCURRENCY) {
+  const results = new Map()
+  await runWithConcurrency(userIds, concurrency, async (uid) => {
+    const authUser = await fetchAuthUser(uid)
+    results.set(uid, { authUser, status: classifyAuthUser(authUser) })
+  })
+  return results
+}
+
+// notification_deliveries の既存状態（sent/pending/failed）をuser_idごとに取得する。
+export async function lookupDeliveryStatuses(sbSelect, notificationType, groupKey, userIds) {
+  const statusMap = new Map()
+  for (let i = 0; i < userIds.length; i += 100) {
+    const chunk = userIds.slice(i, i + 100)
+    const inList = chunk.map((v) => `"${v}"`).join(',')
+    const rows = await sbSelect(
+      `notification_deliveries?select=user_id,status,created_at&notification_type=eq.${notificationType}` +
+      `&group_key=eq.${encodeURIComponent(groupKey)}&user_id=in.(${encodeURIComponent(inList)})`,
+    )
+    for (const r of rows) statusMap.set(r.user_id, r)
+  }
+  return statusMap
+}
