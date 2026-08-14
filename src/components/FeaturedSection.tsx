@@ -1,80 +1,14 @@
 import { Star } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
-import { fetchDmmItems, normalizeDmmItem } from '@/lib/sources/dmm'
-import { FEATURED_CIDS } from '@/lib/featuredCids'
+import { getFeaturedActressCards } from '@/lib/featuredActressScoring'
 import { ArticleCard } from './ArticleCard'
 import type { Article } from '@/lib/types'
 
-// "snos00303" → "SNOS-303"  /  "ipzz00870" → "IPZZ-870"
-// parseInt strips leading zeros so the product number matches DMM's catalog format.
-function cidToProductNumber(cid: string): string {
-  const m = cid.match(/^(.*?)(\d+)$/)
-  return m ? `${m[1].toUpperCase()}-${parseInt(m[2], 10)}` : cid.toUpperCase()
-}
-
-// Fetch one specific CID from both digital and mono endpoints in parallel.
-// Returns the richer result (prefers sample_movie_url), or null if not found.
-async function fetchCidLive(cid: string): Promise<Article | null> {
-  const hasDmmKey = !!(process.env.DMM_API_ID && process.env.AFFILIATE_ID)
-  if (!hasDmmKey) return null
-
-  // raw content_id like "snos208" → product number "SNOS-208" for reliable DMM search
-  const keyword = cidToProductNumber(cid)
-
-  const [dRes, mRes] = await Promise.allSettled([
-    fetchDmmItems({ keyword, hits: 10, service: 'digital', floor: 'videoa' }),
-    fetchDmmItems({ keyword, hits: 10, service: 'mono',    floor: 'dvd'    }),
-  ])
-
-  const dItems = dRes.status === 'fulfilled'
-    ? dRes.value.filter(i => i.content_id === cid)
-    : []
-  const mItems = mRes.status === 'fulfilled'
-    ? mRes.value.filter(i => i.content_id === cid)
-    : []
-
-  // Prefer the version that has a sample movie URL; fall back to digital then mono
-  const best =
-    dItems.find(i => i.sampleMovieURL) ??
-    mItems.find(i => i.sampleMovieURL) ??
-    dItems[0] ?? mItems[0] ?? null
-
-  if (!best) return null
-
-  const floor = mItems.includes(best) ? 'dvd' : 'videoa'
-  return normalizeDmmItem(best, floor) as unknown as Article
-}
-
 export async function FeaturedSection() {
-  const supabase = await createClient()
-
-  // Step 1: DB lookup — fast path for synced articles
-  const { data: dbRows } = await supabase
-    .from('articles')
-    .select('*')
-    .in('external_id', [...FEATURED_CIDS])
-    .eq('is_active', true)
-
-  const articleMap = new Map<string, Article>(
-    (dbRows ?? []).map(r => [r.external_id as string, r as Article])
-  )
-
-  // Step 2: Live fallback for any CIDs missing from DB
-  const missingCids = [...FEATURED_CIDS].filter(cid => !articleMap.has(cid))
-  if (missingCids.length > 0) {
-    await Promise.allSettled(
-      missingCids.map(async cid => {
-        const article = await fetchCidLive(cid)
-        // Clear slug so ArticleCard skips the /articles/[slug] link (no DB record exists yet)
-        if (article) articleMap.set(cid, { ...article, slug: '' })
-      })
-    )
-  }
-
-  // Maintain FEATURED_CIDS order
-  const articles = [...FEATURED_CIDS]
-    .map(cid => articleMap.get(cid))
-    .filter((a): a is Article => Boolean(a))
+  // 掲載対象（女優一覧）は編集部が featuredCids.ts の FEATURED_ACTRESSES で固定管理する。
+  // ここで自動化しているのは「各女優の代表作品をDBから解決」「表示順をスコアで決定」の2点のみ。
+  // 詳細: src/lib/featuredActressScoring.ts
+  const cards = await getFeaturedActressCards()
+  const articles: Article[] = cards.map(c => c.article)
 
   if (articles.length === 0) return null
 

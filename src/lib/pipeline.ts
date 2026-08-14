@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js'
 import type { Article, Actress, PipelineResult, Source } from './types'
-import { FEATURED_CIDS, MARQUEE_SYNC_CIDS, FORCE_DIGITAL_CIDS, PINNED_ACTRESS_LATEST_CIDS } from './featuredCids'
+import { FEATURED_ACTRESSES, MARQUEE_SYNC_CIDS, FORCE_DIGITAL_CIDS } from './featuredCids'
 import { MONITORED_MAKER_IDS } from './makers'
 import { cidToCdnUrl, isBadImageUrl, toHighResPackageUrl } from './cidUtils'
 import { RECOMMENDED_ACTRESS_NAMES } from './recommendedActresses'
@@ -619,10 +619,13 @@ export async function syncTopActresses(): Promise<PipelineResult> {
       return m ? `${m[1].toUpperCase()}-${m[2]}` : cid.toUpperCase()
     }
 
-    // FEATURED_CIDS + MARQUEE_SYNC_CIDS を常に個別再取得する。
+    // MARQUEE_SYNC_CIDS を常に個別再取得する。
     // メインバッチで取得済みでも keyword 検索（digital + mono 両方）で上書きすることで
     // image_url の正確性を保証する。
-    const toFetch = [...FEATURED_CIDS, ...MARQUEE_SYNC_CIDS]
+    // Phase B: 旧 FEATURED_CIDS（オススメ女優の固定代表CID）はここから除外した。
+    // オススメ女優の代表作品は今後 FeaturedSection が毎回DBから動的解決するため、
+    // 特定CIDを常時強制再取得して鮮度保証する仕組みは不要になった（通常の全方位同期で足りる）。
+    const toFetch = [...MARQUEE_SYNC_CIDS]
 
     {
       console.log(`[pipeline:actress-rank] 特集 CID 補完 (${toFetch.length}件): ${toFetch.join(', ')}`)
@@ -897,15 +900,27 @@ export async function syncActressHeroImages(): Promise<{
 
   console.log(`[hero-sync] 月間ランキング対象: ${ranked.length}名`)
 
-  // ── B. VERITY オススメ女優（FEATURED_CIDS 記事の actress メタデータから導出）──
-  const { data: featuredArticles } = await supabase
+  // ── B. VERITY オススメ女優 + マーキー固定女優 ──────────────────────────────
+  // Phase B: FEATURED_ACTRESSES（actress external_id）を actresses テーブルで直接
+  // 名前解決する（旧: FEATURED_CIDS 記事の actress メタデータ経由の間接参照を廃止）。
+  const featuredExternalIds = FEATURED_ACTRESSES.map(id => `dmm-actress-${id}`)
+  const { data: featuredActressRows } = await supabase
+    .from('actresses')
+    .select('name')
+    .in('external_id', featuredExternalIds)
+    .eq('is_active', true)
+
+  const { data: marqueeArticles } = await supabase
     .from('articles')
     .select('metadata')
-    .in('external_id', [...FEATURED_CIDS, ...MARQUEE_SYNC_CIDS])
+    .in('external_id', [...MARQUEE_SYNC_CIDS])
     .eq('is_active', true)
 
   const featuredActressNames = new Set<string>()
-  for (const art of featuredArticles ?? []) {
+  for (const row of featuredActressRows ?? []) {
+    if (row.name) featuredActressNames.add(row.name as string)
+  }
+  for (const art of marqueeArticles ?? []) {
     const list = (art.metadata as Record<string, unknown>)?.actress as Array<{ name: string }> | undefined
     for (const a of list ?? []) { if (a.name) featuredActressNames.add(a.name) }
   }
@@ -1388,8 +1403,11 @@ export async function forceUpdateActressHeroImages(
  * Step 1: FORCE_DIGITAL_CIDS（マーキー固定4名）を digital/video pl.jpg で必ず上書き。
  *         sync が ps.jpg や mono パスを書き込んでも、このステップで正しいパスに戻す。
  *
- * Step 2: 残りの FEATURED_CIDS で image_url が壊れている（null / 空 / 'NOW PRINTING'）
- *         ものに CDN URL を補完する。
+ * Step 2（Phase Bで廃止）: 旧FEATURED_CIDS（オススメ女優の固定代表CID）の壊れた
+ *         image_url を補完していたが、Phase Bでオススメ女優の代表作品はDBから毎回
+ *         動的解決する方式へ変更したため、固定CIDリストを前提にしたこの補完ステップは
+ *         対象を持たなくなった。動的解決の性質上、あるCIDのimage_urlが一時的に壊れて
+ *         いても次回の代表作品選定や通常同期のimage_url更新で自然に解消される。
  */
 export async function patchNullFeaturedImageUrls(): Promise<{ patched: number; errors: number }> {
   const supabase = getServiceClient()
@@ -1414,75 +1432,14 @@ export async function patchNullFeaturedImageUrls(): Promise<{ patched: number; e
     })
   )
 
-  // ── Step 2: 残り FEATURED_CIDS の null/空/'NOW PRINTING' を補完 ──────────
-  const forcedSet = new Set<string>(FORCE_DIGITAL_CIDS)
-  const remainingCids = [...FEATURED_CIDS].filter(c => !forcedSet.has(c))
-
-  const { data, error } = await supabase
-    .from('articles')
-    .select('id, external_id, image_url')
-    .in('external_id', remainingCids)
-
-  if (error) {
-    console.error('[patch-null-images] Step2 query error:', error.message)
-    return { patched, errors: errors + 1 }
-  }
-
-  type Row = { id: string; external_id: string; image_url: string | null }
-  const badRows = ((data ?? []) as Row[]).filter(r => isBadImageUrl(r.image_url))
-
-  if (badRows.length === 0) {
-    console.log('[patch-null-images] Step2: 補完対象なし')
-  } else {
-    console.log(`[patch-null-images] Step2 補完 (${badRows.length}件): ${badRows.map(r => r.external_id).join(', ')}`)
-    for (const row of badRows) {
-      const imageUrl = cidToCdnUrl(row.external_id, 'pl')
-      const { error: upErr } = await supabase
-        .from('articles')
-        .update({ image_url: imageUrl })
-        .eq('id', row.id)
-      if (upErr) {
-        console.error(`[patch-null-images] ${row.external_id} 補完失敗:`, upErr.message)
-        errors++
-      } else {
-        console.log(`[patch-null-images] patch: ${row.external_id} ← ${imageUrl}`)
-        patched++
-      }
-    }
-  }
-
   console.log(`[patch-null-images] 完了 — patched:${patched} errors:${errors}`)
   return { patched, errors }
 }
 
-/**
- * PINNED_ACTRESS_LATEST_CIDS で定義したマーキー固定女優の metadata.latest_cid を復元する。
- * syncTopActresses の actress upsert が metadata を全上書きするため、
- * 同期が終わった後に必ずこの関数を呼んで latest_cid を保護する。
- */
-async function restorePinnedActressLatestCids(): Promise<void> {
-  const supabase = getServiceClient()
-  await Promise.all(
-    Object.entries(PINNED_ACTRESS_LATEST_CIDS).map(async ([name, cid]) => {
-      // 現在の metadata を取得してマージ（他フィールドを破壊しない）
-      const { data } = await supabase
-        .from('actresses')
-        .select('metadata')
-        .eq('name', name)
-        .single()
-      const merged = { ...(((data as { metadata: Record<string, unknown> } | null)?.metadata) ?? {}), latest_cid: cid }
-      const { error } = await supabase
-        .from('actresses')
-        .update({ metadata: merged })
-        .eq('name', name)
-      if (error) {
-        console.error(`[restore-latest-cid] ${name} 更新失敗:`, error.message)
-      } else {
-        console.log(`[restore-latest-cid] ${name} → latest_cid: ${cid}`)
-      }
-    })
-  )
-}
+// Phase B: restorePinnedActressLatestCids()（旧 PINNED_ACTRESS_LATEST_CIDS を使って
+// 女優名キーで metadata.latest_cid を強制上書きしていた関数）は廃止した。
+// オススメ女優の代表作品は featuredActressScoring.ts が毎回DBから動的解決するため、
+// actresses.metadata.latest_cid を特定値へ固定し続ける必要が無くなったため。
 
 // ─── Maker Upcoming Sync ──────────────────────────────────────────────────────
 // MONITORED_MAKER_IDS は src/lib/makers.ts で管理 — そちらが source of truth
@@ -1840,8 +1797,7 @@ export async function syncAllSources(): Promise<PipelineResult[]> {
     }
     // syncTopActresses の metadata 上書きで消えた hero_rank / latest_cid を再設定
     await syncActressHeroImages()
-    // マーキー固定女優の latest_cid を確実に保護（syncActressHeroImages の上書き後に実行）
-    await restorePinnedActressLatestCids()
+    // Phase B: restorePinnedActressLatestCids() 呼び出しは廃止（関数自体を削除済み）。
     // デビュー作品タグを持つ未登録女優を自動登録・下書き公開化
     await syncDebutActresses()
     // 今日のピックを選定（全同期完了後に実行）
