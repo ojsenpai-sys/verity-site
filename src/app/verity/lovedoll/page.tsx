@@ -34,7 +34,7 @@ function ProductCTA({ product, className }: { product: LovedollProduct; classNam
       position="lovedoll_product"
       className={
         className ??
-        'inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-black tracking-wide transition-all duration-300 hover:-translate-y-0.5 active:scale-95'
+        'inline-flex items-center justify-center gap-2 rounded-full bg-[#c5a059] px-6 py-3 text-sm font-black tracking-wide text-[#0a0a0d] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#d4b06c] active:scale-95'
       }
     >
       FANZAで詳細を見る
@@ -118,7 +118,7 @@ function ModelFeature({
       style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
     >
       <div className="relative mx-auto aspect-[3/4] w-full max-w-xs shrink-0 overflow-hidden rounded-xl bg-[var(--surface-2)] md:w-1/2 md:max-w-none">
-        <LovedollProductImage src={product.imageList} alt={name} />
+        <LovedollProductImage src={product.imageSmall} alt={name} />
       </div>
 
       <div className="space-y-3 md:w-1/2">
@@ -158,7 +158,7 @@ function ModelFeature({
         <div className="pt-1">
           <ProductCTA
             product={product}
-            className="inline-flex items-center justify-center gap-2 rounded-full px-6 py-3 text-sm font-black tracking-wide text-[#0a0a0d] transition-all duration-300 hover:-translate-y-0.5 active:scale-95"
+            className="inline-flex items-center justify-center gap-2 rounded-full bg-[#c5a059] px-6 py-3 text-sm font-black tracking-wide text-[#0a0a0d] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#d4b06c] active:scale-95"
           />
         </div>
       </div>
@@ -173,7 +173,7 @@ function MoreCard({ product }: { product: LovedollProduct }) {
       style={{ background: 'var(--surface)', border: '1px solid var(--border)' }}
     >
       <div className="relative aspect-[3/4] w-full bg-[var(--surface-2)]">
-        <LovedollProductImage src={product.imageList} alt={product.title} />
+        <LovedollProductImage src={product.imageSmall} alt={product.title} />
       </div>
       <div className="flex flex-1 flex-col gap-1.5 p-3">
         {product.maker && (
@@ -192,7 +192,7 @@ function MoreCard({ product }: { product: LovedollProduct }) {
         <div className="mt-auto pt-1">
           <ProductCTA
             product={product}
-            className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg py-2 text-[11px] font-bold text-[#0a0a0d] transition-all active:scale-95"
+            className="flex min-h-11 w-full items-center justify-center gap-1.5 rounded-lg bg-[#c5a059] py-2 text-[11px] font-bold text-[#0a0a0d] transition-all hover:bg-[#d4b06c] active:scale-95"
           />
         </div>
       </div>

@@ -80,7 +80,7 @@ export function LovedollHeroClient({ products }: { products: LovedollProduct[] }
                   border: '1px solid rgba(197,160,89,0.25)',
                 }}
               >
-                <LovedollProductImage src={p.imageList} alt={p.actress[0] ?? p.title} />
+                <LovedollProductImage src={p.imageSmall} alt={p.actress[0] ?? p.title} />
               </div>
             ) : (
               <div key={i} />
