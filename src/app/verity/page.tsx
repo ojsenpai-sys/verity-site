@@ -14,6 +14,7 @@ import { MustOneSection } from '@/components/MustOneSection'
 // Fanza100SaleBanner / FanzaChijoSaleBanner: Phase C で SaleTop30Section へ統合したため
 // トップページでは未使用（コンポーネント/saleData.tsは他機能(admin/social-posts)が参照するため削除しない）。
 import { SaleTop30Section } from '@/components/SaleTop30Section'
+import { LovedollHeroSection } from '@/components/LovedollHeroSection'
 import { SystemRestorationNotice } from '@/components/SystemRestorationNotice'
 import { TodaysPickSection } from '@/components/TodaysPickSection'
 import { FastReviewSection } from '@/components/FastReviewSection'
@@ -488,6 +489,13 @@ export default async function DashboardPage({ searchParams }: PageProps) {
       <section id="hero">
         <Suspense fallback={<div className="h-48 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
           {HERO_VARIANT === 'v2.1' ? <HeroV21Section /> : <HeroSection />}
+        </Suspense>
+      </section>
+
+      {/* ── 0a-1. LOVE DOLL特集 大型Hero ────────────────────────────────── */}
+      <section id="lovedoll-hero">
+        <Suspense fallback={<div className="h-64 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
+          <LovedollHeroSection />
         </Suspense>
       </section>
 

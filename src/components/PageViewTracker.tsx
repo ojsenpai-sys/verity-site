@@ -24,6 +24,7 @@ function classify(path: string): { pageType: string; pageId?: string } | null {
   if (a === 'events')    return { pageType: 'event', pageId: b }
   if (a === 'special')   return { pageType: 'special', pageId: b }
   if (a === 'news')      return { pageType: 'news', pageId: b }
+  if (a === 'lovedoll')  return { pageType: 'lovedoll' }
   if (a === 'profile')   return { pageType: 'profile' }
   return { pageType: 'other' }
 }

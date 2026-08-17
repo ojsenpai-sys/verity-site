@@ -107,6 +107,14 @@ function buildChain(target: URL): string[] {
   return [...new Set(candidates)]
 }
 
+// mono/store/ , mono/goods/ (通販=goods フロア。ラブドール等) のサムネイルは正規画像でも
+// 数KB台と小さく、videoa/mono-movie フロア向けに調整された MIN_IMAGE_BYTES 判定を誤爆させる
+// (実測: 正規の90x120サムネイルが3.7KB — プレースホルダー閾値のすぐ下)。
+// このフロアは now_printing リダイレクト検知のみでプレースホルダーを判定する。
+function isGoodsFloorUrl(url: string): boolean {
+  return url.includes('/mono/store/') || url.includes('/mono/goods/')
+}
+
 async function fetchImage(url: string): Promise<{ buffer: ArrayBuffer; type: string } | null> {
   const isDmm = DMM_HOSTNAMES.has(new URL(url).hostname)
   try {
@@ -118,15 +126,20 @@ async function fetchImage(url: string): Promise<{ buffer: ArrayBuffer; type: str
       console.log(`[proxy/image] ${res.status} for ${url}`)
       return null
     }
-    // Detect redirect to DMM's "NOW PRINTING" placeholder regardless of file size.
-    // imgsrc.dmm.com resizes the placeholder on demand — large sizes can exceed the
-    // MIN_IMAGE_BYTES threshold while still being the generic "no image" graphic.
-    if (isDmm && res.url.includes('/now_printing/')) {
-      console.log(`[proxy/image] now_printing redirect — skip: ${url.slice(-55)}`)
+    // Detect redirect to DMM's "no image" placeholders regardless of file size.
+    // imgsrc.dmm.com resizes the now_printing placeholder on demand — large sizes can
+    // exceed MIN_IMAGE_BYTES while still being the generic "no image" graphic.
+    // The mono/goods (通販) floor uses a *different* placeholder path
+    // (pics.dmm.com/mono/noimage/goods/noimage_pt.jpg, confirmed via direct 302 check) —
+    // this is the ONLY placeholder guard active for that floor (see isGoodsFloorUrl:
+    // its real thumbnails are legitimately smaller than MIN_IMAGE_BYTES, so the
+    // byte-size heuristic below is skipped there and must not be relied on).
+    if (isDmm && (res.url.includes('/now_printing/') || res.url.includes('/noimage/'))) {
+      console.log(`[proxy/image] placeholder redirect — skip: ${url.slice(-55)} -> ${res.url.slice(-40)}`)
       return null
     }
     const buffer = await res.arrayBuffer()
-    if (isDmm && buffer.byteLength < MIN_IMAGE_BYTES) {
+    if (isDmm && !isGoodsFloorUrl(url) && buffer.byteLength < MIN_IMAGE_BYTES) {
       console.log(`[proxy/image] placeholder (${buffer.byteLength}B) — skip: ${url.slice(-55)}`)
       return null
     }
