@@ -313,7 +313,8 @@ export async function generateSocialPost(input: GenerateInput): Promise<Generate
       // ── セール ──────────────────────────────────────────────────────
       case 'sale': {
         const campaign = SALE_CAMPAIGNS[input.campaign ?? 'chijo']
-        const anchor = campaign.key === 'chijo' ? 'fanza-chijo-sale' : 'fanza-sale'
+        // Phase C: 旧2バナー(fanza-sale/fanza-chijo-sale)は1つの常設セクション(fanza-sale-top30)へ統合済み。
+        const anchor = 'fanza-sale-top30'
         data = {
           postType: 'sale',
           templateKey: 'sale',
