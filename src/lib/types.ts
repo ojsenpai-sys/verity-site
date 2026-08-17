@@ -76,7 +76,6 @@ export type Profile = {
   lp_balance:               number
   last_login_at:            string | null
   login_streak:             number
-  last_gallery_checked_at:  string | null
   login_days_count:         number
   lp_transfer_count:        number
   favorite_change_count:    number
