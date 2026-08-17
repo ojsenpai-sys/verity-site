@@ -3,7 +3,6 @@ import Link from 'next/link'
 // In-page anchor navigation — IDs match section ids in page.tsx
 const CONTENT_LEFT = [
   { label: 'THE MUST ONE',      href: '/#the-must-one' },
-  { label: 'X SOCIAL FEEDS',    href: '/#social-feeds' },
   { label: 'VERITYオススメ女優', href: '/#recommended-actresses' },
 ]
 
