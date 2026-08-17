@@ -129,7 +129,6 @@ export default async function ProfilePage() {
 
   // ── 全データを並列取得 ──────────────────────────────────────────────────────
   const favIds      = resolvedProfile?.favorite_actress_ids ?? []
-  const lastChecked = resolvedProfile?.last_gallery_checked_at ?? null
 
   const [
     actressResult,
@@ -293,22 +292,10 @@ export default async function ProfilePage() {
   const needsAug        = favoriteActresses.filter(a => isBadImageUrl(a.image_url) && a.metadata?.latest_cid)
   const augCids         = needsAug.map(a => a.metadata!.latest_cid as string)
 
-  const newPostsBase = supabase
-    .from('social_feeds')
-    .select('id', { count: 'exact', head: true })
-    .not('image_url', 'is', null)
-  const newPostsQuery = favNames.length > 0
-    ? (lastChecked
-        ? newPostsBase.in('actress_name', favNames).gt('created_at', lastChecked)
-        : newPostsBase.in('actress_name', favNames))
-    : newPostsBase.eq('id', '_never_')
-
   const [
     augArtResult,
     soloArtResult,
     newsSlugResult,
-    coverageResult,
-    newPostsResult,
     historyActressResult,
     historyWorkResult,
   ] = await Promise.all([
@@ -329,10 +316,6 @@ export default async function ProfilePage() {
     articleSlugs.length > 0
       ? supabase.from('sn_news').select('slug, published_at').in('slug', articleSlugs)
       : Promise.resolve({ data: [], error: null }),
-    favNames.length > 0
-      ? supabase.from('social_feeds').select('actress_name').in('actress_name', favNames)
-      : Promise.resolve({ data: [], error: null }),
-    newPostsQuery,
     historyActressIds.length > 0
       ? supabase.from('actresses')
           .select('id, name, ruby, image_url, metadata, external_id')
@@ -499,13 +482,6 @@ export default async function ProfilePage() {
     }
   }
 
-  // ── ギャラリー未読判定 ──────────────────────────────────────────────────────
-  const coveredSet = new Set(
-    ((coverageResult.data ?? []) as { actress_name: string }[]).map(r => r.actress_name)
-  )
-  const missingSnsActresses = favoriteActresses.filter(a => !coveredSet.has(a.name))
-  const hasNewGalleryPosts  = ((newPostsResult as { count: number | null }).count ?? 0) > 0
-
   // ── 王冠バッジ判定 ─────────────────────────────────────────────────────────
   const crownActressIds = favoriteActresses
     .filter(a => {
@@ -650,8 +626,6 @@ export default async function ProfilePage() {
         loginStreak={resolvedProfile?.login_streak ?? 0}
         bonusResult={bonusResult}
         lpPointsMap={lpPointsMap}
-        hasNewGalleryPosts={hasNewGalleryPosts}
-        missingSnsActresses={missingSnsActresses}
         earnedEpithetIds={earnedEpithetIds}
         axisScores={axisScores}
         topAxis={topAxis}

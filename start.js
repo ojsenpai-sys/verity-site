@@ -60,8 +60,6 @@ const OPTIONAL = [
   'NEXT_PUBLIC_SITE_URL',
   'SYNC_SECRET',
   'CRON_SECRET',
-  'X_RAPIDAPI_KEY',
-  'X_RAPIDAPI_HOST',
 ]
 
 console.log('\n[start] ── environment ──────────────────────────────────────')

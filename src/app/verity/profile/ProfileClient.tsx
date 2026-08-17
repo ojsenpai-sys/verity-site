@@ -1,9 +1,8 @@
 'use client'
 
 import { useState, useEffect, useCallback } from 'react'
-import { LogOut, Star, TrendingUp, Flame, Sparkles, Images, ChevronDown, Clock, BarChart2, RefreshCw, Heart } from 'lucide-react'
+import { LogOut, Star, TrendingUp, Flame, Sparkles, ChevronDown, Clock, BarChart2, RefreshCw, Heart } from 'lucide-react'
 import { FavoriteActressSelector } from '@/components/FavoriteActressSelector'
-// import { MyGalleryGrid } from '@/components/MyGalleryGrid'  // SNS同期一時停止中 — API復旧後に再有効化
 // import { StatusCard } from '@/components/StatusCard'  // TODO: デザイン再検討中のため一時非表示
 import { EPITHET_DEFS, EPITHET_MAP, RARITY_STYLE } from '@/lib/epithets'
 import type { Actress, Profile } from '@/lib/types'
@@ -40,8 +39,6 @@ type Props = {
   loginStreak:           number
   bonusResult:           LoginBonusResult
   lpPointsMap:           Record<string, number>
-  hasNewGalleryPosts:    boolean
-  missingSnsActresses:   Actress[]
   earnedEpithetIds:      string[]
   axisScores:            AxisScore[]
   topAxis:               string | null
@@ -276,8 +273,8 @@ export function ProfileClient({
   topGenres, genreTitle, activityTitle, totalClicks,
   crownActressIds, maxFavorites, starsCount, isLegend,
   lpBalance: initialLpBalance, lpTotalAccumulated, loginStreak, bonusResult,
-  lpPointsMap: initialLpPointsMap, hasNewGalleryPosts,
-  missingSnsActresses, earnedEpithetIds: initialEpithetIds,
+  lpPointsMap: initialLpPointsMap,
+  earnedEpithetIds: initialEpithetIds,
   axisScores, topAxis, recommendedProduct, actressHistory,
   workHistory, favoriteArticles,
   genreScores: initialGenreScores, profilingDone: initialProfilingDone,
@@ -307,8 +304,6 @@ export function ProfileClient({
     .slice(0, 3)
 
   const {
-    activeTab, setActiveTab,
-    hasNewGallery,
     displayName, setDisplayName,
     currentTitle,
     favActresses, setFavActresses,
@@ -326,7 +321,6 @@ export function ProfileClient({
     activeTitleDef,
     earnedCount,
     totalEpithets,
-    openGallery,
     saveName,
     setTitle,
     updateFavorites,
@@ -338,7 +332,7 @@ export function ProfileClient({
     genreTitle, activityTitle,
     lpBalance: initialLpBalance,
     lpPointsMap: initialLpPointsMap,
-    hasNewGalleryPosts, bonusResult,
+    bonusResult,
     earnedEpithetIds: initialEpithetIds,
   })
 
@@ -366,36 +360,6 @@ export function ProfileClient({
           🎉 VERITYへようこそ！ まずはサイト内で表示されるあなたの【お名前（ニックネーム）】を入力し、最下部のボタンから保存を完了させてください。
         </div>
       )}
-
-      {/* ── タブ（SNS同期一時停止中のためギャラリータブを非表示 — API復旧後に再有効化） ──
-      <div className="flex gap-1 rounded-xl border border-[var(--border)] bg-[var(--surface-2)] p-1">
-        <button
-          onClick={() => setActiveTab('profile')}
-          className={['flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all', activeTab === 'profile' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text)]'].join(' ')}
-        >
-          <img src="/assets/verity/king.png" alt="王冠" width={14} height={14} style={{ objectFit: 'contain' }} />
-          プロフィール
-        </button>
-        <button
-          onClick={openGallery}
-          className={['relative flex flex-1 items-center justify-center gap-1.5 rounded-lg py-2 text-sm font-semibold transition-all', activeTab === 'gallery' ? 'bg-[var(--surface)] text-[var(--text)] shadow-sm' : 'text-[var(--text-muted)] hover:text-[var(--text)]'].join(' ')}
-        >
-          <Images size={14} />
-          ギャラリー
-          {hasNewGallery && <span className="absolute right-3 top-2 h-2 w-2 rounded-full bg-[var(--magenta)] shadow-[0_0_6px_rgba(226,0,116,0.8)]" />}
-        </button>
-      </div>
-      ── */}
-
-      {/* ── ギャラリー（SNS同期一時停止中のため非表示 — API復旧後に再有効化） ──
-      {activeTab === 'gallery' && (
-        <MyGalleryGrid
-          lastCheckedAt={profile?.last_gallery_checked_at ?? null}
-          favoriteActresses={favoriteActresses}
-          missingSnsActresses={missingSnsActresses}
-        />
-      )}
-      ── */}
 
       {(
       <div className="space-y-8">

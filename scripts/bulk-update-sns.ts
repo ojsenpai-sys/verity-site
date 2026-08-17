@@ -1,13 +1,12 @@
 #!/usr/bin/env tsx
 /**
- * SNS スクリーンネーム バルク更新スクリプト
+ * 女優 X(Twitter) スクリーンネーム バルク更新スクリプト
  *
  * Usage:
  *   npx tsx scripts/bulk-update-sns.ts
  *
  * ① 下の UPDATES 配列に screenName を記入（空文字 '' はスキップ）
  * ② npx tsx scripts/bulk-update-sns.ts を実行
- * ③ 必要に応じて bash deploy.sh でフィード同期用のリストも反映
  *
  * ※ screenName は @ なしで入力（例: yua_mikami）
  */
@@ -29,9 +28,6 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!,
 )
-
-const SITE_URL    = process.env.NEXT_PUBLIC_SITE_URL ?? 'http://127.0.0.1:3000'
-const CRON_SECRET = process.env.CRON_SECRET ?? ''
 
 // ══════════════════════════════════════════════════════════════════════════════
 // ★ ここに X スクリーンネームを記入してください（@ なし）
@@ -154,7 +150,6 @@ async function main() {
   console.log(`→ ${targets.length} 件を更新します\n`)
 
   let ok = 0; let fail = 0
-  const addedToList: typeof targets = []
 
   for (const { externalId, name, screenName } of targets) {
     const { error } = await supabase
@@ -168,51 +163,10 @@ async function main() {
     } else {
       console.log(`  ✓ ${name} → @${screenName}`)
       ok++
-      addedToList.push({ externalId, name, screenName })
     }
   }
 
   console.log(`\n完了: ${ok} 件成功 / ${fail} 件失敗`)
-
-  // socialFeedActresses.ts に未登録のものを追記
-  if (addedToList.length > 0) {
-    const listPath = path.join(__dirname, '..', 'src', 'lib', 'socialFeedActresses.ts')
-    let content = fs.readFileSync(listPath, 'utf8')
-    const newEntries: string[] = []
-
-    for (const { name, screenName } of addedToList) {
-      if (!content.includes(`'${screenName}'`) && !content.includes(`"${screenName}"`)) {
-        newEntries.push(`  { name: '${name}',     screenName: '${screenName}'    },`)
-      }
-    }
-
-    if (newEntries.length > 0) {
-      const date    = new Date().toISOString().split('T')[0]
-      const section = `  // ── バルク追加（${date}） ─────────────────────────────────────\n`
-                    + newEntries.join('\n') + '\n'
-      const lastBracket = content.lastIndexOf(']')
-      content = content.slice(0, lastBracket) + section + content.slice(lastBracket)
-      fs.writeFileSync(listPath, content)
-      console.log(`\n✓ socialFeedActresses.ts に ${newEntries.length} 件追記しました`)
-      console.log('  ⚠  bash deploy.sh を実行して本番へ反映してください')
-    } else {
-      console.log('\nℹ  socialFeedActresses.ts への追記なし（全件既登録）')
-    }
-  }
-
-  // 同期キック
-  if (ok > 0) {
-    console.log('\n→ SNS 同期をキックしています...')
-    try {
-      const res  = await fetch(`${SITE_URL}/verity/api/revalidate-sns`, {
-        headers: { Authorization: `Bearer ${CRON_SECRET}` },
-      })
-      const body = await res.json() as Record<string, unknown>
-      console.log(`✓ 同期レスポンス:`, body)
-    } catch (e) {
-      console.warn(`⚠  同期リクエスト失敗（サーバー起動確認）:`, (e as Error).message)
-    }
-  }
 }
 
 main().catch(e => { console.error(e); process.exit(1) })

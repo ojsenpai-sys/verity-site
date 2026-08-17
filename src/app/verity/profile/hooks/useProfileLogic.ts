@@ -20,7 +20,6 @@ type Input = {
   activityTitle:      TitleDef | null
   lpBalance:          number
   lpPointsMap:        Record<string, number>
-  hasNewGalleryPosts: boolean
   bonusResult:        LoginBonusResult
   earnedEpithetIds:   string[]
 }
@@ -34,15 +33,12 @@ export function useProfileLogic({
   activityTitle,
   lpBalance:          initialLpBalance,
   lpPointsMap:        initialLpPointsMap,
-  hasNewGalleryPosts,
   bonusResult,
   earnedEpithetIds:   initialEpithetIds,
 }: Input) {
   const { signOut } = useAuth()
   const router = useRouter()
 
-  const [activeTab, setActiveTab]             = useState<'profile' | 'gallery'>('profile')
-  const [hasNewGallery, setHasNewGallery]     = useState(hasNewGalleryPosts)
   const [displayName, setDisplayName]         = useState(profile?.display_name ?? '')
   const [editingName, setEditingName]         = useState(false)
   const [currentTitle, setCurrentTitle]       = useState(profile?.title ?? 'newcomer')
@@ -92,11 +88,6 @@ export function useProfileLogic({
       setEpithetIds(prev => new Set([...prev, ...newIds]))
       if (newIds[0]) triggerEpithetToast(newIds[0])
     }
-  }
-
-  function openGallery() {
-    setActiveTab('gallery')
-    setHasNewGallery(false)
   }
 
   async function patchProfile(patch: Record<string, unknown>) {
@@ -175,8 +166,6 @@ export function useProfileLogic({
 
   return {
     // state
-    activeTab, setActiveTab,
-    hasNewGallery,
     displayName, setDisplayName,
     editingName, setEditingName,
     currentTitle,
@@ -197,7 +186,6 @@ export function useProfileLogic({
     earnedCount,
     totalEpithets,
     // actions
-    openGallery,
     saveName,
     setTitle,
     updateFavorites,

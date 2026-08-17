@@ -97,7 +97,7 @@ export const EVENTS: Record<string, EventConfig> = {
       { label: 'TRE公式Instagram', url: 'https://www.instagram.com/TRETAIPEI/' },
     ],
     keywords: ['TRE', 'TRE2026', '台湾', '台北', 'Taiwan', 'Taipei', '南港'],
-    // 出演女優: 公式ガイドの2026ラインナップ ∩ 登録X handle（socialFeedActresses.ts）で
+    // 出演女優: 公式ガイドの2026ラインナップ ∩ 登録X handle(actresses.twitter_screen_name)で
     // 確定した攻撃陣。externalId は DB actresses から解決済み（読み取り専用・書き込みなし）。
     // 表示順は代言人・第二波の話題性を優先。screenName は @ なしの正式ハンドル。
     actresses: [

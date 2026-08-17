@@ -17,7 +17,6 @@ import { SaleTop30Section } from '@/components/SaleTop30Section'
 import { SystemRestorationNotice } from '@/components/SystemRestorationNotice'
 import { TodaysPickSection } from '@/components/TodaysPickSection'
 import { FastReviewSection } from '@/components/FastReviewSection'
-// import { SocialFeedSection } from '@/components/SocialFeedSection'  // SNS同期一時停止中 — API復旧後に再有効化
 import { PopularActressRankingSection } from '@/components/PopularActressRankingSection'
 import { NewsCard } from '@/components/NewsCard'
 import { fetchNewsList } from '@/app/verity/actions/news'
@@ -661,14 +660,6 @@ export default async function DashboardPage({ searchParams }: PageProps) {
           <LpContributionSection />
         </Suspense>
       </section>
-
-      {/* ── 4. SOCIAL FEEDS（SNS同期一時停止中 — API復旧後に再有効化） ──────
-      <section id="social-feeds">
-        <Suspense fallback={<div className="h-64 animate-pulse rounded-xl bg-[var(--surface)]" />}>
-          <SocialFeedSection />
-        </Suspense>
-      </section>
-      ─────────────────────────────────────────────────────────────────── */}
 
       {/* ── 8. 新着情報タイムライン ─────────────────────────────────────── */}
       <section id="latest-news-preview">

@@ -1,6 +1,5 @@
 import { NextResponse, after } from 'next/server'
 import { syncAllSources } from '@/lib/pipeline'
-import { syncAllSocialFeeds } from '@/lib/socialFeedSync'
 import { isAuthorized } from '@/lib/syncAuth'
 
 export async function GET(request: Request) {
@@ -11,10 +10,8 @@ export async function GET(request: Request) {
   // Verify env vars are loaded — helps diagnose DMM 400 errors in standalone mode
   const dmmId    = process.env.DMM_API_ID    ?? ''
   const affId    = process.env.AFFILIATE_ID  ?? ''
-  const rapidKey = process.env.X_RAPIDAPI_KEY ?? ''
   console.log('[sync] DMM_API_ID   :', dmmId    ? `set (${dmmId.slice(0, 4)}…)`    : 'MISSING')
   console.log('[sync] AFFILIATE_ID :', affId    ? `set (${affId.slice(0, 4)}…)`    : 'MISSING')
-  console.log('[sync] X_RAPIDAPI_KEY:', rapidKey ? 'set' : 'MISSING')
 
   // Run sync after the response is sent — prevents Apache/browser timeout
   after(async () => {
@@ -36,13 +33,6 @@ export async function GET(request: Request) {
       console.error('[sync] articles threw:', err instanceof Error ? err.message : err)
     }
 
-    try {
-      const social = await syncAllSocialFeeds()
-      console.log('[sync] social done — synced:', social.synced, 'skipped:', social.skipped, 'errors:', social.errors)
-    } catch (err) {
-      console.error('[sync] social threw:', err instanceof Error ? err.message : err)
-    }
-
     console.log('--- SYNC END (background) ---')
   })
 
@@ -53,7 +43,6 @@ export async function GET(request: Request) {
     env: {
       DMM_API_ID:    dmmId    ? `set (${dmmId.slice(0, 4)}…)`    : 'MISSING',
       AFFILIATE_ID:  affId    ? `set (${affId.slice(0, 4)}…)`    : 'MISSING',
-      X_RAPIDAPI_KEY: rapidKey ? 'set' : 'MISSING',
     },
   })
 }
