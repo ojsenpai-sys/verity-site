@@ -11,7 +11,9 @@ import { HERO_VARIANT } from '@/lib/heroFlags'
 import { FeaturedSection } from '@/components/FeaturedSection'
 import { RecommendedActressSection } from '@/components/RecommendedActressSection'
 import { MustOneSection } from '@/components/MustOneSection'
-import { Fanza100SaleBanner } from '@/components/Fanza100SaleBanner'
+// Fanza100SaleBanner / FanzaChijoSaleBanner: Phase C で SaleTop30Section へ統合したため
+// トップページでは未使用（コンポーネント/saleData.tsは他機能(admin/social-posts)が参照するため削除しない）。
+import { SaleTop30Section } from '@/components/SaleTop30Section'
 import { SystemRestorationNotice } from '@/components/SystemRestorationNotice'
 import { TodaysPickSection } from '@/components/TodaysPickSection'
 import { FastReviewSection } from '@/components/FastReviewSection'
@@ -36,7 +38,6 @@ import { EventHubCard } from '@/components/EventHubCard'
 import { TopSearchBar } from '@/components/TopSearchBar'
 import { TrendingNowSection } from '@/components/TrendingNowSection'
 import { TrendingWidget } from '@/components/TrendingWidget'
-import { FanzaChijoSaleBanner } from '@/components/FanzaChijoSaleBanner'
 import { RecentlyViewedSection } from '@/components/RecentlyViewedSection'
 import { MypagePromoSection } from '@/components/MypagePromoSection'
 
@@ -633,17 +634,10 @@ export default async function DashboardPage({ searchParams }: PageProps) {
         </div>
       </section>
 
-      {/* ── 4. FANZA 100円セール特集 ────────────────────────────────────── */}
-      <section id="fanza-100-sale">
+      {/* ── 4. FANZA SALE TOP30（Phase C: 旧2バナーを統合した常設セクション） ─── */}
+      <section id="fanza-sale-top30">
         <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
-          <Fanza100SaleBanner />
-        </Suspense>
-      </section>
-
-      {/* ── 4b. 痴女・小悪魔 50%OFFセール特集 ──────────────────────────── */}
-      <section id="fanza-chijo-sale">
-        <Suspense fallback={<div className="h-40 animate-pulse rounded-2xl bg-[var(--surface)]" />}>
-          <FanzaChijoSaleBanner />
+          <SaleTop30Section />
         </Suspense>
       </section>
 
