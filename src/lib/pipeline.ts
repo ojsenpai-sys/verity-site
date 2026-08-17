@@ -372,43 +372,47 @@ export async function syncTopActresses(): Promise<PipelineResult> {
     console.log('[pipeline:actress-rank] rank fetch なし — actresses upsert スキップ')
   }
 
-  // ── 7. 全方位取得: digital/videoa + mono/dvd を 7 クエリ並列で取得 ──────────
+  // ── 7. 全方位取得: digital/videoa + mono/dvd を 6 クエリ逐次で取得 ──────────
   // status=reserve は DMM API が対応していれば予約作を絞り込み、非対応なら無視される。
-  // Promise.allSettled で個別失敗を吸収し、取得できた分だけマージする。
+  // 従来 Promise.allSettled で 6 件を完全同時発火していたが、DMM 側の同時多重接続
+  // スロットリングに高頻度で全滅していたため（過去実行の約85%でerrors=6）、
+  // maker-sync と同様に逐次実行 + 短い delay へ変更。速度より安定性を優先する。
   const topActressNames = new Set(rankedActresses.map(a => a.name))
 
   type ItemList = Awaited<ReturnType<typeof fetchDmmItems>>
 
-  // デジタル 4 クエリ + 通販 2 クエリ = 合計 6 並列。
+  // デジタル 4 クエリ + 通販 2 クエリ = 合計 6 件。
   // status / list_type は DMM v3 非標準パラメータのため削除済み（400 の原因）。
   // mono/dvd は sort=date のみ使用。
-  const [d1Res, d2Res, d3Res, d4Res, m1Res, m2Res] = await Promise.allSettled([
-    fetchDmmItems({ hits: 100, sort: 'date', service: 'digital', floor: 'videoa', offset: 1   }),
-    fetchDmmItems({ hits: 100, sort: 'date', service: 'digital', floor: 'videoa', offset: 101 }),
-    fetchDmmItems({ hits: 100, sort: 'date', service: 'digital', floor: 'videoa', offset: 201 }),
-    fetchDmmItems({ hits: 100, sort: 'date', service: 'digital', floor: 'videoa', offset: 301 }),
-    fetchDmmItems({ hits: 100, sort: 'date', service: 'mono',    floor: 'dvd',    offset: 1   }),
-    fetchDmmItems({ hits: 100, sort: 'date', service: 'mono',    floor: 'dvd',    offset: 101 }),
-  ])
+  const dateQueries = [
+    { label: 'digital p1', params: { hits: 100, sort: 'date' as const, service: 'digital', floor: 'videoa', offset: 1   } },
+    { label: 'digital p2', params: { hits: 100, sort: 'date' as const, service: 'digital', floor: 'videoa', offset: 101 } },
+    { label: 'digital p3', params: { hits: 100, sort: 'date' as const, service: 'digital', floor: 'videoa', offset: 201 } },
+    { label: 'digital p4', params: { hits: 100, sort: 'date' as const, service: 'digital', floor: 'videoa', offset: 301 } },
+    { label: 'mono p1',    params: { hits: 100, sort: 'date' as const, service: 'mono',    floor: 'dvd',    offset: 1   } },
+    { label: 'mono p2',    params: { hits: 100, sort: 'date' as const, service: 'mono',    floor: 'dvd',    offset: 101 } },
+  ]
 
-  function settled(res: PromiseSettledResult<ItemList>, label: string): ItemList {
-    if (res.status === 'fulfilled') {
-      console.log(`[pipeline:actress-rank] ${label}: ${res.value.length}件`)
-      return res.value
+  const dateResults: ItemList[] = []
+  for (let i = 0; i < dateQueries.length; i++) {
+    const { label, params } = dateQueries[i]
+    const t0 = Date.now()
+    try {
+      const res = await fetchDmmItems(params)
+      console.log(`[pipeline:actress-rank] ${label}: ${res.length}件 (${Date.now() - t0}ms)`)
+      dateResults.push(res)
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.log(`[pipeline:actress-rank] ${label} 失敗 (${Date.now() - t0}ms): ${msg}`)
+      result.errors++
+      result.errorDetails!.push(`${label}: ${msg}`)
+      dateResults.push([])
     }
-    const msg = res.reason instanceof Error ? res.reason.message : String(res.reason)
-    console.log(`[pipeline:actress-rank] ${label} 失敗: ${msg}`)
-    result.errors++
-    result.errorDetails!.push(`${label}: ${msg}`)
-    return []
+    // DMM 側の同時多重接続スロットリング回避（次リクエストまで短い間隔を空ける）。
+    if (i < dateQueries.length - 1) await new Promise(r => setTimeout(r, 300))
   }
 
-  const dItems1 = settled(d1Res, 'digital p1')
-  const dItems2 = settled(d2Res, 'digital p2')
-  const dItems3 = settled(d3Res, 'digital p3')
-  const dItems4 = settled(d4Res, 'digital p4')
-  const mItems1 = settled(m1Res, 'mono p1')
-  const mItems2 = settled(m2Res, 'mono p2')
+  const [dItems1, dItems2, dItems3, dItems4, mItems1, mItems2] = dateResults
 
   const allDigitalItems = [...dItems1, ...dItems2, ...dItems3, ...dItems4]
   const allMonoItems    = [...mItems1, ...mItems2]
