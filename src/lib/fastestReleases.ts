@@ -1,14 +1,19 @@
 /**
- * 最新作最速更新情報 — 自動抽出ロジック(Phase B / A案)。
+ * 最新作最速更新情報 — 自動抽出ロジック(Phase B / A案 → Phase F で選定基準を修正)。
  *
  * 対象8メーカーの articles を「is_active=true かつ metadata.floor='videoa'」に限定して
- * メーカーごとに fetched_at 降順で直近 TOP_PAGE_CARDS_PER_MAKER 件を取得する。
+ * メーカーごとに published_at 降順(タイブレーク fetched_at 降順)で直近
+ * TOP_PAGE_CARDS_PER_MAKER 件を取得する。published_at が未来(=配信前の予約商品)または
+ * null の行は対象外(Phase F: MOODYZ等の主要メーカーで予約商品が fetched_at 降順の上位を
+ * 占め、実際に配信済みの最新作が表示から漏れる不具合を修正)。
  *
- * 「並び順」と「表示件数」は分離する(2026-08-04 オーナー指示):
- *   - 並び順  : メーカー内最新 fetched_at(JST日付)の降順。更新されたメーカーほど上に来る。
+ * 「メーカー内の並び順」と「メーカー間の表示順・表示件数」は分離する:
+ *   - メーカー内並び順: published_at 降順・タイブレーク fetched_at 降順(Phase F)。
+ *   - メーカー間表示順(2026-08-04 オーナー指示、Phase Fでも変更なし):
+ *               各メーカーの選定後トップ1件の fetched_at(JST日付)降順。
  *               同日は下記 TARGET_MAKERS の配列順(既存 MAKERS 基本順を踏襲)で安定表示する。
  *   - 表示件数: 「最新入荷日と同じ日付」に絞り込まない。メーカーごと直近 TOP_PAGE_CARDS_PER_MAKER 件
- *               (fetched_at降順)をそのまま表示する。更新数の多いメーカー(例: S1)で表示件数が
+ *               をそのまま表示する。更新数の多いメーカー(例: S1)で表示件数が
  *               急に減らないようにするため。
  *
  * メーカー単位のフォールバック方針:
@@ -23,6 +28,7 @@ import { createClient as createSupabaseClient, type SupabaseClient } from '@supa
 import { unstable_cache } from 'next/cache'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
+import { selectReleasedRows } from '@/lib/fastestReleasesSelection.mjs'
 
 export type FastestMakerKey =
   | 's1' | 'ideapocket' | 'moodyz' | 'kawaii' | 'honchu' | 'premium' | 'ebody' | 'oppai'
@@ -332,18 +338,26 @@ function toJstDateKey(iso: string): string {
   return new Date(d.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
+// 「最新作」選定の正本ロジック(published_at優先・未来予約除外)は
+// src/lib/fastestReleasesSelection.mjs に分離済み(pure・node:testで直接テスト可能)。
 async function fetchMakerRowsRaw(makerId: number): Promise<ArticleRow[]> {
   const supabase = getStatelessClient()
+  const nowIso = new Date().toISOString()
   const { data, error } = await supabase
     .from('articles')
     .select(SELECT_COLUMNS)
     .eq('is_active', true)
     .eq('metadata->>floor', 'videoa')
     .contains('metadata', { maker: [{ id: makerId }] })
+    .not('published_at', 'is', null)
+    .lte('published_at', nowIso)
+    .order('published_at', { ascending: false })
     .order('fetched_at', { ascending: false })
     .limit(TOP_PAGE_CARDS_PER_MAKER)
   if (error) throw new Error(`maker=${makerId} select error: ${error.message}`)
-  return (data ?? []) as ArticleRow[]
+  // SQL側の条件と同一のロジックをJS側でも再適用する(pure・unit test対象)。
+  // SQL条件が将来変更されてもここが最終防波堤として未配信作品の混入を防ぐ。
+  return selectReleasedRows((data ?? []) as ArticleRow[], nowIso)
 }
 
 // maker-sync は 00:30 JST 起動・完了まで概ね2分未満(Phase A調査結果)。
