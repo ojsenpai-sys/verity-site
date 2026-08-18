@@ -49,6 +49,11 @@ export async function FastestNewReleases() {
           <div className="flex gap-4 overflow-x-auto pb-2 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:grid sm:grid-cols-3 sm:overflow-visible lg:grid-cols-5">
             {section.cards.map((card) => {
               const { imgSrc, href, actressName } = card
+              // dvd(通販/予約)floorのフォールバック表示は配信視聴不可のため、
+              // 「観る」系ではなくメーカーカテゴリページ既存表現に合わせて「予約する」系にする(Phase F-2)。
+              const isDvd = card.floor === 'dvd'
+              const hoverLabel = isDvd ? '予約する' : '▶ FANZAで観る'
+              const ctaLabel = isDvd ? 'FANZAで予約する' : '今すぐ観る'
 
               return (
                 <div
@@ -80,7 +85,7 @@ export async function FastestNewReleases() {
                       {/* ホバーオーバーレイ（PCのみ） */}
                       <div className="pointer-events-none absolute inset-0 hidden items-center justify-center bg-black/0 transition-all duration-200 group-hover:bg-black/60 md:flex">
                         <span className="translate-y-1 scale-95 rounded-full bg-white/90 px-4 py-1.5 text-[11px] font-bold text-gray-900 opacity-0 shadow-lg transition-all duration-200 group-hover:translate-y-0 group-hover:scale-100 group-hover:opacity-100">
-                          ▶ FANZAで観る
+                          {hoverLabel}
                         </span>
                       </div>
                     </FanzaLink>
@@ -126,7 +131,7 @@ export async function FastestNewReleases() {
                         className="mt-auto flex items-center justify-center gap-1.5 w-full rounded-lg py-2 text-[10px] font-bold tracking-wider bg-gradient-to-r from-orange-500 to-red-600 text-white hover:from-orange-400 hover:to-red-500 transition-all shadow-sm"
                       >
                         <ExternalLink size={10} />
-                        今すぐ観る
+                        {ctaLabel}
                       </FanzaLink>
                     ) : null}
                   </div>

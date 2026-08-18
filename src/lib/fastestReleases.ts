@@ -1,20 +1,27 @@
 /**
- * 最新作最速更新情報 — 自動抽出ロジック(Phase B / A案 → Phase F で選定基準を修正)。
+ * 最新作最速更新情報 — 自動抽出ロジック(Phase B / A案 → Phase F → Phase F-2)。
  *
- * 対象8メーカーの articles を「is_active=true かつ metadata.floor='videoa'」に限定して
- * メーカーごとに published_at 降順(タイブレーク fetched_at 降順)で直近
- * TOP_PAGE_CARDS_PER_MAKER 件を取得する。published_at が未来(=配信前の予約商品)または
- * null の行は対象外(Phase F: MOODYZ等の主要メーカーで予約商品が fetched_at 降順の上位を
- * 占め、実際に配信済みの最新作が表示から漏れる不具合を修正)。
+ * Phase F-2: 「検知」と「表示」を分離する設計。
+ *   - 検知: メーカーごとに floor∈{videoa, dvd} を合算した MAX(fetched_at) を
+ *           「最新検知batch」とし、その時刻と完全一致する行を候補にする
+ *           (fetched_atはINSERT時に一度だけ確定し、以降のcronで再取得されても
+ *            更新されない — 同一トランザクションで挿入された行はfetched_atが
+ *            完全一致する)。
+ *   - 表示floor: batch内にvideoa行が1件以上あればvideoaのみ。0件のときのみ
+ *           dvdをフォールバックとして採用する。videoa/dvdの同一作品をCID変換で
+ *           マージすることはしない(DMM側に信頼できる同一作品キーが存在しないため)。
+ *           後日videoa版がDBへ入れば、その時点のMAX(fetched_at)が新しいbatchに
+ *           なり自然にvideoaへ切り替わる。
+ *   - batch内の整理: published_at はフィルタではなく整理に使う。
+ *           1. published_at >= now(未来) → published_at 昇順(現在に近い順)
+ *           2. 1だけで件数が足りない場合、published_at < now(配信済み) →
+ *              published_at 降順(新しい順)で補完
+ *           3. published_at が null の行は除外
+ *   選定ロジック本体は src/lib/fastestReleasesSelection.mjs (pure・node:testで直接テスト可能)。
  *
- * 「メーカー内の並び順」と「メーカー間の表示順・表示件数」は分離する:
- *   - メーカー内並び順: published_at 降順・タイブレーク fetched_at 降順(Phase F)。
- *   - メーカー間表示順(2026-08-04 オーナー指示、Phase Fでも変更なし):
- *               各メーカーの選定後トップ1件の fetched_at(JST日付)降順。
- *               同日は下記 TARGET_MAKERS の配列順(既存 MAKERS 基本順を踏襲)で安定表示する。
- *   - 表示件数: 「最新入荷日と同じ日付」に絞り込まない。メーカーごと直近 TOP_PAGE_CARDS_PER_MAKER 件
- *               をそのまま表示する。更新数の多いメーカー(例: S1)で表示件数が
- *               急に減らないようにするため。
+ * メーカー間表示順(2026-08-04 オーナー指示 → Phase F-2で検知基準に統一):
+ *   各メーカーの MAX(fetched_at)(JST日付)降順。同日は下記 TARGET_MAKERS の
+ *   配列順(既存 MAKERS 基本順を踏襲)で安定表示する。
  *
  * メーカー単位のフォールバック方針:
  *   - 個別メーカーの自動取得が失敗/0件 → そのメーカーだけ手動 CID 配列(FALLBACK_MAKERS)を使う
@@ -28,7 +35,7 @@ import { createClient as createSupabaseClient, type SupabaseClient } from '@supa
 import { unstable_cache } from 'next/cache'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
-import { selectReleasedRows } from '@/lib/fastestReleasesSelection.mjs'
+import { selectFastestCards } from '@/lib/fastestReleasesSelection.mjs'
 
 export type FastestMakerKey =
   | 's1' | 'ideapocket' | 'moodyz' | 'kawaii' | 'honchu' | 'premium' | 'ebody' | 'oppai'
@@ -41,6 +48,8 @@ export type FastestCard = {
   imgSrc: string
   href: string | null
   actressName: string
+  /** 'videoa' | 'dvd' | null。dvdは通販(物販/予約)floorのフォールバック表示 — CTA文言の出し分けに使う(Phase F-2)。 */
+  floor: string | null
 }
 
 export type FastestMakerSection = {
@@ -338,26 +347,36 @@ function toJstDateKey(iso: string): string {
   return new Date(d.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
-// 「最新作」選定の正本ロジック(published_at優先・未来予約除外)は
+type MakerBatch = { latestFetchedAt: string | null; rows: ArticleRow[] }
+
+// 「表示floor決定」「batch内整理」の正本ロジックは
 // src/lib/fastestReleasesSelection.mjs に分離済み(pure・node:testで直接テスト可能)。
-async function fetchMakerRowsRaw(makerId: number): Promise<ArticleRow[]> {
+// ここでは「検知」— videoa+dvd合算のMAX(fetched_at)と完全一致する行(最新検知batch)の
+// 取得のみを行う(2クエリ: 1.最新fetched_atを特定 → 2.その値と完全一致する行を取得)。
+async function fetchMakerRowsRaw(makerId: number): Promise<MakerBatch> {
   const supabase = getStatelessClient()
-  const nowIso = new Date().toISOString()
+
+  const { data: maxRows, error: maxError } = await supabase
+    .from('articles')
+    .select('fetched_at')
+    .eq('is_active', true)
+    .in('metadata->>floor', ['videoa', 'dvd'])
+    .contains('metadata', { maker: [{ id: makerId }] })
+    .order('fetched_at', { ascending: false })
+    .limit(1)
+  if (maxError) throw new Error(`maker=${makerId} max fetched_at select error: ${maxError.message}`)
+  const latestFetchedAt = (maxRows?.[0] as { fetched_at: string } | undefined)?.fetched_at ?? null
+  if (!latestFetchedAt) return { latestFetchedAt: null, rows: [] }
+
   const { data, error } = await supabase
     .from('articles')
     .select(SELECT_COLUMNS)
     .eq('is_active', true)
-    .eq('metadata->>floor', 'videoa')
+    .in('metadata->>floor', ['videoa', 'dvd'])
     .contains('metadata', { maker: [{ id: makerId }] })
-    .not('published_at', 'is', null)
-    .lte('published_at', nowIso)
-    .order('published_at', { ascending: false })
-    .order('fetched_at', { ascending: false })
-    .limit(TOP_PAGE_CARDS_PER_MAKER)
-  if (error) throw new Error(`maker=${makerId} select error: ${error.message}`)
-  // SQL側の条件と同一のロジックをJS側でも再適用する(pure・unit test対象)。
-  // SQL条件が将来変更されてもここが最終防波堤として未配信作品の混入を防ぐ。
-  return selectReleasedRows((data ?? []) as ArticleRow[], nowIso)
+    .eq('fetched_at', latestFetchedAt)
+  if (error) throw new Error(`maker=${makerId} batch select error: ${error.message}`)
+  return { latestFetchedAt, rows: (data ?? []) as ArticleRow[] }
 }
 
 // maker-sync は 00:30 JST 起動・完了まで概ね2分未満(Phase A調査結果)。
@@ -386,11 +405,17 @@ function rowAffiliateUrl(row: Pick<ArticleRow, 'metadata'>): string | null {
     : null
   return withAffiliate(raw)
 }
-function rowHasVideoUrl(row: Pick<ArticleRow, 'metadata'>): boolean {
+function rowHasUrl(row: Pick<ArticleRow, 'metadata'>): boolean {
   const meta = row.metadata as Record<string, unknown> | null
   const url = typeof meta?.url === 'string' ? meta.url : null
-  // videoa floor の配信ページ URL 形式(video.dmm.co.jp)であること。/mono/dvd/ 混入の二重防御。
-  return !!url && !url.includes('/mono/dvd/')
+  // Phase F-2: dvd floor(通販)を検知フォールバックとして正式に許可するため、
+  // 旧 /mono/dvd/ 除外は撤廃(URLが存在することのみ確認する)。floorの採否は
+  // selectFastestCards() 側(pickDisplayFloor)が担う。
+  return !!url
+}
+function rowFloor(row: Pick<ArticleRow, 'metadata'>): string | null {
+  const meta = row.metadata as Record<string, unknown> | null
+  return typeof meta?.floor === 'string' ? meta.floor : null
 }
 function formatActressName(actress: unknown): string {
   const list = Array.isArray(actress)
@@ -412,14 +437,15 @@ function rowToCard(row: ArticleRow): FastestCard {
     imgSrc: proxied(cover),
     href: rowAffiliateUrl(row) ?? withAffiliate(dmmUrl(row.external_id)),
     actressName: formatActressName((row.metadata as Record<string, unknown> | null)?.actress),
+    floor: rowFloor(row),
   }
 }
 
 /**
- * 1メーカー分の自動抽出。
- * 並び順に使う updateDateKey は「最新1件の fetched_at」の JST日付のみを表す。
- * 表示件数はこの日付に絞り込まない — 直近 TOP_PAGE_CARDS_PER_MAKER 件をそのまま採用する
- * (2026-08-04 オーナー指示: 「並び順」と「表示件数」を分離)。
+ * 1メーカー分の自動抽出(Phase F-2)。
+ * updateDateKey は「検知batch自体の fetched_at」(videoa+dvd合算MAX)の JST日付。
+ * 表示カードは selectFastestCards() が floor決定(videoa優先・dvdフォールバック)と
+ * published_at整理(現在に近い未来優先→配信済み新しい順で補完)を行った結果。
  *
  * 戻り値 null = 自動取得結果が0件(=呼び出し側でフォールバックへ切り替える)。
  * 例外を投げた場合も呼び出し側でフォールバックへ切り替える(Supabaseエラー・タイムアウト等)。
@@ -430,16 +456,22 @@ function moreUrl(maker: TargetMaker): string {
 }
 
 async function getAutoMakerSection(maker: TargetMaker): Promise<FastestMakerSection | null> {
-  const rows = await getCachedMakerRows(maker.id)
-  const valid = rows.filter((r) => rowHasVideoUrl(r) && !!r.external_id && !!r.title)
-  if (valid.length === 0) return null
+  const { latestFetchedAt, rows } = await getCachedMakerRows(maker.id)
+  if (!latestFetchedAt) return null
+
+  const candidates = rows
+    .filter((r) => rowHasUrl(r) && !!r.external_id && !!r.title)
+    .map((r) => ({ ...r, floor: rowFloor(r) }))
+  const nowIso = new Date().toISOString()
+  const selected = selectFastestCards(candidates, nowIso, TOP_PAGE_CARDS_PER_MAKER) as ArticleRow[]
+  if (selected.length === 0) return null
 
   return {
     id: maker.key,
     label: maker.label,
-    updateDateKey: toJstDateKey(valid[0].fetched_at),
+    updateDateKey: toJstDateKey(latestFetchedAt),
     source: 'auto',
-    cards: valid.map(rowToCard),
+    cards: selected.map(rowToCard),
     moreUrl: moreUrl(maker),
   }
 }
@@ -464,6 +496,8 @@ function buildFallbackSection(
       imgSrc: proxied(cover),
       href: (row ? rowAffiliateUrl(row) : null) ?? withAffiliate(dmmUrl(cid)),
       actressName: manual.actressMap[cid] ?? '',
+      // FALLBACK_MAKERS は旧手動キュレーション由来ですべてvideoa作品(既知)。
+      floor: row ? rowFloor(row) : 'videoa',
     }
   })
   return {
