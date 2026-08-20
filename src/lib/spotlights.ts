@@ -11,6 +11,7 @@
 
 import { MENS_ESTHE_META } from './mensEsthe'
 import { SATSUKI_NAO_META } from './satsukiNao'
+import { AIZAWA_MIYU_META } from './aizawaMiyu'
 
 export type SpotlightMeta = {
   slug: string
@@ -34,6 +35,17 @@ export type SpotlightMeta = {
 }
 
 export const SPOTLIGHTS: SpotlightMeta[] = [
+  {
+    slug: AIZAWA_MIYU_META.slug,
+    href: AIZAWA_MIYU_META.href,
+    publicUrl: AIZAWA_MIYU_META.publicUrl,
+    seriesLabel: AIZAWA_MIYU_META.seriesLabel,
+    title: AIZAWA_MIYU_META.title,
+    tagline: AIZAWA_MIYU_META.cardTagline,
+    kindLabel: 'Actress Feature',
+    publishedAt: AIZAWA_MIYU_META.publishedAt,
+    heroSource: { kind: 'byCid', value: 'miab00677' },
+  },
   {
     slug: SATSUKI_NAO_META.slug,
     href: SATSUKI_NAO_META.href,
