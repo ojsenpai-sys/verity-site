@@ -7,7 +7,11 @@
 // pure function のみ — 副作用なし・DB非依存。node:test で直接テスト可能。
 import { canonicalCidBase, isSameWorkTitleGroup } from './fastestReleasesSelection.mjs'
 
-export const BEST_TAG = 'ベスト・総集編'
+// 実データ確認: 単独主演作品のBEST/総集編には "女優ベスト・総集編" が付与されており、
+// 汎用の "ベスト・総集編" とは別文字列（Phase B.1で発覚・修正）。
+// 将来的な表記ゆれに備え両方を許容する。
+export const BEST_TAG = '女優ベスト・総集編'
+export const BEST_TAGS = ['女優ベスト・総集編', 'ベスト・総集編']
 
 /** VR作品判定（tagsのいずれかが "VR" で始まる。ArticleCard.tsxと同一基準）。 */
 export function isVr(tags) {
@@ -86,7 +90,7 @@ const FILTER_TAG = { bishoujo: '美少女', kyonyu: '巨乳', chijo: '痴女', j
  * @returns {boolean}
  */
 export function matchesFilter(row, filter) {
-  const hasBestTag = (row.tags ?? []).includes(BEST_TAG)
+  const hasBestTag = BEST_TAGS.some((t) => (row.tags ?? []).includes(t))
   if (filter === 'best') return hasBestTag
   if (hasBestTag) return false
   if (filter === 'vr') return isVr(row.tags)

@@ -42,7 +42,7 @@ export const CATEGORIES: CategoryDef[] = [
     key: 'passion',
     label: 'PASSION',
     badge: 'PASSION',
-    comment: '企画単体化してから広がった、表現の振れ幅と濃さ。今の逢沢みゆらしさが最も出るカテゴリ。',
+    comment: '企画単体化してから広がった、今の逢沢みゆの表現の幅と濃さを感じられるカテゴリ。',
   },
   {
     key: 'fantasy',
@@ -202,7 +202,7 @@ export const EDITORS_PICK: Record<CategoryKey, { cid: string; comment: string }>
   fantasy: {
     cid: '1cpz6900011',
     comment:
-      '「もしも逢沢みゆがエルフだったら」という、彼女自身の名前を使った独自の世界観。候補の中で唯一公式に「ファンタジー」タグを持つ、最も自信を持って薦められる1本です。',
+      '「もしも逢沢みゆがエルフだったら」という、彼女自身の名前を使った独自の世界観。候補の中で唯一公式に「ファンタジー」タグを持つ、FANTASYを代表するVERITYが薦めたい1本です。',
   },
 }
 

@@ -154,6 +154,16 @@ test('11b. BEST filter: 通常フィルタ(all含む)からはBESTタグ付き�
   assert.equal(matchesFilter(bestRow, 'all'), false)
   assert.equal(matchesFilter(bestRow, 'bishoujo'), false)
 })
+test('11c. BEST filter(Phase B.1回帰確認): 実DBタグ"女優ベスト・総集編"が正しく一致する', () => {
+  // Phase B実装時はBEST_TAGが'ベスト・総集編'(汎用タグ)を参照しており、
+  // 逢沢みゆの単独主演BEST作品(実タグ"女優ベスト・総集編")と一致せず0件になっていた不具合。
+  const row = { tags: ['逢沢みゆ', '女優ベスト・総集編', 'アイドル・芸能人'] }
+  assert.equal(matchesFilter(row, 'best'), true)
+})
+test('11d. BEST filter: 汎用タグ"ベスト・総集編"も引き続き許容する(表記ゆれ耐性)', () => {
+  const row = { tags: ['逢沢みゆ', 'ベスト・総集編'] }
+  assert.equal(matchesFilter(row, 'best'), true)
+})
 
 // ── 12. 48件limit（ページング境界） ─────────────────────────────────────────
 test('12. 48件limit: offset/limitの境界とhasMoreが正しい', () => {
