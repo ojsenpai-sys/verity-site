@@ -36,18 +36,21 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default async function AnalyticsPage() {
   const daily = await getDailyMetrics()
   // Audience MAU(=distinct session_id) を先に取得し、母集団別の平均指標の分母に使う。
-  const [audience, audienceV2, audienceV3, kpiTrend, humanEng, humanEngV3] = await Promise.all([
-    getAudience(), getAudienceV2(), getAudienceV3(), getKpiSnapshots(), getHumanEngagement(), getHumanEngagementV3(),
+  const [audience, audienceV2, kpiTrend, humanEng, humanEngV3] = await Promise.all([
+    getAudience(), getAudienceV2(), getKpiSnapshots(), getHumanEngagement(), getHumanEngagementV3(),
   ])
+  // Audience v3（能動ベース・044）は kpi_daily_snapshot の最新行が正本（Phase G-2）。
+  // KPI Trend表と同一データを参照するため追加のDB往復は発生しない。null = データ未取得（0件と区別）。
+  const audienceV3 = getAudienceV3(kpiTrend)
   // Human版（30日/30日）。additive・RPC未適用時は humanEng=null でカード非表示。
   const avgViewsPerHumanAudience = humanEng && humanEng.human_mau > 0 ? Math.round((humanEng.human_work_views / humanEng.human_mau) * 10) / 10 : 0
   const humanSessionDepth        = humanEng && humanEng.human_mau > 0 ? Math.round((humanEng.human_total_events / humanEng.human_mau) * 10) / 10 : 0
   // Human v3（能動ベース・beta）。Session Depth v3 は分子も自動イベント除外（human_nonauto_events）で整合。
   const avgViewsPerHumanV3 = humanEngV3 && humanEngV3.human_mau > 0 ? Math.round((humanEngV3.human_work_views / humanEngV3.human_mau) * 10) / 10 : 0
   const humanSessionDepthV3 = humanEngV3 && humanEngV3.human_mau > 0 ? Math.round((humanEngV3.human_nonauto_events / humanEngV3.human_mau) * 10) / 10 : 0
-  const v3Stickiness = audienceV3.mau > 0 ? Math.round((audienceV3.dau / audienceV3.mau) * 1000) / 10 : 0
-  const v3VsRaw = audience.mau > 0 ? Math.round((1 - audienceV3.mau / audience.mau) * 1000) / 10 : 0
-  const v3VsV2  = audienceV2.mau > 0 ? Math.round((1 - audienceV3.mau / audienceV2.mau) * 1000) / 10 : 0
+  const v3Stickiness = audienceV3 && audienceV3.mau > 0 ? Math.round((audienceV3.dau / audienceV3.mau) * 1000) / 10 : 0
+  const v3VsRaw = audienceV3 && audience.mau > 0 ? Math.round((1 - audienceV3.mau / audience.mau) * 1000) / 10 : 0
+  const v3VsV2  = audienceV3 && audienceV2.mau > 0 ? Math.round((1 - audienceV3.mau / audienceV2.mau) * 1000) / 10 : 0
   const [overview, engagement, fanza, tags, preference, investor, cron, weights] = await Promise.all([
     getOverview(daily), getEngagement(daily, audience.mau), getFanza(daily), getTags(), getPreference(), getInvestor(daily, audience.mau),
     getCronStatus(), getPreferenceWeights(),
@@ -87,7 +90,7 @@ export default async function AnalyticsPage() {
                   <th className="px-2.5 py-1.5 text-right font-semibold">Fav W/A</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">PV</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">VV</th>
-                  <th className="px-2.5 py-1.5 text-right font-semibold" style={{ color: '#aaff00' }}>Hum VV</th>
+                  <th className="px-2.5 py-1.5 text-right font-semibold" style={{ color: '#aaff00' }} title="Human v2判定セッション内の作品閲覧イベント数">Human作品閲覧数</th>
                   <th className="px-2.5 py-1.5 text-right font-semibold">Click</th>
                 </tr>
               </thead>
@@ -156,10 +159,10 @@ export default async function AnalyticsPage() {
           <br />既存 <strong className="text-[var(--text)]">Raw / Human v2</strong> は温存し比較用に並行運用。
         </p>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-          <Stat label="Audience DAU (v3)" value={fmt(audienceV3.dau)} sub={`v2 ${fmt(audienceV2.dau)} / 生 ${fmt(audience.dau)}`} />
-          <Stat label="Audience WAU (v3)" value={fmt(audienceV3.wau)} sub={`v2 ${fmt(audienceV2.wau)} / 生 ${fmt(audience.wau)}`} />
-          <Stat label="Audience MAU (v3)" value={fmt(audienceV3.mau)} sub={`v2 ${fmt(audienceV2.mau)} / 生 ${fmt(audience.mau)}`} />
-          <Stat label="Stickiness (v3)" value={`${v3Stickiness}%`} sub="v3 DAU÷MAU" />
+          <Stat label="Audience DAU (v3)" value={audienceV3 ? fmt(audienceV3.dau) : '—'} sub={audienceV3 ? `v2 ${fmt(audienceV2.dau)} / 生 ${fmt(audience.dau)}` : 'データ取得中'} />
+          <Stat label="Audience WAU (v3)" value={audienceV3 ? fmt(audienceV3.wau) : '—'} sub={audienceV3 ? `v2 ${fmt(audienceV2.wau)} / 生 ${fmt(audience.wau)}` : 'データ取得中'} />
+          <Stat label="Audience MAU (v3)" value={audienceV3 ? fmt(audienceV3.mau) : '—'} sub={audienceV3 ? `v2 ${fmt(audienceV2.mau)} / 生 ${fmt(audience.mau)}` : 'データ取得中'} />
+          <Stat label="Stickiness (v3)" value={audienceV3 ? `${v3Stickiness}%` : '—'} sub="v3 DAU÷MAU" />
         </div>
         {humanEngV3 && (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

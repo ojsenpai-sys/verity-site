@@ -5,6 +5,7 @@
 // DDL 未適用や一時エラーでも UI を壊さないよう、失敗時は 0/空で返す。
 
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { audienceV3FromSnapshot } from '@/lib/audienceV3FromSnapshot.mjs'
 
 const BRAND = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
 
@@ -287,16 +288,17 @@ export async function getAudienceV2(): Promise<Audience> {
   } catch { return { dau: 0, wau: 0, mau: 0 } }
 }
 
-// ── Human v3（能動ベース・044 get_audience_counts_v3）─────────────────────────────
+// ── Human v3（能動ベース・044）— kpi_daily_snapshot(最新行)を正本とする ─────────────
 // v3 = bot UA除外 ∧ (能動イベント>=1 OR distinct page_path(page_view)>=2)。自動発火は判定に不算入。
-// 既存 v2 は温存し並行運用。RPC 未適用時は 0 でグレースフル（v2 のみ表示に劣化）。
-export async function getAudienceV3(): Promise<Audience> {
-  const c = db(); if (!c) return { dau: 0, wau: 0, mau: 0 }
-  try {
-    const { data } = await c.rpc('get_audience_counts_v3')
-    const r = (Array.isArray(data) ? data[0] : data) as { dau: number; wau: number; mau: number } | null
-    return { dau: n(r?.dau), wau: n(r?.wau), mau: n(r?.mau) }
-  } catch { return { dau: 0, wau: 0, mau: 0 } }
+// 旧実装は get_audience_counts_v3() をライブRPCで直接呼んでいたが、30日分 user_events の
+// 再スキャンが DAU/WAU/MAU 3窓分発生し statement timeout を超過し、catch経由で {0,0,0} へ
+// silent fallbackしていた(Phase G-1で実測確認)。KPI Trend表(getKpiSnapshots)と同じ
+// kpi_daily_snapshot の最新行を参照することで、両表示の不一致を構造的に無くす
+// (refresh_analytics cron が約30分毎に同じv3定義の値を保存済み)。
+// 戻り値 null = 最新snapshot行が無い、またはv3列が未計算(null)＝「データ未取得」。
+// 実際に Human v3 が0件のケースと取得失敗を区別するため、判定不能時に0を返さない。
+export function getAudienceV3(kpiTrend: KpiSnapshot[]): Audience | null {
+  return audienceV3FromSnapshot(kpiTrend[0])
 }
 
 // ── Human v3 エンゲージメント（044 get_human_engagement_counts_v3）─────────────────
