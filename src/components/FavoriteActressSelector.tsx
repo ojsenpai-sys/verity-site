@@ -7,7 +7,7 @@ import type { Actress } from '@/lib/types'
 import { cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
 import { NowPrinting } from '@/components/NowPrinting'
 import { ProxiedImage } from '@/components/ProxiedImage'
-import { CROWN_CLICK_THRESHOLD, CROWN_LP_THRESHOLD } from '@/lib/titles'
+import { CROWN_LP_THRESHOLD } from '@/lib/titles'
 
 type Props = {
   favorites:         Actress[]
@@ -218,7 +218,7 @@ function ActressCard({
                   height={18}
                   className="shrink-0"
                   style={{ objectFit: 'contain' }}
-                  title={`王冠バッジ獲得済み（購入${CROWN_CLICK_THRESHOLD}回以上 & LP${CROWN_LP_THRESHOLD}以上）`}
+                  title={`王冠バッジ獲得済み（LP${CROWN_LP_THRESHOLD}以上）`}
                 />
               )}
               <p className="truncate text-sm font-semibold text-[var(--text)] group-hover:text-[var(--magenta)] transition-colors">

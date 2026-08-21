@@ -1,5 +1,8 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
+import { computeCrownActressIds, computeStarsFromCrownCount, isVerityMaster } from '@/lib/titles'
+import type { UnlockedTitle } from '@/lib/types'
+import { computeMaxFavorites } from '@/lib/slotUtils'
 
 export const dynamic = 'force-dynamic'
 
@@ -23,6 +26,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'amount must be 1–100' }, { status: 400 })
   }
 
+  // LP投入自体の意味・ポイント計算は transfer_lp_to_actress RPC のまま変更しない。
   const { data, error } = await supabase.rpc('transfer_lp_to_actress', {
     p_user_id:    user.id,
     p_brand_id:   BRAND_ID,
@@ -43,5 +47,69 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(data, { status: statusMap[data.error] ?? 500 })
   }
 
-  return NextResponse.json(data)
+  // ── 王冠 / Stars / VERITY マスターをこのLP投入結果で即時再評価 ──────────────────
+  // LP transfer RPCは変更せず、ここで既存の sync_user_stars RPC と titles_data 更新
+  // （api/profile/route.ts と同じパターン）を呼ぶだけ。ページ再読み込みや
+  // お気に入り変更操作を要求せず、この1レスポンスでクライアントへ最新状態を返す。
+  const { data: profile } = await supabase
+    .from('profiles')
+    .select('favorite_actress_ids, stars_count, titles_data, is_subscribed, subscription_expires_at, purchased_slots')
+    .eq('user_id', user.id)
+    .eq('brand_id', BRAND_ID)
+    .maybeSingle()
+
+  let crownActressIds: string[] = []
+  let starsCount       = profile?.stars_count ?? 0
+  let newVerityMaster  = false
+
+  if (profile) {
+    const favIds = (profile.favorite_actress_ids ?? []) as string[]
+    const { data: lpRows } = favIds.length > 0
+      ? await supabase.from('sn_favorite_actresses')
+          .select('actress_id, lp_points')
+          .eq('user_id',  user.id)
+          .eq('brand_id', BRAND_ID)
+          .in('actress_id', favIds)
+      : { data: [] as { actress_id: string; lp_points: number }[] }
+
+    const lpPointsMap = Object.fromEntries(
+      ((lpRows ?? []) as { actress_id: string; lp_points: number }[]).map(r => [r.actress_id, r.lp_points]),
+    )
+    crownActressIds = computeCrownActressIds(favIds, lpPointsMap)
+
+    const crownBasedStars = computeStarsFromCrownCount(crownActressIds.length)
+    if (crownBasedStars > starsCount) {
+      void supabase.rpc('sync_user_stars', {
+        p_user_id:     user.id,
+        p_brand_id:    BRAND_ID,
+        p_crown_count: crownActressIds.length,
+      })
+      starsCount = Math.max(starsCount, crownBasedStars)
+    }
+
+    const titlesData = (profile.titles_data ?? []) as UnlockedTitle[]
+    const hasMasterTitle = titlesData.some(t => t.id === 'verity_master')
+    if (isVerityMaster(crownActressIds.length) && !hasMasterTitle) {
+      newVerityMaster = true
+      void supabase.from('profiles')
+        .update({ titles_data: [...titlesData, { id: 'verity_master', unlocked_at: new Date().toISOString() }] })
+        .eq('user_id', user.id)
+        .eq('brand_id', BRAND_ID)
+    }
+  }
+
+  const maxFavorites = computeMaxFavorites(
+    starsCount,
+    profile?.is_subscribed          ?? false,
+    profile?.subscription_expires_at ?? null,
+    profile?.purchased_slots         ?? 0,
+  )
+
+  return NextResponse.json({
+    ...data,
+    crown_actress_ids: crownActressIds,
+    stars_count:        starsCount,
+    max_favorites:       maxFavorites,
+    new_verity_master:  newVerityMaster,
+  })
 }

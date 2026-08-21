@@ -269,9 +269,9 @@ function GenreBarChart({ scores }: { scores: Record<string, number> }) {
 }
 
 export function ProfileClient({
-  user, profile, favoriteActresses, unlockedTitles, allTitleDefs,
+  user, profile, favoriteActresses, unlockedTitles: initialUnlockedTitles, allTitleDefs,
   topGenres, genreTitle, activityTitle, totalClicks,
-  crownActressIds, maxFavorites, starsCount, isLegend,
+  crownActressIds: initialCrownActressIds, maxFavorites: initialMaxFavorites, starsCount: initialStarsCount,
   lpBalance: initialLpBalance, lpTotalAccumulated, loginStreak, bonusResult,
   lpPointsMap: initialLpPointsMap,
   earnedEpithetIds: initialEpithetIds,
@@ -315,12 +315,17 @@ export function ProfileClient({
     equippedEpithet,
     newEpithetToast,
     showEpithets, setShowEpithets,
+    crownActressIds,
+    starsCount,
+    maxFavorites,
+    unlockedTitles,
     unlockedIds,
     showBonus,
     dynamicTitles,
     activeTitleDef,
     earnedCount,
     totalEpithets,
+    isLegend,
     saveName,
     setTitle,
     updateFavorites,
@@ -328,12 +333,15 @@ export function ProfileClient({
     equipEpithet,
     signOut,
   } = useProfileLogic({
-    profile, favoriteActresses, unlockedTitles, allTitleDefs,
+    profile, favoriteActresses, unlockedTitles: initialUnlockedTitles, allTitleDefs,
     genreTitle, activityTitle,
     lpBalance: initialLpBalance,
     lpPointsMap: initialLpPointsMap,
     bonusResult,
     earnedEpithetIds: initialEpithetIds,
+    crownActressIds: initialCrownActressIds,
+    starsCount: initialStarsCount,
+    maxFavorites: initialMaxFavorites,
   })
 
   return (
@@ -605,11 +613,10 @@ export function ProfileClient({
           </h2>
           {starsCount === 0 && (
             <p className="text-[11px] text-[var(--text-muted)] leading-relaxed">
-              推し女優の購入/予約リンクを <strong className="text-[var(--text)]">10回以上</strong>クリック、かつ
-              <strong className="text-[var(--text)]"> 30 LP 以上</strong>捧げると
+              推し女優に <strong className="text-[var(--text)]">30 LP</strong> 捧げると
               {/* eslint-disable-next-line @next/next/no-img-element */}
               <img src="/assets/verity/king.png" alt="王冠" width={12} height={12} className="inline mx-0.5 align-middle" style={{ objectFit: 'contain' }} />
-              王冠バッジを獲得。3名全員が獲得すると <strong className="text-amber-400">VERITY マスター</strong> 解禁。
+              王冠バッジを獲得。3人の推しに王冠が輝くと <strong className="text-amber-400">VERITY マスター</strong> が解禁されます。
             </p>
           )}
           {isLegend && (

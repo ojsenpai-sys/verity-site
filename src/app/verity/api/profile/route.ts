@@ -1,7 +1,7 @@
 import { createClient } from '@/lib/supabase/server'
 import { NextResponse, type NextRequest } from 'next/server'
 import { revalidatePath } from 'next/cache'
-import { computeUnlocks, CROWN_CLICK_THRESHOLD, CROWN_LP_THRESHOLD } from '@/lib/titles'
+import { computeUnlocks, hasCrown } from '@/lib/titles'
 import type { UnlockedTitle } from '@/lib/types'
 import { computeMaxFavorites } from '@/lib/slotUtils'
 
@@ -127,12 +127,11 @@ export async function PATCH(request: NextRequest) {
     const removedIds = oldFavIds.filter(id => !newFavIds.includes(id))
     const allIds     = [...new Set([...newFavIds, ...removedIds])]
 
-    // 王冠判定用データ（新旧まとめて並列取得）
-    const [actressResult, clickResult, lpResult] = await Promise.all([
+    // 王冠判定用データ（新旧まとめて並列取得。LP単独判定のためclick計測は取得不要）
+    const [actressResult, lpResult] = await Promise.all([
       allIds.length > 0
         ? supabase.from('actresses').select('id, external_id').in('id', allIds)
         : Promise.resolve({ data: [] }),
-      supabase.rpc('get_user_actress_purchase_clicks', { p_user_id: user.id, p_brand_id: BRAND_ID }),
       allIds.length > 0
         ? supabase.from('sn_favorite_actresses')
             .select('actress_id, lp_points')
@@ -143,23 +142,17 @@ export async function PATCH(request: NextRequest) {
     ])
 
     const allActresses = (actressResult.data ?? []) as { id: string; external_id: string }[]
-    const clickMap = new Map(
-      ((clickResult.data ?? []) as { actress_external_id: string; purchase_clicks: number }[])
-        .map(r => [r.actress_external_id, Number(r.purchase_clicks)])
-    )
     const lpMap = new Map(
       ((lpResult.data ?? []) as { actress_id: string; lp_points: number }[])
         .map(r => [r.actress_id, Number(r.lp_points)])
     )
 
-    const hasCrown = (a: { id: string; external_id: string }) =>
-      (clickMap.get(a.external_id) ?? 0) >= CROWN_CLICK_THRESHOLD &&
-      (lpMap.get(a.id) ?? 0) >= CROWN_LP_THRESHOLD
+    const actressHasCrown = (a: { id: string; external_id: string }) => hasCrown(lpMap.get(a.id) ?? 0)
 
     // 二つ名: kabukimono（王冠達成女優を解除）
     if (removedIds.length > 0) {
       const removedActresses = allActresses.filter(a => removedIds.includes(a.id))
-      if (removedActresses.some(hasCrown)) {
+      if (removedActresses.some(actressHasCrown)) {
         void supabase.from('user_achievements').upsert([{
           user_id:     user.id,
           brand_id:    BRAND_ID,
@@ -181,7 +174,7 @@ export async function PATCH(request: NextRequest) {
 
     // 称号解除チェック（VERITY マスター含む）
     const crownIds = allActresses
-      .filter(a => newFavIds.includes(a.id) && hasCrown(a))
+      .filter(a => newFavIds.includes(a.id) && actressHasCrown(a))
       .map(a => a.id)
 
     const { data: prof } = await supabase

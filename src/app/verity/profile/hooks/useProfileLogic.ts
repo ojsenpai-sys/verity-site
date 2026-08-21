@@ -6,7 +6,7 @@ import { useAuth } from '@/components/AuthProvider'
 import { EPITHET_MAP, EPITHET_DEFS } from '@/lib/epithets'
 import type { EpithetDef } from '@/lib/epithets'
 import type { Actress, Profile } from '@/lib/types'
-import type { TitleDef } from '@/lib/titles'
+import { TITLE_MAP, type TitleDef } from '@/lib/titles'
 import type { LoginBonusResult } from '../page'
 
 export type UnlockedEntry = { def: TitleDef; unlocked_at: string }
@@ -22,12 +22,16 @@ type Input = {
   lpPointsMap:        Record<string, number>
   bonusResult:        LoginBonusResult
   earnedEpithetIds:   string[]
+  /** 王冠バッジ獲得済み女優ID（LP単独判定。LP投入直後に即時更新される） */
+  crownActressIds:    string[]
+  starsCount:         number
+  maxFavorites:       number
 }
 
 export function useProfileLogic({
   profile,
   favoriteActresses,
-  unlockedTitles,
+  unlockedTitles: initialUnlockedTitles,
   allTitleDefs,
   genreTitle,
   activityTitle,
@@ -35,6 +39,9 @@ export function useProfileLogic({
   lpPointsMap:        initialLpPointsMap,
   bonusResult,
   earnedEpithetIds:   initialEpithetIds,
+  crownActressIds:    initialCrownActressIds,
+  starsCount:         initialStarsCount,
+  maxFavorites:       initialMaxFavorites,
 }: Input) {
   const { signOut } = useAuth()
   const router = useRouter()
@@ -51,6 +58,18 @@ export function useProfileLogic({
   const [equippedEpithet, setEquippedEpithet] = useState<string | null>(profile?.equipped_epithet ?? null)
   const [newEpithetToast, setNewEpithetToast] = useState<EpithetDef | null>(null)
   const [showEpithets, setShowEpithets]       = useState(false)
+  const [crownActressIds, setCrownActressIds] = useState<string[]>(initialCrownActressIds)
+  const [starsCount, setStarsCount]           = useState(initialStarsCount)
+  const [maxFavorites, setMaxFavorites]       = useState(initialMaxFavorites)
+  const [unlockedTitles, setUnlockedTitles]   = useState<UnlockedEntry[]>(initialUnlockedTitles)
+
+  // お気に入り変更(updateFavorites → router.refresh())で page.tsx が再計算した
+  // 最新値を反映する。LP投入直後の即時反映(handleLpTransfer)はこれとは別に
+  // ローカルsetterで行うため、ここでの同期はサーバー側の再計算結果を上書きするだけでよい。
+  useEffect(() => { setCrownActressIds(initialCrownActressIds) }, [initialCrownActressIds])
+  useEffect(() => { setStarsCount(initialStarsCount) },           [initialStarsCount])
+  useEffect(() => { setMaxFavorites(initialMaxFavorites) },       [initialMaxFavorites])
+  useEffect(() => { setUnlockedTitles(initialUnlockedTitles) },   [initialUnlockedTitles])
 
   // sleepless_tactician: 深夜2:00〜5:00のアクセス
   useEffect(() => {
@@ -136,6 +155,18 @@ export function useProfileLogic({
     if (data.ok) {
       setLpBalance(data.new_balance)
       setLpPointsMap(prev => ({ ...prev, [actressId]: data.lp_points }))
+      // 王冠 / Stars / VERITY マスターをページ再読み込みなしで即時反映
+      // （api/lp が transfer と同一レスポンスで再評価済みの値を返す）
+      if (Array.isArray(data.crown_actress_ids)) setCrownActressIds(data.crown_actress_ids)
+      if (typeof data.stars_count === 'number') setStarsCount(data.stars_count)
+      if (typeof data.max_favorites === 'number') setMaxFavorites(data.max_favorites)
+      if (data.new_verity_master) {
+        setUnlockedTitles(prev =>
+          prev.some(t => t.def.id === 'verity_master')
+            ? prev
+            : [...prev, { def: TITLE_MAP.verity_master as TitleDef, unlocked_at: new Date().toISOString() }],
+        )
+      }
       if (Array.isArray(data.new_epithets)) {
         for (const id of data.new_epithets) triggerEpithetToast(id as string)
       }
@@ -163,6 +194,7 @@ export function useProfileLogic({
   const activeTitleDef  = allTitleDefs.find(d => d.id === currentTitle) ?? null
   const earnedCount     = epithetIds.size
   const totalEpithets   = EPITHET_DEFS.length
+  const isLegend        = starsCount >= 9
 
   return {
     // state
@@ -178,12 +210,17 @@ export function useProfileLogic({
     equippedEpithet,
     newEpithetToast,
     showEpithets, setShowEpithets,
+    crownActressIds,
+    starsCount,
+    maxFavorites,
+    unlockedTitles,
     // derived
     unlockedIds,
     showBonus,
     dynamicTitles,
     activeTitleDef,
     earnedCount,
+    isLegend,
     totalEpithets,
     // actions
     saveName,

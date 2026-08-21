@@ -4,7 +4,7 @@ import { createClient } from '@/lib/supabase/server'
 import { ProfileClient } from './ProfileClient'
 import {
   TITLE_DEFS, TITLE_MAP, computeGenreTitle, computeActivityTitle,
-  CROWN_CLICK_THRESHOLD, CROWN_LP_THRESHOLD,
+  computeCrownActressIds, computeStarsFromCrownCount, isVerityMaster,
 } from '@/lib/titles'
 import type { Profile, Actress, UnlockedTitle } from '@/lib/types'
 import { computeMaxFavorites } from '@/lib/slotUtils'
@@ -482,19 +482,13 @@ export default async function ProfilePage() {
     }
   }
 
-  // ── 王冠バッジ判定 ─────────────────────────────────────────────────────────
-  const crownActressIds = favoriteActresses
-    .filter(a => {
-      const clicks   = clickMap.get(a.external_id) ?? 0
-      const lpPoints = lpPointsMap[a.id] ?? 0
-      return clicks >= CROWN_CLICK_THRESHOLD && lpPoints >= CROWN_LP_THRESHOLD
-    })
-    .map(a => a.id)
+  // ── 王冠バッジ判定（LP単独。購入/予約クリック数は使用しない） ──────────────────
+  const crownActressIds = computeCrownActressIds(favoriteActresses.map(a => a.id), lpPointsMap)
 
   // ── Stars 計算 & DB 同期（ratchet） ───────────────────────────────────────
   const crownCount      = crownActressIds.length
   const dbStars         = resolvedProfile?.stars_count ?? 0
-  const crownBasedStars = crownCount >= 9 ? 9 : crownCount >= 6 ? 6 : crownCount >= 3 ? 3 : 0
+  const crownBasedStars = computeStarsFromCrownCount(crownCount)
   const starsCount      = Math.max(dbStars, crownBasedStars)
   const maxFavorites    = computeMaxFavorites(
     starsCount,
@@ -512,8 +506,25 @@ export default async function ProfilePage() {
     })
   }
 
+  // ── VERITY マスター称号（titles_data）を王冠数だけで即時反映 ─────────────────
+  // 「推し全員が王冠」ではなく crownCount >= 3 のみで判定する（Starsと統一）。
+  // 既存 titles_data の非同期書き込みを待たず、この描画から反映させるため
+  // resolvedProfile.titles_data に未反映のまま unlocked 計算へ渡す。
+  const rawTitlesData = (resolvedProfile?.titles_data ?? []) as UnlockedTitle[]
+  const hasVerityMasterTitle = rawTitlesData.some(t => t.id === 'verity_master')
+  const effectiveTitlesData  = isVerityMaster(crownCount) && !hasVerityMasterTitle
+    ? [...rawTitlesData, { id: 'verity_master', unlocked_at: new Date().toISOString() }]
+    : rawTitlesData
+
+  if (isVerityMaster(crownCount) && !hasVerityMasterTitle) {
+    void supabase.from('profiles')
+      .update({ titles_data: effectiveTitlesData })
+      .eq('user_id', user.id)
+      .eq('brand_id', BRAND_ID)
+  }
+
   // ── 解除済み称号 ───────────────────────────────────────────────────────────
-  const unlocked = ((resolvedProfile?.titles_data ?? []) as UnlockedTitle[])
+  const unlocked = effectiveTitlesData
     .map(t => {
       const staticDef = TITLE_MAP[t.id] as TitleDef | undefined
       if (staticDef) return { def: staticDef, unlocked_at: t.unlocked_at }

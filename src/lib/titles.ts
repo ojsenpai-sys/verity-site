@@ -1,3 +1,12 @@
+import {
+  CROWN_LP_THRESHOLD,
+  VERITY_MASTER_CROWN_COUNT,
+  hasCrown,
+  computeCrownActressIds,
+  isVerityMaster,
+  computeStarsFromCrownCount,
+} from './crownSelection.mjs'
+
 export interface TitleDef {
   id:   string
   name: string
@@ -10,17 +19,16 @@ export interface UnlockedTitle {
   unlocked_at: string
 }
 
-/** 王冠バッジ条件: 購入/予約クリック数（per actress） */
-export const CROWN_CLICK_THRESHOLD = 10
-/** 王冠バッジ条件: 捧げた累計 LP（per actress） */
-export const CROWN_LP_THRESHOLD = 30
+// 王冠 / VERITY マスター判定の実体は crownSelection.mjs（pure・node:testで直接テスト可能）。
+// ここでは既存の呼び出し元との互換のため re-export する。
+export { CROWN_LP_THRESHOLD, VERITY_MASTER_CROWN_COUNT, hasCrown, computeCrownActressIds, isVerityMaster, computeStarsFromCrownCount }
 
 export const TITLE_DEFS: TitleDef[] = [
   { id: 'newcomer',          name: '新参者',             desc: '会員登録完了',                          icon: '🌱' },
   { id: 'oshi_katsu',        name: '推し活家',            desc: 'お気に入り女優を3名設定',                icon: '💜' },
   { id: 'veteran',           name: '常連',                desc: '会員歴30日以上',                        icon: '🏅' },
   { id: 'collector',         name: 'コレクター',           desc: '記事を100件以上既読',                   icon: '📚' },
-  { id: 'verity_master',     name: 'VERITY マスター',     desc: '推し女優3名全員が王冠バッジを獲得',       icon: '👑' },
+  { id: 'verity_master',     name: 'VERITY マスター',     desc: '推し女優のうち3名以上が王冠バッジを獲得', icon: '👑' },
   { id: 'legend_of_verity',  name: 'LEGEND OF VERITY',   desc: '9名の女優に王冠バッジを授与',             icon: '⭐' },
 ]
 
@@ -31,12 +39,12 @@ export function computeUnlocks(params: {
   createdAt:        Date
   favCount:         number
   existingUnlocked: string[]
-  /** お気に入り女優UUIDリスト */
+  /** お気に入り女優UUIDリスト（現状 未使用だが呼び出し元との互換のため残す） */
   favoriteIds?:     string[]
-  /** 王冠バッジ獲得済み女優UUIDリスト (clicks >= CROWN_CLICK_THRESHOLD && lp >= CROWN_LP_THRESHOLD) */
+  /** 王冠バッジ獲得済み女優UUIDリスト (lp_points >= CROWN_LP_THRESHOLD) */
   crownIds?:        string[]
 }): string[] {
-  const { createdAt, favCount, existingUnlocked, favoriteIds = [], crownIds = [] } = params
+  const { createdAt, favCount, existingUnlocked, crownIds = [] } = params
   const already = new Set(existingUnlocked)
   const newIds: string[] = []
 
@@ -46,12 +54,10 @@ export function computeUnlocks(params: {
   if (favCount >= 3) add('oshi_katsu')
   if (Date.now() - createdAt.getTime() >= 30 * 24 * 3_600_000) add('veteran')
 
-  // VERITY マスター: 推し3名全員が王冠バッジを獲得済み
-  if (
-    favoriteIds.length >= 3 &&
-    crownIds.length > 0 &&
-    favoriteIds.every(id => crownIds.includes(id))
-  ) {
+  // VERITY マスター: 現在の推しのうち王冠バッジ獲得者が3名以上
+  // （「推し全員が王冠」ではない。推しスロットが4名・5名等に拡張されていても
+  //   crownCount >= VERITY_MASTER_CROWN_COUNT のみで判定する）
+  if (isVerityMaster(crownIds.length)) {
     add('verity_master')
   }
 
