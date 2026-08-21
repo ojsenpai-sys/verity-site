@@ -3,6 +3,8 @@
 // node --test scripts/__tests__/crown-verity-master.test.mjs
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import {
   hasCrown,
   computeCrownActressIds,
@@ -115,4 +117,62 @@ test('15. LP投入直後の再評価シミュレーション: A=30,B=30,C=29にC
   assert.equal(crownAfter.length, 3)
   assert.equal(isVerityMaster(crownAfter.length), true)
   assert.equal(computeStarsFromCrownCount(crownAfter.length), 3)
+})
+
+// ── backfill / idempotency 再発防止テスト ────────────────────────────────────
+// root cause: void supabase.rpc(...) / void supabase.from(...).update(...) は
+// postgrest-js の lazy-fetch (then() 内で初めて実 HTTP request を送信) により
+// 実際には一度もリクエストが送信されない。page.tsx / api/lp/route.ts の該当4箇所を
+// await 化して修正した。以下はその判定条件そのものの再発防止テスト。
+
+test('backfill-1. LP 30/30/30/2(対象ユーザー実例) → crownCount=3 → master=true', () => {
+  const favoriteActressIds = ['A', 'B', 'C', 'D']
+  const lpPointsMap = { A: 30, B: 30, C: 30, D: 2 }
+  const crownIds = computeCrownActressIds(favoriteActressIds, lpPointsMap)
+  assert.equal(crownIds.length, 3)
+  assert.equal(isVerityMaster(crownIds.length), true)
+})
+
+test('backfill-2. stars_count=0, crownBasedStars=3 → sync_user_stars 呼び出し対象 (crownBasedStars > dbStars)', () => {
+  const dbStars = 0
+  const crownBasedStars = computeStarsFromCrownCount(3)
+  assert.equal(crownBasedStars, 3)
+  assert.equal(crownBasedStars > dbStars, true)
+})
+
+test('backfill-3. stars_count=3, crownBasedStars=3 → 再同期不要 (crownBasedStars > dbStars が false)', () => {
+  const dbStars = 3
+  const crownBasedStars = computeStarsFromCrownCount(3)
+  assert.equal(crownBasedStars > dbStars, false)
+})
+
+test('backfill-4. titles_dataにverity_masterなし → 追加対象', () => {
+  const titlesData = [{ id: 'newcomer' }, { id: 'oshi_katsu' }]
+  const hasMasterTitle = titlesData.some(t => t.id === 'verity_master')
+  assert.equal(hasMasterTitle, false)
+  assert.equal(isVerityMaster(3) && !hasMasterTitle, true)
+})
+
+test('backfill-5. titles_dataにverity_master既存 → 重複追加しない', () => {
+  const titlesData = [{ id: 'newcomer' }, { id: 'verity_master', unlocked_at: '2026-08-21T00:00:00.000Z' }]
+  const hasMasterTitle = titlesData.some(t => t.id === 'verity_master')
+  assert.equal(hasMasterTitle, true)
+  assert.equal(isVerityMaster(3) && !hasMasterTitle, false)
+})
+
+// ── 静的チェック: 修正対象4箇所に void supabase.rpc / void supabase.from(...).update が
+//    再登場していないことを grep 相当で確認（過剰なテスト基盤は作らない、正規表現のみ）。
+function assertNoVoidSupabaseWrite(relPath) {
+  const abs = fileURLToPath(new URL(`../../${relPath}`, import.meta.url))
+  const src = readFileSync(abs, 'utf-8')
+  const matches = src.match(/void\s+supabase\s*\.\s*(rpc|from)\s*\(/g) ?? []
+  assert.deepEqual(matches, [], `${relPath} に void supabase.rpc/from(...) が再登場しています: ${JSON.stringify(matches)}`)
+}
+
+test('backfill-6. page.tsx に void supabase.rpc/from が存在しない', () => {
+  assertNoVoidSupabaseWrite('src/app/verity/profile/page.tsx')
+})
+
+test('backfill-7. api/lp/route.ts に void supabase.rpc/from が存在しない', () => {
+  assertNoVoidSupabaseWrite('src/app/verity/api/lp/route.ts')
 })

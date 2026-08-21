@@ -79,22 +79,33 @@ export async function POST(request: NextRequest) {
 
     const crownBasedStars = computeStarsFromCrownCount(crownActressIds.length)
     if (crownBasedStars > starsCount) {
-      void supabase.rpc('sync_user_stars', {
+      // Supabase の PostgrestBuilder は then() が呼ばれて初めて実 HTTP request を送信する
+      // (lazy-fetch) ため、void で捨てるとリクエスト自体が一度も送信されない。必ず await する。
+      // LP投入自体(transfer_lp_to_actress)は既に成功済みなので、ここでの同期失敗を理由に
+      // レスポンス全体を失敗扱いにはしない。
+      const { error: syncStarsError } = await supabase.rpc('sync_user_stars', {
         p_user_id:     user.id,
         p_brand_id:    BRAND_ID,
         p_crown_count: crownActressIds.length,
       })
+      if (syncStarsError) {
+        console.error('[VERITY crown backfill] sync_user_stars failed:', syncStarsError.message)
+      }
       starsCount = Math.max(starsCount, crownBasedStars)
     }
 
     const titlesData = (profile.titles_data ?? []) as UnlockedTitle[]
     const hasMasterTitle = titlesData.some(t => t.id === 'verity_master')
     if (isVerityMaster(crownActressIds.length) && !hasMasterTitle) {
-      newVerityMaster = true
-      void supabase.from('profiles')
+      const { error: titlesUpdateError } = await supabase.from('profiles')
         .update({ titles_data: [...titlesData, { id: 'verity_master', unlocked_at: new Date().toISOString() }] })
         .eq('user_id', user.id)
         .eq('brand_id', BRAND_ID)
+      if (titlesUpdateError) {
+        console.error('[VERITY crown backfill] titles_data update failed:', titlesUpdateError.message)
+      } else {
+        newVerityMaster = true
+      }
     }
   }
 

@@ -499,11 +499,16 @@ export default async function ProfilePage() {
   const isLegend        = starsCount >= 9
 
   if (crownBasedStars > dbStars) {
-    void supabase.rpc('sync_user_stars', {
+    // Supabase の PostgrestBuilder は then() が呼ばれて初めて実 HTTP request を送信する
+    // (lazy-fetch) ため、void で捨てるとリクエスト自体が一度も送信されない。必ず await する。
+    const { error: syncStarsError } = await supabase.rpc('sync_user_stars', {
       p_user_id:     user.id,
       p_brand_id:    BRAND_ID,
       p_crown_count: crownCount,
     })
+    if (syncStarsError) {
+      console.error('[VERITY crown backfill] sync_user_stars failed:', syncStarsError.message)
+    }
   }
 
   // ── VERITY マスター称号（titles_data）を王冠数だけで即時反映 ─────────────────
@@ -517,10 +522,13 @@ export default async function ProfilePage() {
     : rawTitlesData
 
   if (isVerityMaster(crownCount) && !hasVerityMasterTitle) {
-    void supabase.from('profiles')
+    const { error: titlesUpdateError } = await supabase.from('profiles')
       .update({ titles_data: effectiveTitlesData })
       .eq('user_id', user.id)
       .eq('brand_id', BRAND_ID)
+    if (titlesUpdateError) {
+      console.error('[VERITY crown backfill] titles_data update failed:', titlesUpdateError.message)
+    }
   }
 
   // ── 解除済み称号 ───────────────────────────────────────────────────────────
