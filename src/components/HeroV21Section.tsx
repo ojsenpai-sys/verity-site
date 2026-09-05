@@ -86,8 +86,10 @@ export async function HeroV21Section() {
     getTopRankedWorks(10),
   ])
 
-  // ランキング未取得時は従来Heroへフォールバック（Hero空白を作らない）
-  if (ranked.length === 0) return <HeroSection />
+  // ランキング未取得時は従来Heroへフォールバック（Hero空白を作らない）。
+  // 既に取得済み(空)の ranked を渡し、フォールバック先で get_top_works_ranked を
+  // 再実行させない（Phase 3.2.4: 二重RPC解消。1リクエストでRPCは最大1回のみ）。
+  if (ranked.length === 0) return <HeroSection rankedOverride={ranked} />
 
   const items = ranked.map(r => toItem(r.rank, r.points, r.article, isOverseas))
 

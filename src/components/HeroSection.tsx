@@ -302,11 +302,19 @@ function HeroRankRail({ items, isOverseas }: { items: RankedWork[]; isOverseas: 
   )
 }
 
-export async function HeroSection() {
+type HeroSectionProps = {
+  // HeroV21Section が空振り(ranking取得失敗/空)でフォールバックする際、既に取得済みの
+  // (空)結果を渡す。渡された場合はここで get_top_works_ranked を再実行しない
+  // (Phase 3.2.4: フォールバック時の二重RPCを解消)。単独の主Hero(v2)として使われる
+  // 場合は省略され、通常どおり自前で取得する。
+  rankedOverride?: RankedWork[]
+}
+
+export async function HeroSection({ rankedOverride }: HeroSectionProps = {}) {
   const [heroResult, isOverseas, ranked] = await Promise.all([
     getHeroArticle(),
     getIsOverseasUser(),
-    getTopRankedWorks(10),
+    rankedOverride !== undefined ? Promise.resolve(rankedOverride) : getTopRankedWorks(10),
   ])
   if (!heroResult) return null
 
