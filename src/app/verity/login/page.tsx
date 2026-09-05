@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { LoginForm } from './LoginForm'
 import { createClient } from '@/lib/supabase/server'
+import { safeGetUser } from '@/lib/supabase/authUser'
 import { redirect } from 'next/navigation'
 
 export const metadata: Metadata = {
@@ -13,10 +14,12 @@ export default async function LoginPage({
 }: {
   searchParams: Promise<{ error?: string; next?: string; mode?: string }>
 }) {
-  // ログイン済みならプロフィールへ
+  // ログイン済みならプロフィールへ。Auth基盤の障害/timeout時は判定できないため
+  // (Phase 3.2.5)、安全側としてログインフォームをそのまま表示する
+  // （既にログイン済みのユーザーが不要にフォームを見るだけで、実害はない）。
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (user) redirect('/verity/profile')
+  const authResult = await safeGetUser(supabase, 'login')
+  if (authResult.status === 'authenticated') redirect('/verity/profile')
 
   const { error, next, mode } = await searchParams
 

@@ -12,6 +12,7 @@ import { LocalFavSync } from '@/components/LocalFavSync'
 import { PageViewTracker } from '@/components/PageViewTracker'
 import { AttributionCapture } from '@/components/AttributionCapture'
 import { createClient } from '@/lib/supabase/server'
+import { safeGetUser } from '@/lib/supabase/authUser'
 import './globals.css'
 
 export const metadata: Metadata = {
@@ -36,9 +37,14 @@ export const metadata: Metadata = {
 }
 
 export default async function VerityLayout({ children }: { children: React.ReactNode }) {
-  // サーバー側でセッションを取得してクライアントに渡す（初期ハイドレーション用）
+  // サーバー側でセッションを取得してクライアントに渡す（初期ハイドレーション用）。
+  // Auth基盤の障害/timeout時は initialUser を null として進める（Phase 3.2.5）。
+  // これはページ全体を守るための「初期表示ヒント」に過ぎず、AuthProviderのクライアント側
+  // onAuthStateChangeがブラウザの実セッションから正しい状態へ直後に補正する。
+  // signOutは行わないため、実際にログイン中のユーザーが強制ログアウトされることはない。
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const authResult = await safeGetUser(supabase, 'verity/layout')
+  const user = authResult.status === 'authenticated' ? authResult.user : null
 
   const gaId = process.env.NEXT_PUBLIC_GA_TRACKING_ID
 

@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import { redirect } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
+import { safeGetUser } from '@/lib/supabase/authUser'
 import { ProfileClient } from './ProfileClient'
 import {
   TITLE_DEFS, TITLE_MAP, computeGenreTitle, computeActivityTitle,
@@ -74,10 +75,34 @@ type LogRow = {
   action_type: string
 }
 
+// Auth基盤の障害/timeout時に表示する安全なフォールバック（Phase 3.2.5）。
+// 「確実に未ログイン」ではないため /verity/login へリダイレクトしない
+// （実際にログイン中のユーザーを強制ログアウトしたように見せないため）。
+// 保護データ（プロフィール・お気に入り等）は一切取得・表示しない。
+function AuthUnavailableFallback() {
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-24 text-center space-y-4">
+      <p className="text-4xl">🔒</p>
+      <p className="text-lg font-bold text-[var(--text)]">マイページを確認できませんでした</p>
+      <p className="text-sm text-[var(--text-muted)]">
+        一時的にアクセスが集中している可能性があります。しばらくしてから再度お試しください。
+      </p>
+      <a
+        href="/verity/profile"
+        className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-6 py-2.5 text-sm font-black text-white transition-all hover:brightness-110 active:scale-[0.97]"
+      >
+        再読み込み
+      </a>
+    </div>
+  )
+}
+
 export default async function ProfilePage() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-  if (!user) redirect('/verity/login?next=/verity/profile')
+  const authResult = await safeGetUser(supabase, 'profile')
+  if (authResult.status === 'anonymous') redirect('/verity/login?next=/verity/profile')
+  if (authResult.status === 'unavailable') return <AuthUnavailableFallback />
+  const user = authResult.user
 
   // ── ログインボーナスを先に付与（DBを更新してから profile を取得） ──────────────
   let bonusResult: LoginBonusResult = {}

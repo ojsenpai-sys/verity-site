@@ -1,5 +1,6 @@
 import { createServerClient } from '@supabase/ssr'
 import { type NextRequest, NextResponse } from 'next/server'
+import { withFetchTimeout, SUPABASE_FETCH_TIMEOUT_MS } from '@/lib/supabase/timeout'
 
 // ── 定数 ─────────────────────────────────────────────────────────────
 
@@ -180,10 +181,19 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
   // setAll で更新されたクッキーを収集し、ルーティングレスポンスに付与する
   const updatedCookies: { name: string; value: string; options: Record<string, unknown> }[] = []
 
+  // Phase 3.2.5: この client は src/lib/supabase/server.ts の createClient() を経由しない
+  // (middleware は next/headers の cookies() ではなく request.cookies を使うため独自構築が必要)。
+  // そのため Phase 3.2 で導入した8秒fetch timeoutがこれまで一切適用されておらず、
+  // Supabase Auth基盤が応答不能になると全リクエストが無期限に止まりうる状態だった
+  // (matcher が実質すべてのページを通るため、影響範囲はlayout.tsxより広い)。
+  const timedFetch = withFetchTimeout(fetch, SUPABASE_FETCH_TIMEOUT_MS)
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL  ?? '',
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? '',
     {
+      global: {
+        fetch: (url, options: RequestInit = {}) => timedFetch(url, { ...options, cache: 'no-store' }),
+      },
       cookies: {
         getAll: () => request.cookies.getAll(),
         setAll: (cookiesToSet) => {
@@ -196,7 +206,16 @@ export async function proxy(request: NextRequest): Promise<NextResponse> {
     }
   )
 
-  const { data: { user } } = await supabase.auth.getUser()
+  // Auth基盤の障害/timeout時は user を undefined のまま進める。adminGuard は
+  // userEmail が無ければ既存どおりfail-closed（/verity/admin配下はログインへ）となり、
+  // ageGateGuard/routeRequestはuserに依存しないため、PUBLICページの応答には影響しない。
+  let user: { email?: string | null } | undefined
+  try {
+    const result = await supabase.auth.getUser()
+    user = result.data.user ?? undefined
+  } catch (err) {
+    console.error('[proxy] auth check unavailable:', err instanceof Error ? err.message : String(err))
+  }
 
   // ── 管理者ガード（ルーティング前に判定） ────────────────────────────
   const effectivePath = getEffectivePath(request)

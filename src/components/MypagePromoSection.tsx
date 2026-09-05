@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Heart, Bell, Trophy, Star } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { safeGetUser } from '@/lib/supabase/authUser'
 import { TrackedLink } from '@/app/verity/actresses/[id]/TrackedLink'
 
 const FEATURES = [
@@ -28,9 +29,9 @@ function FeatureGrid() {
 
 export async function MypagePromoSection() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
+  const authResult = await safeGetUser(supabase, 'MypagePromoSection')
+  // Auth基盤の障害時は保護データを取得せず、既存の未ログインCTAへ安全に縮退する(Phase 3.2.5)。
+  if (authResult.status !== 'authenticated') {
     return (
       <section className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] p-6 sm:p-8">
         <div className="mx-auto max-w-2xl space-y-5 text-center">

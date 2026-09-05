@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { Lock, ArrowLeft, CalendarDays, User } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { safeGetUser } from '@/lib/supabase/authUser'
 import { LogView } from '@/components/LogView'
 
 // ── モックインタビューデータ（将来 DB テーブルへ移行可能） ──────────────────────
@@ -106,10 +107,10 @@ export default async function InterviewPage(
   }
 
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const authResult = await safeGetUser(supabase, 'interviews/[id]')
 
-  // ── 未ログイン：プレビュー表示（リダイレクトの代わりに CTA カード） ─────────
-  if (!user) {
+  // ── 未ログイン（Auth基盤障害時も含む・Phase 3.2.5）：プレビュー表示 ─────────
+  if (authResult.status !== 'authenticated') {
     return (
       <div className="mx-auto max-w-3xl px-4 py-12 space-y-8">
         <Link

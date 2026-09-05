@@ -1,12 +1,14 @@
 import Link from 'next/link'
 import { Gift, Flame } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { safeGetUser } from '@/lib/supabase/authUser'
 
 export async function LpNudgeBar() {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
+  const authResult = await safeGetUser(supabase, 'LpNudgeBar')
+  // Auth基盤の障害時も含め、認証済みと確認できた場合のみ会員向けUIへ進む(Phase 3.2.5)。
+  // 未確認時は保護データ(LP残高等)を一切取得せず、既存の未ログインCTAへ安全に縮退する。
+  if (authResult.status !== 'authenticated') {
     return (
       <Link href="/verity/login?next=/verity/profile" className="block">
         <div className="relative overflow-hidden rounded-xl border border-amber-500/30 bg-gradient-to-r from-[#120d00] via-[#1c1500] to-[#0e0a00] transition-all hover:brightness-110 active:scale-[0.99]">
@@ -45,6 +47,7 @@ export async function LpNudgeBar() {
     )
   }
 
+  const user = authResult.user
   const BRAND_ID = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
   const { data: profile } = await supabase
     .from('profiles')

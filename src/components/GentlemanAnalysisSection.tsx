@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Brain, Zap, ArrowRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { safeGetUser } from '@/lib/supabase/authUser'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { FanzaLink } from './FanzaLink'
@@ -87,11 +88,12 @@ function AxisBar({ axis, score, rank }: { axis: string; score: number; rank: num
 
 export async function GentlemanAnalysisSection() {
   const supabase   = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const authResult = await safeGetUser(supabase, 'GentlemanAnalysisSection')
   const isOverseas = await getIsOverseasUser()
 
-  // ── 未ログイン: ゲーミフィケーション登録CTA ───────────────────────────────
-  if (!user) {
+  // ── 未ログイン(Auth基盤障害時も含む・Phase 3.2.5): ゲーミフィケーション登録CTA ──────
+  // 障害時に保護データ(閲覧ジャンルログ等)を取得・表示しないため、未ログインと同じ分岐に合流する。
+  if (authResult.status !== 'authenticated') {
     return (
       <section className="relative overflow-hidden rounded-2xl border border-[var(--magenta)]/30 bg-gradient-to-br from-[#0a0010] via-[#12001a] to-[#0a000f] p-6 sm:p-8">
         {/* atmospheric glow spots */}
@@ -171,6 +173,7 @@ export async function GentlemanAnalysisSection() {
   }
 
   // ── ログイン済み: ジャンルログ取得 ────────────────────────────────────────
+  const user = authResult.user
   const { data: logRows } = await supabase
     .from('sn_user_logs')
     .select('target_id')
