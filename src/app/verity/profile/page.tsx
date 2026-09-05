@@ -1,5 +1,5 @@
 import type { Metadata } from 'next'
-import { redirect } from 'next/navigation'
+import { redirect, unstable_rethrow } from 'next/navigation'
 import { createClient } from '@/lib/supabase/server'
 import { safeGetUser } from '@/lib/supabase/authUser'
 import { ProfileClient } from './ProfileClient'
@@ -97,6 +97,28 @@ function AuthUnavailableFallback() {
   )
 }
 
+// Auth自体は成功したが、保護データ(profiles等)の取得/計算が失敗した場合のフォールバック
+// （Phase 3.2.7）。認証エラーとは原因が異なるため文言を分け、サポート対応時に区別できるようにする。
+// 「行が存在しない」と「取得自体が失敗した」を混同して空プロフィールを描画すると、
+// 既存ユーザーには「データが消えた」ように見えてしまうため、後者は明示的にこの画面で止める。
+function ProfileUnavailableFallback() {
+  return (
+    <div className="mx-auto max-w-2xl px-4 py-24 text-center space-y-4">
+      <p className="text-4xl">⚠️</p>
+      <p className="text-lg font-bold text-[var(--text)]">マイページを読み込めませんでした</p>
+      <p className="text-sm text-[var(--text-muted)]">
+        データの取得に失敗しました。お客様のデータは失われていません。しばらくしてから再度お試しください。
+      </p>
+      <a
+        href="/verity/profile"
+        className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-6 py-2.5 text-sm font-black text-white transition-all hover:brightness-110 active:scale-[0.97]"
+      >
+        再読み込み
+      </a>
+    </div>
+  )
+}
+
 export default async function ProfilePage() {
   const supabase = await createClient()
   const authResult = await safeGetUser(supabase, 'profile')
@@ -113,12 +135,22 @@ export default async function ProfilePage() {
   if (!bonusErr && bonusData) bonusResult = bonusData as LoginBonusResult
 
   // ── プロフィール取得 ────────────────────────────────────────────────────────
-  const { data: profile } = await supabase
+  // CRITICAL: profile取得の失敗(timeout/network等)と「新規ユーザーで行が未作成」を
+  // 混同しない（Phase 3.2.7）。従来は data===null を一律「行が無い」とみなしINSERTを
+  // 試みていたが、これは一時的な取得失敗時に不要なINSERT試行（および既存ユーザーへの
+  // 誤った「newcomer」空プロフィール表示）を招く。エラーが返っている場合は行の有無を
+  // 判断できないため、fail-closedで安全なフォールバックを表示し、保護データは描画しない。
+  const { data: profile, error: profileError } = await supabase
     .from('profiles')
     .select('*')
     .eq('user_id', user.id)
     .eq('brand_id', BRAND_ID)
-    .maybeSingle() as { data: Profile | null }
+    .maybeSingle() as { data: Profile | null; error: { message: string } | null }
+
+  if (profileError) {
+    console.error('[profile] profile SELECT failed:', profileError.message)
+    return <ProfileUnavailableFallback />
+  }
 
   let resolvedProfile = profile
   if (!resolvedProfile) {
@@ -152,6 +184,15 @@ export default async function ProfilePage() {
     }
   }
 
+  // IMPORTANT/OPTIONALな各種取得・集計・付与処理をまとめてtry-catch（Phase 3.2.7の
+  // 安全網）。個々のSupabase呼び出しは(@supabase/postgrest-jsの既定動作により)
+  // ネットワーク障害/timeoutでもthrowせず{data:null,error}を返すため、以下の処理は
+  // 既存の`??`/オプショナルチェイニングで大部分が保護されている。この
+  // try-catchは、想定外の例外（データ形状の想定外・実装バグ等）でMy Page全体が
+  // 500になることを防ぐ最終防御であり、個別sectionの粒度でのfallbackを代替するもの
+  // ではない。redirect/notFoundはこのブロック内で呼ばれないが、将来の変更に備え
+  // unstable_rethrowを先頭に置く。
+  try {
   // ── 全データを並列取得 ──────────────────────────────────────────────────────
   const favIds      = resolvedProfile?.favorite_actress_ids ?? []
 
@@ -639,10 +680,13 @@ export default async function ProfilePage() {
   // 一括付与（冪等 upsert）
   if (toAward.length > 0) {
     const now = new Date().toISOString()
-    await supabase.from('user_achievements').upsert(
+    const { error: achievementsUpsertError } = await supabase.from('user_achievements').upsert(
       toAward.map(epithet_id => ({ user_id: user.id, brand_id: BRAND_ID, epithet_id, achieved_at: now })),
       { onConflict: 'user_id,brand_id,epithet_id', ignoreDuplicates: true },
     )
+    if (achievementsUpsertError) {
+      console.error('[profile] user_achievements upsert failed:', achievementsUpsertError.message)
+    }
     for (const id of toAward) earnedSet.add(id)
   }
 
@@ -684,4 +728,9 @@ export default async function ProfilePage() {
       />
     </div>
   )
+  } catch (err) {
+    unstable_rethrow(err)
+    console.error('[profile] unexpected error while building My Page:', err instanceof Error ? err.message : err)
+    return <ProfileUnavailableFallback />
+  }
 }
