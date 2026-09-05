@@ -14,7 +14,7 @@
  *
  * マーキー固定4名はここに含めない（MARQUEE_SYNC_CIDS を参照。本改修の対象外）。
  *
- * ⚠️ 要素数は必ず 35 を維持すること（下の _assertFeaturedCount が型エラーで教える）
+ * ⚠️ 要素数は必ず 36 を維持すること（下の _assertFeaturedCount が型エラーで教える）
  */
 export const FEATURED_ACTRESSES = [
   1084346, // 川越にこ
@@ -52,10 +52,11 @@ export const FEATURED_ACTRESSES = [
   1099846, // 新木希空
   1086581, // 浅野こころ
   1113771, // 希望みう（みらいみう）— 2026-08 オーナー追加指定
+  1114478, // 希月あまね — 2026-09 オーナー追加指定
 ] as const
 
-// ── コンパイル時 要素数35 を強制保証 ───────────────────────────
-const _assertFeaturedCount: 35 = FEATURED_ACTRESSES.length
+// ── コンパイル時 要素数36 を強制保証 ───────────────────────────
+const _assertFeaturedCount: 36 = FEATURED_ACTRESSES.length
 void _assertFeaturedCount
 
 /**
