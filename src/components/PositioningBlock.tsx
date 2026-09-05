@@ -1,5 +1,6 @@
 import { Crown, Users, Tag, Building2 } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import { getStatelessSupabaseClient } from '@/lib/supabase/statelessClient'
 import { getArticleScores, rankPercentile, formatPercentile } from '@/lib/articleScoring'
 import type { Article } from '@/lib/types'
 
@@ -23,10 +24,9 @@ type Slice = {
 
 type Props = { article: Article }
 
-type SupaClient = Awaited<ReturnType<typeof createClient>>
-
-async function fetchCidsByActressName(supabase: SupaClient, name: string, limit = 200): Promise<string[]> {
-  const { data } = await supabase
+async function fetchCidsByActressNameRaw(name: string, limit = 200): Promise<string[]> {
+  const supabase = getStatelessSupabaseClient()
+  const { data, error } = await supabase
     .from('articles')
     .select('external_id')
     .eq('is_active', true)
@@ -34,12 +34,14 @@ async function fetchCidsByActressName(supabase: SupaClient, name: string, limit 
     .not('metadata->>url', 'like', '%/dc/doujin/%')
     .order('published_at', { ascending: false, nullsFirst: false })
     .limit(limit)
+  if (error) throw new Error(`positioning cids-by-actress error: ${error.message}`)
   return ((data ?? []) as { external_id: string }[]).map(r => r.external_id).filter(Boolean)
 }
 
-async function fetchCidsByGenres(supabase: SupaClient, tags: string[], limit = 300): Promise<string[]> {
+async function fetchCidsByGenresRaw(tags: string[], limit = 300): Promise<string[]> {
   if (tags.length === 0) return []
-  const { data } = await supabase
+  const supabase = getStatelessSupabaseClient()
+  const { data, error } = await supabase
     .from('articles')
     .select('external_id')
     .eq('is_active', true)
@@ -47,11 +49,13 @@ async function fetchCidsByGenres(supabase: SupaClient, tags: string[], limit = 3
     .not('metadata->>url', 'like', '%/dc/doujin/%')
     .order('published_at', { ascending: false, nullsFirst: false })
     .limit(limit)
+  if (error) throw new Error(`positioning cids-by-genres error: ${error.message}`)
   return ((data ?? []) as { external_id: string }[]).map(r => r.external_id).filter(Boolean)
 }
 
-async function fetchCidsByMakerId(supabase: SupaClient, makerId: number, limit = 200): Promise<string[]> {
-  const { data } = await supabase
+async function fetchCidsByMakerIdRaw(makerId: number, limit = 200): Promise<string[]> {
+  const supabase = getStatelessSupabaseClient()
+  const { data, error } = await supabase
     .from('articles')
     .select('external_id')
     .eq('is_active', true)
@@ -59,13 +63,21 @@ async function fetchCidsByMakerId(supabase: SupaClient, makerId: number, limit =
     .not('metadata->>url', 'like', '%/dc/doujin/%')
     .order('published_at', { ascending: false, nullsFirst: false })
     .limit(limit)
+  if (error) throw new Error(`positioning cids-by-maker error: ${error.message}`)
   return ((data ?? []) as { external_id: string }[]).map(r => r.external_id).filter(Boolean)
 }
+
+// キャッシュキーは記事メタデータ由来の引数(女優名/ジャンルタグ/メーカーID)から自動導出。
+// user/session/cookieを含まないため全ユーザー共通キャッシュとして安全（Phase 3.2.6）。
+// このセクションは集計ベースのパーセンタイル表示で秒単位の鮮度を要さないため
+// 他3コンポーネント(600秒)より長い1800秒TTLとする。
+const getCachedCidsByActressName = unstable_cache(fetchCidsByActressNameRaw, ['positioning-cids-actress'], { revalidate: 1800 })
+const getCachedCidsByGenres       = unstable_cache(fetchCidsByGenresRaw,      ['positioning-cids-genres'],  { revalidate: 1800 })
+const getCachedCidsByMakerId      = unstable_cache(fetchCidsByMakerIdRaw,     ['positioning-cids-maker'],   { revalidate: 1800 })
 
 export async function PositioningBlock({ article }: Props) {
   if (!article.external_id) return null
 
-  const supabase = await createClient()
   const meta = (article.metadata as Record<string, unknown> | null) ?? {}
 
   const actresses = (Array.isArray(meta.actress) ? meta.actress : []) as Array<{ id?: number; name?: string }>
@@ -77,11 +89,17 @@ export async function PositioningBlock({ article }: Props) {
   const genreTags      = (article.tags ?? []).filter(t => !actressNameSet.has(t) && !t.includes('VR')).slice(0, 3)
 
   // ── 各スコープの CID 母集団を並列取得 ─────────────────────────────────────
-  const [actressCids, genreCids, makerCids] = await Promise.all([
-    primaryActress?.name ? fetchCidsByActressName(supabase, primaryActress.name) : Promise.resolve([] as string[]),
-    genreTags.length > 0 ? fetchCidsByGenres(supabase, genreTags)                : Promise.resolve([] as string[]),
-    primaryMaker?.id     ? fetchCidsByMakerId(supabase, primaryMaker.id)         : Promise.resolve([] as string[]),
-  ])
+  let actressCids: string[], genreCids: string[], makerCids: string[]
+  try {
+    ;[actressCids, genreCids, makerCids] = await Promise.all([
+      primaryActress?.name ? getCachedCidsByActressName(primaryActress.name) : Promise.resolve([] as string[]),
+      genreTags.length > 0 ? getCachedCidsByGenres(genreTags)                : Promise.resolve([] as string[]),
+      primaryMaker?.id     ? getCachedCidsByMakerId(primaryMaker.id)         : Promise.resolve([] as string[]),
+    ])
+  } catch (err) {
+    console.error('[positioning-block]', err instanceof Error ? err.message : err)
+    return null
+  }
 
   // 自作品を必ず母集団に含める
   const ensureSelf = (arr: string[]) => arr.includes(article.external_id) ? arr : [...arr, article.external_id]

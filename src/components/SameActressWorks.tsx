@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Clapperboard, ChevronRight, ExternalLink } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import { getStatelessSupabaseClient } from '@/lib/supabase/statelessClient'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl, coverPosClass } from '@/lib/cidUtils'
 import { deduplicateDigitalFirst } from '@/lib/fanzaUtils'
@@ -56,6 +57,49 @@ type Props = {
   currentCid:  string
 }
 
+type SameActressResult = { works: Article[]; hasPage: boolean }
+
+// 生取得。エラー時は握りつぶさず throw する — unstable_cache は例外を投げた呼び出しの
+// 結果をキャッシュしないため、失敗を長時間キャッシュする事故を防げる（Phase 3.2.4踏襲）。
+async function fetchSameActressRaw(
+  actressId: number,
+  externalId: string,
+  currentSlug: string,
+  currentCid: string,
+): Promise<SameActressResult> {
+  const supabase = getStatelessSupabaseClient()
+
+  const [{ data: actressRow, error: actressErr }, { data, error }] = await Promise.all([
+    supabase.from('actresses').select('external_id').eq('external_id', externalId).maybeSingle(),
+    supabase
+      .from('articles')
+      .select(BASE_SELECT)
+      .filter('metadata->actress', 'cs', JSON.stringify([{ id: actressId }]))
+      .neq('slug', currentSlug)
+      .eq('is_active', true)
+      .order('published_at', { ascending: false })
+      .limit(24),
+  ])
+  if (actressErr) throw new Error(`same-actress actressRow error: ${actressErr.message}`)
+  if (error) throw new Error(`same-actress articles error: ${error.message}`)
+
+  let rows = (data ?? []) as Article[]
+  rows = deduplicateDigitalFirst(rows).filter((r) => r.external_id !== currentCid)
+  const works = [...rows.filter(isVideoWork), ...rows.filter((r) => !isVideoWork(r))].slice(0, DISPLAY_MAX)
+
+  return { works, hasPage: !!actressRow }
+}
+
+// キャッシュキーは actressId/externalId/currentSlug/currentCid から自動導出される
+// （unstable_cache は引数を自動的にキーへ含める）。これらは記事のメタデータのみに由来し、
+// user/session/cookie は一切含まれないため、全ユーザー共通キャッシュとして安全（Phase 3.2.6）。
+const getCachedSameActress = unstable_cache(
+  (actressId: number, externalId: string, currentSlug: string, currentCid: string) =>
+    fetchSameActressRaw(actressId, externalId, currentSlug, currentCid),
+  ['same-actress-works'],
+  { revalidate: 600 },
+)
+
 /**
  * 「この女優の出演作品」セクション。
  *   - 主要女優 1 名（最初の id>0 の女優）を優先し、その出演作品を最大 6 件表示。
@@ -81,26 +125,14 @@ export async function SameActressWorks({ actresses, currentSlug, currentCid }: P
   if (!primary) return null
   const externalId = actressExternalIdFromNumericId(primary.id)
 
-  const supabase = await createClient()
-
-  // リンク制御用の実在確認（検索とは独立）と、関連作品検索（ID方式）を並行実行。
-  const [{ data: actressRow }, { data }] = await Promise.all([
-    supabase.from('actresses').select('external_id').eq('external_id', externalId).maybeSingle(),
-    supabase
-      .from('articles')
-      .select(BASE_SELECT)
-      .filter('metadata->actress', 'cs', JSON.stringify([{ id: primary.id }]))
-      .neq('slug', currentSlug)
-      .eq('is_active', true)
-      .order('published_at', { ascending: false })
-      .limit(24),
-  ])
-  const hasPage = !!actressRow
-
-  let rows = (data ?? []) as Article[]
-  rows = deduplicateDigitalFirst(rows).filter((r) => r.external_id !== currentCid)
-  // 動画作品を優先（DVD/同人は後方へ・各群の発売日降順は維持）
-  const works = [...rows.filter(isVideoWork), ...rows.filter((r) => !isVideoWork(r))].slice(0, DISPLAY_MAX)
+  let result: SameActressResult
+  try {
+    result = await getCachedSameActress(primary.id, externalId, currentSlug, currentCid)
+  } catch (err) {
+    console.error('[same-actress-works]', err instanceof Error ? err.message : err)
+    return null
+  }
+  const { works, hasPage } = result
 
   if (works.length === 0) return null
 

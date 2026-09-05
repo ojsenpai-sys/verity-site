@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Heart } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import { getStatelessSupabaseClient } from '@/lib/supabase/statelessClient'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl, coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from '@/components/FanzaLink'
@@ -55,20 +56,22 @@ type Props = { article: Article }
  * 上位 6 件を表示。VR作品はジャケット仕様が異なるためデフォルトの非VR
  * 作品では除外する（元作品がVRなら混在許可）。
  */
-export async function RelatedWorksScored({ article }: Props) {
-  const supabase = await createClient()
-  const meta = (article.metadata as Record<string, unknown> | null) ?? {}
+type ScoredEntry = { article: Article; reasons: string[] }
 
-  const actresses = entryArray(meta, 'actress')
-  const series    = entryArray(meta, 'series')
-  const makers    = entryArray(meta, 'maker')
-  const actressNameSet = new Set(actresses.map(a => a.name))
-
-  const allTags  = (article.tags ?? []) as string[]
-  const genreTags = allTags.filter(t => !actressNameSet.has(t))
-
-  const sourceIsVr = allTags.some(t => t.includes('VR'))
-  const publishedAtMs = article.published_at ? new Date(article.published_at).getTime() : null
+// 生取得+スコアリング。エラー時は握りつぶさず throw する — unstable_cache は例外を
+// 投げた呼び出しの結果をキャッシュしないため、失敗を長時間キャッシュする事故を防げる
+// （Phase 3.2.4踏襲）。入力は記事メタデータ由来の値のみで user/session/cookie は
+// 一切含まれないため、全ユーザー共通キャッシュとして安全（Phase 3.2.6）。
+async function fetchRelatedWorksScoredRaw(
+  slug: string,
+  actresses: Entry[],
+  series: Entry[],
+  makers: Entry[],
+  seedGenreTags: string[],
+  sourceIsVr: boolean,
+  publishedAtMs: number | null,
+): Promise<ScoredEntry[]> {
+  const supabase = getStatelessSupabaseClient()
 
   // ── 候補プール取得 (各シグナルごとに広めに集めてマージ) ───────────────────
   const candidateMap = new Map<string, Article>()
@@ -79,14 +82,10 @@ export async function RelatedWorksScored({ article }: Props) {
     }
   }
 
-  const seedGenreTags = genreTags
-    .filter(t => !t.includes('VR'))
-    .slice(0, 3)
-
   const fetchByActress = actresses.length > 0
     ? supabase.from('articles').select(BASE_SELECT)
         .overlaps('tags', actresses.map(a => a.name))
-        .neq('slug', article.slug)
+        .neq('slug', slug)
         .eq('is_active', true)
         .order('published_at', { ascending: false })
         .limit(60)
@@ -96,7 +95,7 @@ export async function RelatedWorksScored({ article }: Props) {
   const fetchBySeries = series.length > 0 && series[0].id > 0
     ? supabase.from('articles').select(BASE_SELECT)
         .filter('metadata->series', 'cs', JSON.stringify([{ id: series[0].id }]))
-        .neq('slug', article.slug)
+        .neq('slug', slug)
         .eq('is_active', true)
         .order('published_at', { ascending: false })
         .limit(60)
@@ -106,7 +105,7 @@ export async function RelatedWorksScored({ article }: Props) {
   const fetchByMaker = makers.length > 0 && makers[0].id > 0
     ? supabase.from('articles').select(BASE_SELECT)
         .filter('metadata->maker', 'cs', JSON.stringify([{ id: makers[0].id }]))
-        .neq('slug', article.slug)
+        .neq('slug', slug)
         .eq('is_active', true)
         .order('published_at', { ascending: false })
         .limit(60)
@@ -116,7 +115,7 @@ export async function RelatedWorksScored({ article }: Props) {
   const fetchByGenre = seedGenreTags.length > 0
     ? supabase.from('articles').select(BASE_SELECT)
         .overlaps('tags', seedGenreTags)
-        .neq('slug', article.slug)
+        .neq('slug', slug)
         .eq('is_active', true)
         .not('metadata->>url', 'like', '%/dc/doujin/%')
         .order('published_at', { ascending: false })
@@ -131,7 +130,7 @@ export async function RelatedWorksScored({ article }: Props) {
   mergeRows(seriesRows as unknown as Article[])
   mergeRows(makerRows as unknown as Article[])
   mergeRows(genreRows as unknown as Article[])
-  if (candidateMap.size === 0) return null
+  if (candidateMap.size === 0) return []
 
   // ── スコアリング ─────────────────────────────────────────────────────────
   const seriesId = series[0]?.id ?? null
@@ -189,6 +188,50 @@ export async function RelatedWorksScored({ article }: Props) {
       return (b.article.published_at ?? '').localeCompare(a.article.published_at ?? '')
     })
     .slice(0, 6)
+
+  return top.map(({ article, reasons }) => ({ article, reasons }))
+}
+
+// キャッシュキーは記事メタデータ由来の引数から自動導出される
+// （unstable_cache は引数を自動的にキーへ含める）。
+const getCachedRelatedWorksScored = unstable_cache(
+  (
+    slug: string,
+    actresses: Entry[],
+    series: Entry[],
+    makers: Entry[],
+    seedGenreTags: string[],
+    sourceIsVr: boolean,
+    publishedAtMs: number | null,
+  ) => fetchRelatedWorksScoredRaw(slug, actresses, series, makers, seedGenreTags, sourceIsVr, publishedAtMs),
+  ['related-works-scored'],
+  { revalidate: 600 },
+)
+
+export async function RelatedWorksScored({ article }: Props) {
+  const meta = (article.metadata as Record<string, unknown> | null) ?? {}
+
+  const actresses = entryArray(meta, 'actress')
+  const series    = entryArray(meta, 'series')
+  const makers    = entryArray(meta, 'maker')
+  const actressNameSet = new Set(actresses.map(a => a.name))
+
+  const allTags  = (article.tags ?? []) as string[]
+  const genreTags = allTags.filter(t => !actressNameSet.has(t))
+
+  const sourceIsVr = allTags.some(t => t.includes('VR'))
+  const publishedAtMs = article.published_at ? new Date(article.published_at).getTime() : null
+  const seedGenreTags = genreTags.filter(t => !t.includes('VR')).slice(0, 3)
+
+  let top: ScoredEntry[]
+  try {
+    top = await getCachedRelatedWorksScored(
+      article.slug, actresses, series, makers, seedGenreTags, sourceIsVr, publishedAtMs,
+    )
+  } catch (err) {
+    console.error('[related-works-scored]', err instanceof Error ? err.message : err)
+    return null
+  }
 
   if (top.length === 0) return null
 

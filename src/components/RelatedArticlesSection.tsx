@@ -1,5 +1,6 @@
 import Link from 'next/link'
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import { getStatelessSupabaseClient } from '@/lib/supabase/statelessClient'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl, coverPosClass } from '@/lib/cidUtils'
 import { FanzaLink } from '@/components/FanzaLink'
@@ -83,28 +84,31 @@ const BASE_SELECT =
 
 type Props = { article: Article }
 
-export async function RelatedArticlesSection({ article }: Props) {
-  const supabase = await createClient()
+type RelatedArticlesResult = { byActress: Article[]; byGenre: Article[]; bySeries: Article[] }
 
-  const actresses = Array.isArray(article.metadata?.actress)
-    ? (article.metadata!.actress as DmmEntry[])
-    : []
-  const actressNameSet = new Set(actresses.map((a) => a.name))
-  const genreTags = (article.tags ?? []).filter((t) => !actressNameSet.has(t))
-  const series = Array.isArray(article.metadata?.series)
-    ? (article.metadata!.series as DmmEntry[])
-    : []
+// 生取得。エラー時は握りつぶさず throw する — unstable_cache は例外を投げた呼び出しの
+// 結果をキャッシュしないため、失敗を長時間キャッシュする事故を防げる（Phase 3.2.4踏襲）。
+// 入力は記事メタデータ由来の値のみで user/session/cookie は一切含まれないため、
+// 全ユーザー共通キャッシュとして安全（Phase 3.2.6）。
+async function fetchRelatedArticlesRaw(
+  slug: string,
+  actresses: DmmEntry[],
+  genreTags: string[],
+  series: DmmEntry[],
+): Promise<RelatedArticlesResult> {
+  const supabase = getStatelessSupabaseClient()
 
   const fetchByActress = async (): Promise<Article[]> => {
     if (!actresses.length) return []
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('articles')
       .select(BASE_SELECT)
       .contains('tags', [actresses[0].name])
-      .neq('slug', article.slug)
+      .neq('slug', slug)
       .eq('is_active', true)
       .order('published_at', { ascending: false })
       .limit(4)
+    if (error) throw new Error(`related-articles byActress error: ${error.message}`)
     return (data ?? []) as unknown as Article[]
   }
 
@@ -113,14 +117,15 @@ export async function RelatedArticlesSection({ article }: Props) {
     // VRタグ（「VR」含む）をクエリから除外：VR作品はジャケット仕様が異なりUIが壊れるため
     const nonVrGenreTags = genreTags.filter((t) => !t.includes('VR'))
     if (!nonVrGenreTags.length) return []
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('articles')
       .select(BASE_SELECT)
       .overlaps('tags', nonVrGenreTags)
-      .neq('slug', article.slug)
+      .neq('slug', slug)
       .eq('is_active', true)
       .order('published_at', { ascending: false })
       .limit(16) // post-filterで4件確保できるよう多めに取得
+    if (error) throw new Error(`related-articles byGenre error: ${error.message}`)
     // post-fetch: 非VRタグで取得したが共通タグ経由でVRが混入する場合も除外
     return ((data ?? []) as unknown as Article[]).filter(
       (a) => !(a.tags ?? []).some((t) => t.includes('VR'))
@@ -129,14 +134,15 @@ export async function RelatedArticlesSection({ article }: Props) {
 
   const fetchBySeries = async (): Promise<Article[]> => {
     if (!series.length || series[0].id <= 0) return []
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('articles')
       .select(BASE_SELECT)
       .filter('metadata->series', 'cs', JSON.stringify([{ id: series[0].id }]))
-      .neq('slug', article.slug)
+      .neq('slug', slug)
       .eq('is_active', true)
       .order('published_at', { ascending: false })
       .limit(4)
+    if (error) throw new Error(`related-articles bySeries error: ${error.message}`)
     return (data ?? []) as unknown as Article[]
   }
 
@@ -149,6 +155,38 @@ export async function RelatedArticlesSection({ article }: Props) {
   // genre: dedup actress results for variety
   const actressIdSet = new Set(byActress.map((a) => a.id))
   const byGenre = byGenreRaw.filter((a) => !actressIdSet.has(a.id)).slice(0, 4)
+
+  return { byActress, byGenre, bySeries }
+}
+
+// キャッシュキーは記事メタデータ由来の引数から自動導出される
+// （unstable_cache は引数を自動的にキーへ含める）。
+const getCachedRelatedArticles = unstable_cache(
+  (slug: string, actresses: DmmEntry[], genreTags: string[], series: DmmEntry[]) =>
+    fetchRelatedArticlesRaw(slug, actresses, genreTags, series),
+  ['related-articles-section'],
+  { revalidate: 600 },
+)
+
+export async function RelatedArticlesSection({ article }: Props) {
+  const actresses = Array.isArray(article.metadata?.actress)
+    ? (article.metadata!.actress as DmmEntry[])
+    : []
+  const actressNameSet = new Set(actresses.map((a) => a.name))
+  const genreTags = (article.tags ?? []).filter((t) => !actressNameSet.has(t))
+  const series = Array.isArray(article.metadata?.series)
+    ? (article.metadata!.series as DmmEntry[])
+    : []
+
+  let byActress: Article[], byGenre: Article[], bySeries: Article[]
+  try {
+    ;({ byActress, byGenre, bySeries } = await getCachedRelatedArticles(
+      article.slug, actresses, genreTags, series,
+    ))
+  } catch (err) {
+    console.error('[related-articles-section]', err instanceof Error ? err.message : err)
+    return null
+  }
 
   if (!byActress.length && !byGenre.length && !bySeries.length) return null
 
