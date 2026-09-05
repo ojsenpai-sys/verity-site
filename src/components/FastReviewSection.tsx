@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ExternalLink, Zap } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 import { MarkdownBody } from '@/components/MarkdownBody'
 import { coverPosClass } from '@/lib/cidUtils'
 import type { SnNewsWithActress } from '@/lib/types'
@@ -12,37 +13,42 @@ function proxyImg(url: string) {
 }
 
 async function fetchLatestReview(): Promise<SnNewsWithActress | null> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('sn_news')
-    .select(`
-      *,
-      actress:actresses!sn_news_actress_id_fkey(
-        id, name, ruby, external_id, image_url
-      )
-    `)
-    .eq('site_key', SITE_KEY)
-    .eq('is_published', true)
-    .eq('category', 'review')
-    .order('published_at', { ascending: false })
-    .limit(1)
-    .maybeSingle()
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('sn_news')
+      .select(`
+        *,
+        actress:actresses!sn_news_actress_id_fkey(
+          id, name, ruby, external_id, image_url
+        )
+      `)
+      .eq('site_key', SITE_KEY)
+      .eq('is_published', true)
+      .eq('category', 'review')
+      .order('published_at', { ascending: false })
+      .limit(1)
+      .maybeSingle()
 
-  if (error) {
-    console.error('[FastReviewSection] fetch error:', error.message)
+    if (error) {
+      console.error('[FastReviewSection] fetch error:', error.message)
+      return null
+    }
+    if (!data) return null
+
+    const galleryRaw = data.gallery_urls
+    return {
+      ...data,
+      gallery_urls: Array.isArray(galleryRaw)
+        ? (galleryRaw as unknown[]).filter((u): u is string => typeof u === 'string')
+        : [],
+      tags: data.tags ?? [],
+      actress: data.actress ?? null,
+    } as SnNewsWithActress
+  } catch (err) {
+    handleSupabaseFetchError('FastReviewSection.fetchLatestReview', err)
     return null
   }
-  if (!data) return null
-
-  const galleryRaw = data.gallery_urls
-  return {
-    ...data,
-    gallery_urls: Array.isArray(galleryRaw)
-      ? (galleryRaw as unknown[]).filter((u): u is string => typeof u === 'string')
-      : [],
-    tags: data.tags ?? [],
-    actress: data.actress ?? null,
-  } as SnNewsWithActress
 }
 
 function publishedDate(iso: string | null): string {

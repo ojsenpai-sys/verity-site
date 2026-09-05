@@ -1,4 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 
 // 週間ランキング（041 weekly_rankings スナップショット）の読み取りヘルパー。
 //
@@ -47,37 +48,42 @@ function group(rows: (WeeklyRankingRow & { period_start?: string })[]): Record<W
 }
 
 async function fetchWeek(weekKey: string | null): Promise<WeeklyRankings | null> {
-  const supabase = await createClient()
-  let key = weekKey
-  if (!key) {
-    // RLS が未公開週を隠すため、可視な最新 week_key を取得
-    const { data: latest } = await supabase
+  try {
+    const supabase = await createClient()
+    let key = weekKey
+    if (!key) {
+      // RLS が未公開週を隠すため、可視な最新 week_key を取得
+      const { data: latest } = await supabase
+        .from('weekly_rankings')
+        .select('week_key')
+        .order('week_key', { ascending: false })
+        .limit(1)
+        .maybeSingle()
+      key = (latest as { week_key?: string } | null)?.week_key ?? null
+    }
+    if (!key) return null
+
+    const { data, error } = await supabase
       .from('weekly_rankings')
-      .select('week_key')
-      .order('week_key', { ascending: false })
-      .limit(1)
-      .maybeSingle()
-    key = (latest as { week_key?: string } | null)?.week_key ?? null
-  }
-  if (!key) return null
+      .select(SELECT_COLS)
+      .eq('week_key', key)
+      .order('ranking_type', { ascending: true })
+      .order('rank', { ascending: true })
 
-  const { data, error } = await supabase
-    .from('weekly_rankings')
-    .select(SELECT_COLS)
-    .eq('week_key', key)
-    .order('ranking_type', { ascending: true })
-    .order('rank', { ascending: true })
+    if (error) { console.error('[weekly-rankings]', error.message); return null }
+    const rows = (data ?? []) as unknown as (WeeklyRankingRow & { period_start: string; period_end: string; published_at: string })[]
+    if (rows.length === 0) return null
 
-  if (error) { console.error('[weekly-rankings]', error.message); return null }
-  const rows = (data ?? []) as unknown as (WeeklyRankingRow & { period_start: string; period_end: string; published_at: string })[]
-  if (rows.length === 0) return null
-
-  return {
-    weekKey:     key,
-    periodStart: rows[0].period_start,
-    periodEnd:   rows[0].period_end,
-    publishedAt: rows[0].published_at,
-    rankings:    group(rows),
+    return {
+      weekKey:     key,
+      periodStart: rows[0].period_start,
+      periodEnd:   rows[0].period_end,
+      publishedAt: rows[0].published_at,
+      rankings:    group(rows),
+    }
+  } catch (err) {
+    handleSupabaseFetchError('weeklyRankings.fetchWeek', err)
+    return null
   }
 }
 

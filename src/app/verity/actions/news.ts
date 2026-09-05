@@ -1,6 +1,7 @@
 'use server'
 
 import { createClient } from '@/lib/supabase/server'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 import type { SnNewsWithActress } from '@/lib/types'
 
 const SITE_KEY   = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
@@ -60,42 +61,52 @@ export async function fetchNewsList(
   offset = 0,
   sortBy: 'created_at' | 'published_at' = 'created_at',
 ): Promise<{ items: SnNewsWithActress[]; hasMore: boolean }> {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('sn_news')
-    .select(SELECT)
-    .eq('site_key', SITE_KEY)
-    .eq('is_published', true)
-    .order(sortBy, { ascending: false })
-    .range(offset, offset + limit)   // limit+1 rows → detect hasMore
+    const { data, error } = await supabase
+      .from('sn_news')
+      .select(SELECT)
+      .eq('site_key', SITE_KEY)
+      .eq('is_published', true)
+      .order(sortBy, { ascending: false })
+      .range(offset, offset + limit)   // limit+1 rows → detect hasMore
 
-  if (error) {
-    console.error('[fetchNewsList]', error.message)
+    if (error) {
+      console.error('[fetchNewsList]', error.message)
+      return { items: [], hasMore: false }
+    }
+
+    const raw     = (data ?? []) as RawNewsRow[]
+    const hasMore = raw.length > limit
+    const slice   = raw.slice(0, limit)
+
+    return { items: slice.map(normalise), hasMore }
+  } catch (err) {
+    handleSupabaseFetchError('news.fetchNewsList', err)
     return { items: [], hasMore: false }
   }
-
-  const raw     = (data ?? []) as RawNewsRow[]
-  const hasMore = raw.length > limit
-  const slice   = raw.slice(0, limit)
-
-  return { items: slice.map(normalise), hasMore }
 }
 
 // ── スラッグで記事詳細を取得 ──────────────────────────────────────────────
 export async function fetchNewsBySlug(slug: string): Promise<SnNewsWithActress | null> {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  const { data, error } = await supabase
-    .from('sn_news')
-    .select(SELECT)
-    .eq('slug', slug)
-    .eq('is_published', true)
-    .maybeSingle()
+    const { data, error } = await supabase
+      .from('sn_news')
+      .select(SELECT)
+      .eq('slug', slug)
+      .eq('is_published', true)
+      .maybeSingle()
 
-  if (error || !data) return null
+    if (error || !data) return null
 
-  return normalise(data as RawNewsRow)
+    return normalise(data as RawNewsRow)
+  } catch (err) {
+    handleSupabaseFetchError('news.fetchNewsBySlug', err)
+    return null
+  }
 }
 
 // ── 管理者用記事投稿 ──────────────────────────────────────────────────────

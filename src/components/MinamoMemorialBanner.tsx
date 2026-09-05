@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { ExternalLink, Heart, Star, CalendarDays, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 import { FanzaLink } from '@/components/FanzaLink'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { NowPrinting } from '@/components/NowPrinting'
@@ -9,16 +10,21 @@ import { isBadImageUrl, toHighResPackageUrl, cidToCdnUrl } from '@/lib/cidUtils'
 import type { Article } from '@/lib/types'
 
 async function getMINAMOArticles(): Promise<Article[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('articles')
-    .select('id, external_id, title, image_url, metadata, published_at')
-    .eq('is_active', true)
-    .contains('tags', ['MINAMO'])
-    .order('published_at', { ascending: false })
-    .limit(200)
-  if (error) console.error('[minamo-banner]', error.message)
-  return (data as Article[]) ?? []
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('articles')
+      .select('id, external_id, title, image_url, metadata, published_at')
+      .eq('is_active', true)
+      .contains('tags', ['MINAMO'])
+      .order('published_at', { ascending: false })
+      .limit(200)
+    if (error) console.error('[minamo-banner]', error.message)
+    return (data as Article[]) ?? []
+  } catch (err) {
+    handleSupabaseFetchError('MinamoMemorialBanner.getMINAMOArticles', err)
+    return []
+  }
 }
 
 function getTodayPick(articles: Article[]): Article | null {

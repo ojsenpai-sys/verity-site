@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Flame, Sparkles, ChevronRight, Tag } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import {
   toHighResPackageUrl, cidToCdnUrl, isBadImageUrl, coverPosClass,
@@ -79,30 +80,49 @@ async function loadTrendingGenres(): Promise<Array<{ name: string; ratio: number
   return out.sort((a, b) => b.ratio - a.ratio).slice(0, 6)
 }
 
+type TrendingWidgetData = {
+  topArticles: Article[]
+  topActresses: Actress[]
+  trendingGenres: Array<{ name: string; ratio: number; recent: number }>
+}
+
+async function loadTrendingWidgetData(): Promise<TrendingWidgetData | null> {
+  try {
+    const supabase = await createClient()
+
+    const [articleScores, actressScores, trendingGenres] = await Promise.all([
+      getAllArticleScores('7d'),
+      getAllActressScores('7d'),
+      loadTrendingGenres(),
+    ])
+
+    const topArticleIds = [...articleScores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => k)
+    const topActressIds = [...actressScores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => k)
+
+    const [articleRows, actressRows] = await Promise.all([
+      topArticleIds.length > 0
+        ? supabase.from('articles').select('*').in('external_id', topArticleIds).eq('is_active', true)
+        : Promise.resolve({ data: [] as Article[] }),
+      topActressIds.length > 0
+        ? supabase.from('actresses').select('*').in('external_id', topActressIds).eq('is_active', true)
+        : Promise.resolve({ data: [] as Actress[] }),
+    ])
+    const articleMap = new Map(((articleRows.data ?? []) as Article[]).map(a => [a.external_id, a]))
+    const actressMap = new Map(((actressRows.data ?? []) as Actress[]).map(a => [a.external_id, a]))
+    const topArticles = topArticleIds.map(id => articleMap.get(id)).filter((a): a is Article => !!a)
+    const topActresses = topActressIds.map(id => actressMap.get(id)).filter((a): a is Actress => !!a)
+
+    return { topArticles, topActresses, trendingGenres }
+  } catch (err) {
+    handleSupabaseFetchError('TrendingWidget.loadTrendingWidgetData', err)
+    return null
+  }
+}
+
 export async function TrendingWidget() {
-  const supabase = await createClient()
-
-  const [articleScores, actressScores, trendingGenres] = await Promise.all([
-    getAllArticleScores('7d'),
-    getAllActressScores('7d'),
-    loadTrendingGenres(),
-  ])
-
-  const topArticleIds = [...articleScores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => k)
-  const topActressIds = [...actressScores.entries()].sort((a, b) => b[1] - a[1]).slice(0, 6).map(([k]) => k)
-
-  const [articleRows, actressRows] = await Promise.all([
-    topArticleIds.length > 0
-      ? supabase.from('articles').select('*').in('external_id', topArticleIds).eq('is_active', true)
-      : Promise.resolve({ data: [] as Article[] }),
-    topActressIds.length > 0
-      ? supabase.from('actresses').select('*').in('external_id', topActressIds).eq('is_active', true)
-      : Promise.resolve({ data: [] as Actress[] }),
-  ])
-  const articleMap = new Map(((articleRows.data ?? []) as Article[]).map(a => [a.external_id, a]))
-  const actressMap = new Map(((actressRows.data ?? []) as Actress[]).map(a => [a.external_id, a]))
-  const topArticles = topArticleIds.map(id => articleMap.get(id)).filter((a): a is Article => !!a)
-  const topActresses = topActressIds.map(id => actressMap.get(id)).filter((a): a is Actress => !!a)
+  const trending = await loadTrendingWidgetData()
+  if (!trending) return null
+  const { topArticles, topActresses, trendingGenres } = trending
 
   if (topArticles.length === 0 && topActresses.length === 0 && trendingGenres.length === 0) {
     return null

@@ -33,6 +33,7 @@
  */
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
 import { unstable_cache } from 'next/cache'
+import { withFetchTimeout, SUPABASE_FETCH_TIMEOUT_MS } from '@/lib/supabase/timeout'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
 import { selectFastestCards } from '@/lib/fastestReleasesSelection.mjs'
@@ -336,7 +337,11 @@ function getStatelessClient(): SupabaseClient {
   if (_client) return _client
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL ?? ''
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? ''
-  _client = createSupabaseClient(url, key, { auth: { persistSession: false } })
+  const timedFetch = withFetchTimeout(fetch, SUPABASE_FETCH_TIMEOUT_MS)
+  _client = createSupabaseClient(url, key, {
+    auth: { persistSession: false },
+    global: { fetch: (input, init = {}) => timedFetch(input, { ...init, cache: 'no-store' }) },
+  })
   return _client
 }
 

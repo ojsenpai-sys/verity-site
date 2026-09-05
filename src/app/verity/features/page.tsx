@@ -4,6 +4,7 @@ export const revalidate = 0
 import Link from 'next/link'
 import { Sparkles, ChevronRight } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import { isBadImageUrl, toHighResPackageUrl, cidToCdnUrl } from '@/lib/cidUtils'
 import { getAllFeatures } from '@/lib/features'
@@ -26,39 +27,54 @@ export async function generateMetadata() {
 }
 
 async function getLatestArticle(tag: string): Promise<Article | null> {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('articles')
-    .select('id, external_id, title, image_url, published_at, slug')
-    .eq('is_active', true)
-    .contains('tags', [tag])
-    .order('published_at', { ascending: false })
-    .limit(1)
-    .single()
-  return (data as Article | null) ?? null
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from('articles')
+      .select('id, external_id, title, image_url, published_at, slug')
+      .eq('is_active', true)
+      .contains('tags', [tag])
+      .order('published_at', { ascending: false })
+      .limit(1)
+      .single()
+    return (data as Article | null) ?? null
+  } catch (err) {
+    handleSupabaseFetchError('features.getLatestArticle', err)
+    return null
+  }
 }
 
 async function getArticleBySlug(slug: string): Promise<Article | null> {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('articles')
-    .select('id, external_id, title, image_url, published_at, slug')
-    .eq('slug', slug)
-    .limit(1)
-    .single()
-  return (data as Article | null) ?? null
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from('articles')
+      .select('id, external_id, title, image_url, published_at, slug')
+      .eq('slug', slug)
+      .limit(1)
+      .single()
+    return (data as Article | null) ?? null
+  } catch (err) {
+    handleSupabaseFetchError('features.getArticleBySlug', err)
+    return null
+  }
 }
 
 async function getArticleByCid(cid: string): Promise<Article | null> {
-  const supabase = await createClient()
-  const { data } = await supabase
-    .from('articles')
-    .select('id, external_id, title, image_url, published_at, slug')
-    .eq('is_active', true)
-    .eq('external_id', cid)
-    .limit(1)
-    .single()
-  return (data as Article | null) ?? null
+  try {
+    const supabase = await createClient()
+    const { data } = await supabase
+      .from('articles')
+      .select('id, external_id, title, image_url, published_at, slug')
+      .eq('is_active', true)
+      .eq('external_id', cid)
+      .limit(1)
+      .single()
+    return (data as Article | null) ?? null
+  } catch (err) {
+    handleSupabaseFetchError('features.getArticleByCid', err)
+    return null
+  }
 }
 
 function proxied(article: Article): string {

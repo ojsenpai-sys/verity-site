@@ -40,6 +40,7 @@ import { TrendingNowSection } from '@/components/TrendingNowSection'
 import { TrendingWidget } from '@/components/TrendingWidget'
 import { RecentlyViewedSection } from '@/components/RecentlyViewedSection'
 import { MypagePromoSection } from '@/components/MypagePromoSection'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 
 export const dynamic = 'force-dynamic'
 export const revalidate = 0
@@ -65,76 +66,97 @@ function sortSClassFirst(articles: Article[]): Article[] {
 
 // ── Data helpers ───────────────────────────────────────────────────────────────
 
-async function getFilterOptions() {
-  const supabase = await createClient()
-  const [
-    { data: catRows,     error: catErr },
-    { data: srcRows,     error: srcErr },
-    { data: tagRows,     error: tagErr },
-    { data: actressRows, error: actErr },
-  ] = await Promise.all([
-    supabase.from('articles').select('category').eq('is_active', true).not('category', 'is', null),
-    supabase.from('articles').select('source').eq('is_active', true),
-    supabase.from('articles').select('tags').eq('is_active', true).not('tags', 'is', null),
-    supabase.from('actresses').select('*').eq('is_active', true),
-  ])
+type FilterOptions = {
+  categories: string[]
+  sources: string[]
+  tags: string[]
+  actresses: Actress[]
+}
 
-  if (catErr)  console.error('[page] categories error:', catErr)
-  if (srcErr)  console.error('[page] sources error:', srcErr)
-  if (tagErr)  console.error('[page] tags error:', tagErr)
-  if (actErr)  console.error('[page] actresses error:', actErr)
+const EMPTY_FILTER_OPTIONS: FilterOptions = { categories: [], sources: [], tags: [], actresses: [] }
 
-  const actresses = ((actressRows as Actress[]) ?? []).sort((a, b) => {
-    const ra = (a.metadata?.monthly_rank as number) ?? 9999
-    const rb = (b.metadata?.monthly_rank as number) ?? 9999
-    return ra - rb
-  })
-  const actressNames = new Set(actresses.map((a) => a.name))
+// ページshellを構成する必須データ。Supabaseがタイムアウト/例外を返してもページ全体を
+// クラッシュ/ハングさせず、空のフィルタ選択肢で継続する(Phase 3.2)。
+async function getFilterOptions(): Promise<FilterOptions> {
+  try {
+    const supabase = await createClient()
+    const [
+      { data: catRows,     error: catErr },
+      { data: srcRows,     error: srcErr },
+      { data: tagRows,     error: tagErr },
+      { data: actressRows, error: actErr },
+    ] = await Promise.all([
+      supabase.from('articles').select('category').eq('is_active', true).not('category', 'is', null),
+      supabase.from('articles').select('source').eq('is_active', true),
+      supabase.from('articles').select('tags').eq('is_active', true).not('tags', 'is', null),
+      supabase.from('actresses').select('*').eq('is_active', true),
+    ])
 
-  const categories = [...new Set(catRows?.map((r) => r.category as string).filter(Boolean))].sort()
-  const sources    = [...new Set(srcRows?.map((r) => r.source as string).filter(Boolean))].sort()
+    if (catErr)  console.error('[page] categories error:', catErr)
+    if (srcErr)  console.error('[page] sources error:', srcErr)
+    if (tagErr)  console.error('[page] tags error:', tagErr)
+    if (actErr)  console.error('[page] actresses error:', actErr)
 
-  // Count tag frequency, exclude actress names, take top 30 by occurrence
-  const tagCounts = new Map<string, number>()
-  for (const row of tagRows ?? []) {
-    for (const t of (row.tags as string[]) ?? []) {
-      if (t && !actressNames.has(t)) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)
+    const actresses = ((actressRows as Actress[]) ?? []).sort((a, b) => {
+      const ra = (a.metadata?.monthly_rank as number) ?? 9999
+      const rb = (b.metadata?.monthly_rank as number) ?? 9999
+      return ra - rb
+    })
+    const actressNames = new Set(actresses.map((a) => a.name))
+
+    const categories = [...new Set(catRows?.map((r) => r.category as string).filter(Boolean))].sort()
+    const sources    = [...new Set(srcRows?.map((r) => r.source as string).filter(Boolean))].sort()
+
+    // Count tag frequency, exclude actress names, take top 30 by occurrence
+    const tagCounts = new Map<string, number>()
+    for (const row of tagRows ?? []) {
+      for (const t of (row.tags as string[]) ?? []) {
+        if (t && !actressNames.has(t)) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)
+      }
     }
-  }
-  const tags = [...tagCounts.entries()]
-    .sort((a, b) => b[1] - a[1])
-    .map(([tag]) => tag)
+    const tags = [...tagCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag]) => tag)
 
-  return { categories, sources, tags, actresses }
+    return { categories, sources, tags, actresses }
+  } catch (err) {
+    handleSupabaseFetchError('page.getFilterOptions', err)
+    return EMPTY_FILTER_OPTIONS
+  }
 }
 
 async function getUpcomingArticles(
   filters: FilterParams,
   top100Names: string[],
 ): Promise<Article[]> {
-  const supabase = await createClient()
-  const hasFilter = !!(filters.category || filters.source || filters.tag || filters.q)
+  try {
+    const supabase = await createClient()
+    const hasFilter = !!(filters.category || filters.source || filters.tag || filters.q)
 
-  // 重複排除後に 24 件残るよう多めに取得
-  let query = supabase
-    .from('articles')
-    .select('*')
-    .eq('is_active', true)
-    .gt('published_at', new Date().toISOString())
-    .order('published_at', { ascending: true })
-    .limit(48)
+    // 重複排除後に 24 件残るよう多めに取得
+    let query = supabase
+      .from('articles')
+      .select('*')
+      .eq('is_active', true)
+      .gt('published_at', new Date().toISOString())
+      .order('published_at', { ascending: true })
+      .limit(48)
 
-  if (filters.category) query = query.eq('category', filters.category)
-  if (filters.source)   query = query.eq('source', filters.source)
-  if (filters.tag)      query = query.contains('tags', [filters.tag])
-  if (filters.q)        query = query.or(`title.ilike.%${filters.q}%,summary.ilike.%${filters.q}%`)
-  const priorityNames = [...new Set([...S_CLASS_NAMES, ...top100Names])]
-  if (!hasFilter && priorityNames.length > 0) query = query.overlaps('tags', priorityNames)
+    if (filters.category) query = query.eq('category', filters.category)
+    if (filters.source)   query = query.eq('source', filters.source)
+    if (filters.tag)      query = query.contains('tags', [filters.tag])
+    if (filters.q)        query = query.or(`title.ilike.%${filters.q}%,summary.ilike.%${filters.q}%`)
+    const priorityNames = [...new Set([...S_CLASS_NAMES, ...top100Names])]
+    if (!hasFilter && priorityNames.length > 0) query = query.overlaps('tags', priorityNames)
 
-  const { data, error } = await query
-  if (error) console.error('[page] upcoming error:', error)
-  const deduped = deduplicateDigitalFirst((data as Article[]) ?? [])
-  return sortSClassFirst(deduped).slice(0, 24)
+    const { data, error } = await query
+    if (error) console.error('[page] upcoming error:', error)
+    const deduped = deduplicateDigitalFirst((data as Article[]) ?? [])
+    return sortSClassFirst(deduped).slice(0, 24)
+  } catch (err) {
+    handleSupabaseFetchError('page.getUpcomingArticles', err)
+    return []
+  }
 }
 
 async function getThisWeekArticles(
@@ -142,33 +164,38 @@ async function getThisWeekArticles(
   page: number,
   top100Names: string[],
 ): Promise<Article[]> {
-  const supabase = await createClient()
-  const now         = new Date()
-  const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const hasFilter   = !!(filters.category || filters.source || filters.tag || filters.q)
+  try {
+    const supabase = await createClient()
+    const now         = new Date()
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const hasFilter   = !!(filters.category || filters.source || filters.tag || filters.q)
 
-  // 重複排除後に PAGE_SIZE 件残るよう offset も考慮して多めに取得
-  const fetchSize = PAGE_SIZE * 2
-  let query = supabase
-    .from('articles')
-    .select('*')
-    .eq('is_active', true)
-    .gte('published_at', sevenDaysAgo)
-    .lte('published_at', now.toISOString())
-    .order('published_at', { ascending: false })
-    .range(page * PAGE_SIZE, page * PAGE_SIZE + fetchSize - 1)
+    // 重複排除後に PAGE_SIZE 件残るよう offset も考慮して多めに取得
+    const fetchSize = PAGE_SIZE * 2
+    let query = supabase
+      .from('articles')
+      .select('*')
+      .eq('is_active', true)
+      .gte('published_at', sevenDaysAgo)
+      .lte('published_at', now.toISOString())
+      .order('published_at', { ascending: false })
+      .range(page * PAGE_SIZE, page * PAGE_SIZE + fetchSize - 1)
 
-  if (filters.category) query = query.eq('category', filters.category)
-  if (filters.source)   query = query.eq('source', filters.source)
-  if (filters.tag)      query = query.contains('tags', [filters.tag])
-  if (filters.q)        query = query.or(`title.ilike.%${filters.q}%,summary.ilike.%${filters.q}%`)
-  const priorityNames = [...new Set([...S_CLASS_NAMES, ...top100Names])]
-  if (!hasFilter && priorityNames.length > 0) query = query.overlaps('tags', priorityNames)
+    if (filters.category) query = query.eq('category', filters.category)
+    if (filters.source)   query = query.eq('source', filters.source)
+    if (filters.tag)      query = query.contains('tags', [filters.tag])
+    if (filters.q)        query = query.or(`title.ilike.%${filters.q}%,summary.ilike.%${filters.q}%`)
+    const priorityNames = [...new Set([...S_CLASS_NAMES, ...top100Names])]
+    if (!hasFilter && priorityNames.length > 0) query = query.overlaps('tags', priorityNames)
 
-  const { data, error } = await query
-  if (error) console.error('[page] this week error:', error)
-  const deduped = deduplicateDigitalFirst((data as Article[]) ?? [])
-  return sortSClassFirst(deduped).slice(0, PAGE_SIZE)
+    const { data, error } = await query
+    if (error) console.error('[page] this week error:', error)
+    const deduped = deduplicateDigitalFirst((data as Article[]) ?? [])
+    return sortSClassFirst(deduped).slice(0, PAGE_SIZE)
+  } catch (err) {
+    handleSupabaseFetchError('page.getThisWeekArticles', err)
+    return []
+  }
 }
 
 // ── Async section components ────────────────────────────────────────────────────
@@ -239,16 +266,21 @@ async function ThisWeekGrid({
 // ── Doujin Comic Pick ─────────────────────────────────────────────────────────
 
 async function getDoujinPickArticles(): Promise<Article[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase
-    .from('articles')
-    .select('*')
-    .eq('is_active', true)
-    .filter('metadata->>url', 'like', '%/dc/doujin/%')
-    .order('published_at', { ascending: false })
-    .limit(3)
-  if (error) console.error('[page] doujin pick error:', error)
-  return (data as Article[]) ?? []
+  try {
+    const supabase = await createClient()
+    const { data, error } = await supabase
+      .from('articles')
+      .select('*')
+      .eq('is_active', true)
+      .filter('metadata->>url', 'like', '%/dc/doujin/%')
+      .order('published_at', { ascending: false })
+      .limit(3)
+    if (error) console.error('[page] doujin pick error:', error)
+    return (data as Article[]) ?? []
+  } catch (err) {
+    handleSupabaseFetchError('page.getDoujinPickArticles', err)
+    return []
+  }
 }
 
 async function DoujinPickSection() {
@@ -292,47 +324,52 @@ type TimelineItem = {
 const SITE_KEY = process.env.NEXT_PUBLIC_BRAND_ID ?? 'verity'
 
 async function getTimelineItems(): Promise<TimelineItem[]> {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  const [{ data: newsData }, { data: worksData }] = await Promise.all([
-    supabase
-      .from('sn_news')
-      .select('id, title, slug, published_at, created_at')
-      .eq('site_key', SITE_KEY)
-      .eq('is_published', true)
-      .order('created_at', { ascending: false })
-      .limit(50),
-    supabase
-      .from('articles')
-      .select('id, title, slug, published_at')
-      .eq('is_active', true)
-      .order('published_at', { ascending: false })
-      .limit(50),
-  ])
+    const [{ data: newsData }, { data: worksData }] = await Promise.all([
+      supabase
+        .from('sn_news')
+        .select('id, title, slug, published_at, created_at')
+        .eq('site_key', SITE_KEY)
+        .eq('is_published', true)
+        .order('created_at', { ascending: false })
+        .limit(50),
+      supabase
+        .from('articles')
+        .select('id, title, slug, published_at')
+        .eq('is_active', true)
+        .order('published_at', { ascending: false })
+        .limit(50),
+    ])
 
-  const newsItems: TimelineItem[] = (newsData ?? []).map(
-    (n: { id: string; title: string; slug: string; published_at: string | null; created_at: string }) => ({
-      id:    `n-${n.id}`,
-      type:  'news',
-      date:  n.published_at ?? n.created_at,
-      title: n.title,
-      href:  `/${SITE_KEY}/news/${n.slug}`,
-    })
-  )
+    const newsItems: TimelineItem[] = (newsData ?? []).map(
+      (n: { id: string; title: string; slug: string; published_at: string | null; created_at: string }) => ({
+        id:    `n-${n.id}`,
+        type:  'news',
+        date:  n.published_at ?? n.created_at,
+        title: n.title,
+        href:  `/${SITE_KEY}/news/${n.slug}`,
+      })
+    )
 
-  const workItems: TimelineItem[] = (worksData ?? []).map(
-    (a: { id: string; title: string; slug: string; published_at: string | null }) => ({
-      id:    `w-${a.id}`,
-      type:  'work',
-      date:  a.published_at,
-      title: a.title,
-      href:  `/${SITE_KEY}/articles/${a.slug}`,
-    })
-  )
+    const workItems: TimelineItem[] = (worksData ?? []).map(
+      (a: { id: string; title: string; slug: string; published_at: string | null }) => ({
+        id:    `w-${a.id}`,
+        type:  'work',
+        date:  a.published_at,
+        title: a.title,
+        href:  `/${SITE_KEY}/articles/${a.slug}`,
+      })
+    )
 
-  return [...newsItems, ...workItems]
-    .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
-    .slice(0, 50)
+    return [...newsItems, ...workItems]
+      .sort((a, b) => new Date(b.date ?? 0).getTime() - new Date(a.date ?? 0).getTime())
+      .slice(0, 50)
+  } catch (err) {
+    handleSupabaseFetchError('page.getTimelineItems', err)
+    return []
+  }
 }
 
 function fmtDate(iso: string | null): string {

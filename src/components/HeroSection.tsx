@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { Flame, Play } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { FanzaLink } from './FanzaLink'
@@ -13,91 +14,117 @@ import type { Article } from '@/lib/types'
 type HeroResult = { article: Article; isFlash: boolean }
 
 async function getHeroArticle(): Promise<HeroResult | null> {
-  const supabase   = await createClient()
-  const todayJst   = new Date().toLocaleDateString('sv', { timeZone: 'Asia/Tokyo' })
-  const nowIso     = new Date().toISOString()
+  try {
+    const supabase   = await createClient()
+    const todayJst   = new Date().toLocaleDateString('sv', { timeZone: 'Asia/Tokyo' })
+    const nowIso     = new Date().toISOString()
 
-  // ── 1st pass: cron が設定したフラグ付き作品を最優先 ────────────────────────
-  const { data: flagged } = await supabase
-    .from('articles')
-    .select('*')
-    .eq('is_active', true)
-    .filter('metadata->>todays_pick_date', 'eq', todayJst)
-    .not('image_url', 'is', null)
-    .limit(1)
-    .maybeSingle()
+    // ── 1st pass: cron が設定したフラグ付き作品を最優先 ────────────────────────
+    const { data: flagged, error: flaggedErr } = await supabase
+      .from('articles')
+      .select('*')
+      .eq('is_active', true)
+      .filter('metadata->>todays_pick_date', 'eq', todayJst)
+      .not('image_url', 'is', null)
+      .limit(1)
+      .maybeSingle()
 
-  if (flagged) return { article: flagged as Article, isFlash: false }
-
-  // ── 2nd pass: 直近24h の fanza_click 最多作品（デイリーフラッシュ） ─────────
-  const h24Ago = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
-  const { data: clickRows } = await supabase
-    .from('user_events')
-    .select('target_id')
-    .eq('event_name', 'fanza_click')
-    .gte('created_at', h24Ago)
-    .limit(500)
-
-  if (clickRows && clickRows.length > 0) {
-    const clickMap = new Map<string, number>()
-    for (const row of clickRows as { target_id: string | null }[]) {
-      if (row.target_id) clickMap.set(row.target_id, (clickMap.get(row.target_id) ?? 0) + 1)
+    // Supabaseエラー(タイムアウト含む)時は残り2passに"空振り"で進まず即座にnullへ
+    // (各passは独立8秒timeoutのため、エラーを無視して進むと最悪3passぶん=約24秒に膨れ上がる)。
+    if (flaggedErr) {
+      console.error('[hero] flagged pick error:', flaggedErr.message)
+      return null
     }
-    const topId = [...clickMap.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+    if (flagged) return { article: flagged as Article, isFlash: false }
 
-    if (topId) {
-      const { data: flashArt } = await supabase
-        .from('articles')
-        .select('*')
-        .eq('external_id', topId)
-        .eq('is_active', true)
-        .not('image_url', 'is', null)
-        .lte('published_at', nowIso)
-        .maybeSingle()
+    // ── 2nd pass: 直近24h の fanza_click 最多作品（デイリーフラッシュ） ─────────
+    const h24Ago = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()
+    const { data: clickRows, error: clickErr } = await supabase
+      .from('user_events')
+      .select('target_id')
+      .eq('event_name', 'fanza_click')
+      .gte('created_at', h24Ago)
+      .limit(500)
 
-      if (flashArt) {
-        const url = ((flashArt as Article).metadata as Record<string, unknown>)?.url as string | undefined
-        if (!url?.includes('/dc/doujin/')) {
-          return { article: flashArt as Article, isFlash: true }
+    if (clickErr) {
+      console.error('[hero] click rows error:', clickErr.message)
+      return null
+    }
+
+    if (clickRows && clickRows.length > 0) {
+      const clickMap = new Map<string, number>()
+      for (const row of clickRows as { target_id: string | null }[]) {
+        if (row.target_id) clickMap.set(row.target_id, (clickMap.get(row.target_id) ?? 0) + 1)
+      }
+      const topId = [...clickMap.entries()].sort((a, b) => b[1] - a[1])[0]?.[0]
+
+      if (topId) {
+        const { data: flashArt, error: flashErr } = await supabase
+          .from('articles')
+          .select('*')
+          .eq('external_id', topId)
+          .eq('is_active', true)
+          .not('image_url', 'is', null)
+          .lte('published_at', nowIso)
+          .maybeSingle()
+
+        if (flashErr) {
+          console.error('[hero] flash article error:', flashErr.message)
+          return null
+        }
+
+        if (flashArt) {
+          const url = ((flashArt as Article).metadata as Record<string, unknown>)?.url as string | undefined
+          if (!url?.includes('/dc/doujin/')) {
+            return { article: flashArt as Article, isFlash: true }
+          }
         }
       }
     }
+
+    // ── 3rd pass: オンデマンドスコアリング（フォールバック） ─────────────────────
+    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+    const { data, error: recentErr } = await supabase
+      .from('articles')
+      .select('*')
+      .eq('is_active', true)
+      .gte('published_at', cutoff)
+      .lte('published_at', nowIso)
+      .not('image_url', 'is', null)
+      .order('published_at', { ascending: false })
+      .limit(50)
+
+    if (recentErr) {
+      console.error('[hero] recent articles error:', recentErr.message)
+      return null
+    }
+
+    const candidates = ((data as Article[]) ?? []).filter(a => {
+      const url = (a.metadata as Record<string, unknown>)?.url as string | undefined
+      return !url?.includes('/dc/doujin/')
+    })
+    if (!candidates.length) return null
+
+    const now = Date.now()
+    const best =
+      candidates
+        .map(a => {
+          const pubMs      = a.published_at ? new Date(a.published_at).getTime() : 0
+          const ageDays    = (now - pubMs) / (1000 * 60 * 60 * 24)
+          const freshScore = Math.max(0, 1 - ageDays / 7)
+          const actressList = (a.metadata as Record<string, unknown>)?.actress
+          const soloBonus   = Array.isArray(actressList)
+            ? (actressList.length === 1 ? 2.0 : actressList.length === 2 ? 1.5 : 1.0)
+            : 1.0
+          return { article: a, score: freshScore * soloBonus }
+        })
+        .sort((x, y) => y.score - x.score)[0]?.article ?? null
+
+    return best ? { article: best, isFlash: false } : null
+  } catch (err) {
+    handleSupabaseFetchError('HeroSection.getHeroArticle', err)
+    return null
   }
-
-  // ── 3rd pass: オンデマンドスコアリング（フォールバック） ─────────────────────
-  const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
-  const { data } = await supabase
-    .from('articles')
-    .select('*')
-    .eq('is_active', true)
-    .gte('published_at', cutoff)
-    .lte('published_at', nowIso)
-    .not('image_url', 'is', null)
-    .order('published_at', { ascending: false })
-    .limit(50)
-
-  const candidates = ((data as Article[]) ?? []).filter(a => {
-    const url = (a.metadata as Record<string, unknown>)?.url as string | undefined
-    return !url?.includes('/dc/doujin/')
-  })
-  if (!candidates.length) return null
-
-  const now = Date.now()
-  const best =
-    candidates
-      .map(a => {
-        const pubMs      = a.published_at ? new Date(a.published_at).getTime() : 0
-        const ageDays    = (now - pubMs) / (1000 * 60 * 60 * 24)
-        const freshScore = Math.max(0, 1 - ageDays / 7)
-        const actressList = (a.metadata as Record<string, unknown>)?.actress
-        const soloBonus   = Array.isArray(actressList)
-          ? (actressList.length === 1 ? 2.0 : actressList.length === 2 ? 1.5 : 1.0)
-          : 1.0
-        return { article: a, score: freshScore * soloBonus }
-      })
-      .sort((x, y) => y.score - x.score)[0]?.article ?? null
-
-  return best ? { article: best, isFlash: false } : null
 }
 
 // ── ランキングrail（発見導線） ──────────────────────────────────────────────────

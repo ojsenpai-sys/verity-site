@@ -1,6 +1,7 @@
 import Link from 'next/link'
 import { TrendingUp, Flame, ChevronUp } from 'lucide-react'
 import { createClient } from '@/lib/supabase/server'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 import { cidToCdnUrl, coverPosClass, isBadImageUrl, toHighResPackageUrl } from '@/lib/cidUtils'
 
 type TrendActress = {
@@ -66,27 +67,32 @@ function TrendBadge({ now, prev }: { now: number; prev: number }) {
 }
 
 async function getTrending() {
-  const supabase = await createClient()
+  try {
+    const supabase = await createClient()
 
-  // 24h 優先、0件なら 168h (7日) にフォールバック
-  const [{ data: a24 }, { data: ar24 }] = await Promise.all([
-    supabase.rpc('get_trending_actresses', { p_limit: 5, p_hours: 24 }),
-    supabase.rpc('get_trending_articles',  { p_limit: 5, p_hours: 24 }),
-  ])
-
-  let actresses = (a24  ?? []) as TrendActress[]
-  let articles  = (ar24 ?? []) as TrendArticle[]
-
-  if (actresses.length === 0 && articles.length === 0) {
-    const [{ data: a7 }, { data: ar7 }] = await Promise.all([
-      supabase.rpc('get_trending_actresses', { p_limit: 5, p_hours: 168 }),
-      supabase.rpc('get_trending_articles',  { p_limit: 5, p_hours: 168 }),
+    // 24h 優先、0件なら 168h (7日) にフォールバック
+    const [{ data: a24 }, { data: ar24 }] = await Promise.all([
+      supabase.rpc('get_trending_actresses', { p_limit: 5, p_hours: 24 }),
+      supabase.rpc('get_trending_articles',  { p_limit: 5, p_hours: 24 }),
     ])
-    actresses = (a7  ?? []) as TrendActress[]
-    articles  = (ar7 ?? []) as TrendArticle[]
-  }
 
-  return { actresses, articles }
+    let actresses = (a24  ?? []) as TrendActress[]
+    let articles  = (ar24 ?? []) as TrendArticle[]
+
+    if (actresses.length === 0 && articles.length === 0) {
+      const [{ data: a7 }, { data: ar7 }] = await Promise.all([
+        supabase.rpc('get_trending_actresses', { p_limit: 5, p_hours: 168 }),
+        supabase.rpc('get_trending_articles',  { p_limit: 5, p_hours: 168 }),
+      ])
+      actresses = (a7  ?? []) as TrendActress[]
+      articles  = (ar7 ?? []) as TrendArticle[]
+    }
+
+    return { actresses, articles }
+  } catch (err) {
+    handleSupabaseFetchError('TrendingNowSection.getTrending', err)
+    return { actresses: [] as TrendActress[], articles: [] as TrendArticle[] }
+  }
 }
 
 export async function TrendingNowSection() {
