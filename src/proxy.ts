@@ -253,7 +253,12 @@ export const config = {
      * SEO必須パス（sitemap.xml, robots.txt, .well-known/）と静的アセットを除外。
      * 名前による明示除外（sitemap\.xml|robots\.txt|\.well-known）を先に列挙し、
      * 拡張子による除外（\.txt|\.xml|...）を後続フォールバックとして残す。
+     *
+     * api/health$ も除外（Phase 3.3）: このproxyはルーティング前に必ず
+     * supabase.auth.getUser()（8秒timeout付き）を実行するため、除外しないと
+     * Supabase Auth基盤の障害時にヘルスチェック自体が遅延/タイムアウトし、
+     * 「Next.jsプロセス自体は生きているか」を独立に判定できなくなる。
      */
-    '/((?!_next/|sitemap\\.xml$|robots\\.txt$|\\.well-known/|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|webmanifest)$).*)',
+    '/((?!_next/|sitemap\\.xml$|robots\\.txt$|\\.well-known/|api/health$|.*\\.(?:svg|png|jpg|jpeg|gif|webp|ico|txt|xml|json|webmanifest)$).*)',
   ],
 }
