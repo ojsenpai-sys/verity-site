@@ -7,6 +7,11 @@ import { useFavorite } from '@/hooks/useFavorite'
 import { useAuth } from '@/components/AuthProvider'
 import { trackEvent, getSessionId } from '@/lib/analytics'
 import type { FavType, FavMeta } from '@/hooks/useFavorite'
+import {
+  classifyActressFavoriteResponse,
+  classifyArticleFavoriteResponse,
+  classifyFavoriteRequestException,
+} from './favoriteButtonLogic'
 
 type Props = {
   type:       FavType
@@ -24,6 +29,13 @@ export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: 
   const dim                     = size === 'md' ? 36 : 28
   const iconSize                = size === 'md' ? 16 : 13
   const [showModal, setShowModal] = useState(false)
+  const [pending, setPending]     = useState(false)
+  const [errorMsg, setErrorMsg]   = useState<string | null>(null)
+
+  const showError = useCallback((message: string) => {
+    setErrorMsg(message)
+    setTimeout(() => setErrorMsg(null), 4000)
+  }, [])
 
   const handleClick = useCallback(async (e: React.MouseEvent) => {
     e.preventDefault()
@@ -34,30 +46,68 @@ export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: 
       setShowModal(true)
       return
     }
+    // 連打で複数の同時mutationが飛ぶのを防ぐ（1ボタンにつき常に最大1リクエスト）。
+    if (pending) return
 
     toggle(id, meta)
     const action = faved ? 'remove' : 'add'
+    setPending(true)
 
     // favorite イベントは DB 側（record_favorite_article RPC / profiles差分トリガ）で
     // 保存と同一tx・単一発火源化済み。client trackEvent は撤廃（二重計上防止）。
-    if (type === 'actress') {
-      fetch('/verity/api/favorites/actress', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ external_id: id, action }),
-      }).catch(() => {})
-    } else {
-      // 作品: DB へ永続化（slug|CID は API 側で解決）。session_id は RPC が user_events に載せる。
-      fetch('/verity/api/favorites/article', {
-        method:  'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify({ id, action, session_id: getSessionId() }),
-      }).catch(() => {})
+    //
+    // サーバー側の結果を必ず確認する（Phase FAV-2）。以前はfetchの結果を一切見ておらず、
+    // 上限到達などのソフト失敗（HTTP 200 { ok:false, reason:'max_reached' }）や
+    // ネットワークエラー・非2xxがすべて無視され、localStorageのハートだけが
+    // 「お気に入り済み」の見た目のまま残ってしまっていた（実際はDB未反映）。
+    try {
+      let outcome
+      if (type === 'actress') {
+        const res = await fetch('/verity/api/favorites/actress', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ external_id: id, action }),
+        })
+        let json: { ok?: boolean; reason?: string } | null = null
+        try { json = await res.json() } catch { json = null }
+        outcome = classifyActressFavoriteResponse(res.ok, json)
+      } else {
+        // 作品: DB へ永続化（slug|CID は API 側で解決）。session_id は RPC が user_events に載せる。
+        const res = await fetch('/verity/api/favorites/article', {
+          method:  'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body:    JSON.stringify({ id, action, session_id: getSessionId() }),
+        })
+        outcome = classifyArticleFavoriteResponse(res.ok)
+      }
+      if (outcome.shouldRevert) {
+        toggle(id, meta) // revert
+        if (outcome.message) showError(outcome.message)
+      }
+    } catch {
+      const outcome = classifyFavoriteRequestException()
+      toggle(id, meta) // revert（ネットワーク例外）
+      if (outcome.message) showError(outcome.message)
+    } finally {
+      setPending(false)
     }
-  }, [toggle, id, cid, meta, user, type, faved])
+  }, [toggle, id, cid, meta, user, type, faved, pending, showError])
 
   return (
     <>
+      {errorMsg && (
+        <div
+          className="fixed bottom-6 right-6 z-50 max-w-xs rounded-xl px-4 py-3 text-xs font-medium shadow-2xl"
+          style={{
+            background:     'rgba(239,68,68,0.15)',
+            border:         '1px solid rgba(239,68,68,0.4)',
+            color:          '#fca5a5',
+            backdropFilter: 'blur(8px)',
+          }}
+        >
+          {errorMsg}
+        </div>
+      )}
       {showModal && (
         <div
           className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4"
@@ -103,6 +153,7 @@ export function FavoriteButton({ type, id, cid, meta, className, size = 'sm' }: 
       )}
       <button
       onClick={handleClick}
+      disabled={pending}
       aria-label={faved ? 'お気に入りを解除' : 'お気に入りに追加'}
       style={{
         width:        dim,

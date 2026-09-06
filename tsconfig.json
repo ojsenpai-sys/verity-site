@@ -32,6 +32,7 @@
   ],
   "exclude": [
     "node_modules",
-    "src/lib/supabase/__tests__/**"
+    "src/lib/supabase/__tests__/**",
+    "src/components/__tests__/**"
   ]
 }
