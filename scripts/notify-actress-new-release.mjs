@@ -47,6 +47,7 @@ import {
   escapeHtml, buildTrackedUrl, unsubscribeUrl, assertProductionSafeFrom, sendViaResend, isSuppressed,
   DEFAULT_NOTIFY_FROM_EMAIL, resolveSendMode, assertProductionRuntimeGuard, assertProductionSendPreconditions,
   classifyUsersForDryRun, lookupDeliveryStatuses, runWithConcurrency, PRODUCTION_SEND_CONCURRENCY, exceedsMaxSend,
+  buildDeliveryIdempotencyKey,
 } from './lib/notification-mailer.mjs'
 
 const SCRIPT_LABEL = 'notify-anr'
@@ -639,6 +640,7 @@ async function resendAndUpdate(deliveryId, userId, email, emailContent) {
       apiKey: RESEND_API_KEY, from: FROM_ADDR, to: email, replyTo: REPLY_TO,
       subject: emailContent.subject, html: emailContent.html, text: emailContent.text,
       unsubscribeUrl: unsubUrl,
+      idempotencyKey: buildDeliveryIdempotencyKey('anr-delivery', deliveryId),
     })
     if (deliveryId) {
       await sbUpdate('notification_deliveries', `id=eq.${deliveryId}`, { status: 'sent', sent_at: new Date().toISOString() })

@@ -182,24 +182,41 @@ export function assertProductionSafeFrom(fromAddr, isTestUserMode) {
 }
 
 // ── Resend送信（raw fetch。List-Unsubscribeヘッダー対応） ─────────────────────
-export async function sendViaResend({ apiKey, from, to, replyTo, subject, html, text, unsubscribeUrl: unsubUrl }) {
-  const headers = {}
+export async function sendViaResend({ apiKey, from, to, replyTo, subject, html, text, unsubscribeUrl: unsubUrl, idempotencyKey }) {
+  const emailHeaders = {}
   if (unsubUrl) {
-    headers['List-Unsubscribe'] = `<${unsubUrl}>`
-    headers['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
+    emailHeaders['List-Unsubscribe'] = `<${unsubUrl}>`
+    emailHeaders['List-Unsubscribe-Post'] = 'List-Unsubscribe=One-Click'
   }
   const body = { from, to: [to], subject, html, text }
   if (replyTo) body.reply_to = replyTo
-  if (Object.keys(headers).length > 0) body.headers = headers
+  if (Object.keys(emailHeaders).length > 0) body.headers = emailHeaders
+
+  // Idempotency-Key（HTTPリクエストヘッダー・Resend公式仕様）はbody.headers（メール自体の
+  // カスタムヘッダー）とは別物。Resend側で24時間保持され、同一キー+同一payloadの再試行は
+  // 元のレスポンスを返すのみで再送信しない。同一キー+異なるpayloadは409 invalid_idempotent_request
+  // で拒否される（黙って重複送信されることはない）。未指定時は従来どおり付与しない。
+  const requestHeaders = { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' }
+  if (idempotencyKey) requestHeaders['Idempotency-Key'] = idempotencyKey
 
   const res = await fetch('https://api.resend.com/emails', {
     method: 'POST',
-    headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+    headers: requestHeaders,
     body: JSON.stringify(body),
   })
   const raw = await res.text()
   if (!res.ok) throw new Error(`Resend HTTP ${res.status}: ${raw.slice(0, 300)}`)
   return raw ? JSON.parse(raw) : {}
+}
+
+// ── Resend冪等キー生成（Phase 3B-2・crash-window対策） ─────────────────────────
+// deliveryId(notification_deliveries.id)はメール等PIIを含まない数値/UUIDのため、
+// キーにPIIは混入しない。同一配信行への再送（stale-pending retry / failed retry）は
+// deliveryIdが変わらないため常に同じキーになり、異なるユーザー/日付は必ず新しい行
+// （新しいid）になるためキーも必ず異なる。
+export function buildDeliveryIdempotencyKey(prefix, deliveryId) {
+  if (!deliveryId) return undefined
+  return `${prefix}-${deliveryId}`
 }
 
 // ── 送信抑止（suppression）チェック（Step 16） ─────────────────────────────────
