@@ -1,27 +1,32 @@
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
 import { unstable_cache } from 'next/cache'
 import { withFetchTimeout, SUPABASE_FETCH_TIMEOUT_MS } from '@/lib/supabase/timeout'
+import { mergeRankedRows, clampToCacheDepth, type RankedWork } from '@/lib/worksRankingCore'
 import type { Article } from '@/lib/types'
 
-// 人気作品ランキング（熱量×トレンドスコア / 031 RPC）の取得ヘルパー。
-//
-// anon は user_events を直接参照できないため SECURITY DEFINER RPC `get_top_works_ranked`
-// 経由で集計値（external_id, points）を取り、articles を external_id で結合する。
-// RPC 未適用 / 未集計時は空配列を返し、呼び出し側でセクション非表示にグレースフル劣化させる。
-//
-// ※ranking/page.tsx の getWorksRanking() と同一ロジック。将来はそちらもこのヘルパーへ
-//   寄せて重複を解消できる（今回は破壊リスク回避のため ranking ページ側は変更しない）。
-//
-// Phase 3.2.4: get_top_works_ranked が全ユーザー共通の集計結果である（cookie/session/ユーザー
-// 固有情報に一切依存しない）ことを確認した上で、120秒 TTL の unstable_cache でRPC呼び出し頻度を
-// 削減する。unstable_cache のコールバック内では cookies() 等の dynamic API が使えないため、
-// fastestReleases.ts と同様に cookie 非依存の stateless client を使う。
+export type { RankedWork } from '@/lib/worksRankingCore'
 
-export type RankedWork = {
-  rank:    number
-  points:  number
-  article: Article
-}
+// 人気作品ランキング（熱量×トレンドスコア）の取得ヘルパー。
+//
+// Phase RANK-2b: 匿名ページビュー毎に高コストな14日集計RPC（get_top_works_ranked,
+// 031/053）を直接叩くことをやめ、pg_cronで定期更新される事前計算キャッシュ
+// public.works_ranking_cache（054）から読むように変更した。get_top_works_ranked
+// 自体は削除せず、cache のrefresh関数（refresh_works_ranking_cache）から
+// 引き続き呼ばれる（詳細: supabase/migrations/054_works_ranking_cache.sql）。
+// このファイルが VERITY全体で唯一の公開ランキング読み取り経路（canonical path）。
+// ranking/page.tsx・HeroV21Section・HeroSection・admin-social-posts は全てここを経由する。
+//
+// キャッシュ深度は20（054のp_depth既定値）。limit>20を要求した場合、現状の
+// 既知呼び出し元（最大10）では発生しないが、cacheの行数までしか返らない点に留意。
+//
+// RLS/GRANTでanonにSELECT許可済みのため、キャッシュ未populate時は空配列を返し、
+// 呼び出し側でセクション非表示にグレースフル劣化させる（RPC未適用時の従来動作と同じ）。
+//
+// Phase 3.2.4: 全ユーザー共通の集計結果である（cookie/session/ユーザー固有情報に
+// 一切依存しない）ことを確認した上で、120秒 TTL の unstable_cache で読み取り頻度を
+// 削減する。unstable_cache のコールバック内では cookies() 等の dynamic API が使えないため、
+// fastestReleases.ts と同様に cookie 非依存の stateless client を使う（DBキャッシュ導入後も
+// 変更なし — SELECTは軽量だが、同一120秒窓内の重複読み取り自体を避ける価値は残るため維持）。
 
 let _client: SupabaseClient | null = null
 function getStatelessClient(): SupabaseClient {
@@ -40,8 +45,12 @@ function getStatelessClient(): SupabaseClient {
 // 例外を投げた呼び出しの結果をキャッシュしないため、失敗を長時間キャッシュする事故を防げる。
 async function fetchTopRankedWorksRaw(limit: number): Promise<RankedWork[]> {
   const supabase = getStatelessClient()
-  const { data, error } = await supabase.rpc('get_top_works_ranked', { p_limit: limit })
-  if (error) throw new Error(`get_top_works_ranked rpc error: ${error.message}`)
+  const { data, error } = await supabase
+    .from('works_ranking_cache')
+    .select('external_id, points')
+    .order('rank', { ascending: true })
+    .limit(clampToCacheDepth(limit))
+  if (error) throw new Error(`works_ranking_cache read error: ${error.message}`)
   const rows = (data ?? []) as { external_id: string; points: number }[]
   if (rows.length === 0) return []
 
@@ -55,14 +64,7 @@ async function fetchTopRankedWorksRaw(limit: number): Promise<RankedWork[]> {
   if (articlesErr) throw new Error(`articles lookup error: ${articlesErr.message}`)
 
   const map = new Map(((articles ?? []) as Article[]).map(a => [a.external_id, a]))
-
-  return rows
-    .map(r => {
-      const article = map.get(r.external_id)
-      return article ? { points: Number(r.points), article } : null
-    })
-    .filter((r): r is Omit<RankedWork, 'rank'> => r !== null)
-    .map((r, i) => ({ rank: i + 1, ...r }))
+  return mergeRankedRows(rows, map)
 }
 
 // キャッシュキーは limit 引数から自動導出される(unstable_cacheは引数を自動的にキーへ含める)。

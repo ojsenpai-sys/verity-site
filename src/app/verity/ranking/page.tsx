@@ -11,6 +11,7 @@ import { NowPrinting } from '@/components/NowPrinting'
 import { withAffiliateForRegion } from '@/lib/affiliate'
 import { getIsOverseasUser } from '@/lib/geoLocale'
 import { isBadImageUrl, cidToCdnUrl, toHighResPackageUrl, coverPosClass } from '@/lib/cidUtils'
+import { getTopRankedWorks, type RankedWork } from '@/lib/worksRanking'
 import type { Actress, Article } from '@/lib/types'
 
 // ── i18n ──────────────────────────────────────────────────────────────────────
@@ -149,40 +150,10 @@ async function getFavoriteRanking(): Promise<FavRankRow[]> {
   return (data ?? []) as FavRankRow[]
 }
 
-// ── 人気作品ランキング（熱量×トレンドスコア / 031 RPC） ──────────────────────
-// anon は user_events を直接参照できないため SECURITY DEFINER RPC 経由で集計値を取得。
-// RPC 未適用時は空配列 → セクション非表示（既存ランキングと同じグレースフル劣化）。
-
-type RankedWork = {
-  rank:    number
-  points:  number
-  article: Article
-}
-
-async function getWorksRanking(): Promise<RankedWork[]> {
-  const supabase = await createClient()
-  const { data, error } = await supabase.rpc('get_top_works_ranked', { p_limit: 10 })
-  if (error) { console.error('[works-ranking]', error.message); return [] }
-  const rows = (data ?? []) as { external_id: string; points: number }[]
-  if (rows.length === 0) return []
-
-  const ids = rows.map(r => r.external_id)
-  const { data: articles } = await supabase
-    .from('articles')
-    .select('id, external_id, title, image_url, slug, tags, metadata, source')
-    .in('external_id', ids)
-    .eq('is_active', true)
-
-  const map = new Map(((articles ?? []) as Article[]).map(a => [a.external_id, a]))
-
-  return rows
-    .map(r => {
-      const article = map.get(r.external_id)
-      return article ? { points: Number(r.points), article } : null
-    })
-    .filter((r): r is Omit<RankedWork, 'rank'> => r !== null)
-    .map((r, i) => ({ rank: i + 1, ...r }))
-}
+// ── 人気作品ランキング（熱量×トレンドスコア） ────────────────────────────────
+// Phase RANK-2b: このページ独自のRPC直接呼び出しは廃止し、VERITY全体で唯一の
+// canonicalな公開ランキング読み取り経路（src/lib/worksRanking.ts、
+// works_ranking_cache 経由）を Hero と共有する。詳細は同ファイル冒頭コメント参照。
 
 // 出演女優名を metadata.actress / actress_name から抽出
 function workActressNames(article: Article): string[] {
@@ -526,7 +497,7 @@ export default async function RankingPage({
     getRanking(),
     getIsOverseasUser(),
     getFavoriteRanking(),
-    getWorksRanking(),
+    getTopRankedWorks(10),
   ])
 
   const actressNames = ranking.map(r => r.actress.name)
