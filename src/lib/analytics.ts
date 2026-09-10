@@ -69,6 +69,23 @@ export type EventName =
   | 'spotlight_view'
   | 'spotlight_click'
   | 'storeos_click'
+  // VERITY Taste Check v1（診断体験。パッケージ選択→好み傾向→女優/作品推薦）。
+  // ログイン不要・DB書き込み無し（診断状態はクライアント側のみ）。既存 is_active_event()
+  // には含まれない（将来含める場合は forward-fix migration が必要）。
+  //   taste_view              … /verity/taste 表示（intro表示時・1回）
+  //   taste_start              … 「診断をはじめる」押下（intro→selection遷移）
+  //   taste_answer              … 1問回答（metadata: cid, answer, step）
+  //   taste_complete             … 20問完了（metadata: answered_count/like_count/neutral_count/dislike_count）
+  //   taste_result_work_click     … 結果画面の推薦作品クリック（target_id=CID, metadata.rank）
+  //   taste_result_actress_click … 結果画面の推薦女優クリック（target_id=女優external_id, metadata.rank）
+  //   taste_retry                … 「もう一度診断する」押下
+  | 'taste_view'
+  | 'taste_start'
+  | 'taste_answer'
+  | 'taste_complete'
+  | 'taste_result_work_click'
+  | 'taste_result_actress_click'
+  | 'taste_retry'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -107,6 +124,9 @@ const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' |
   hero_auto_fanza_click:    { type: 'article', idKey: 'cid' },
   // 週間ランキングのFANZA補助計測は作品単位（target_id=CID / metadata.position 規約に揃える）
   weekly_ranking_fanza_click: { type: 'article', idKey: 'cid' },
+  // Taste Check 結果画面のクリックは対象単位（target_id=CID/女優external_id、metadata.rank）
+  taste_result_work_click:    { type: 'article', idKey: 'cid' },
+  taste_result_actress_click: { type: 'actress', idKey: 'actressId' },
 }
 
 // target_id にマップされる構造キーは metadata から除外する
