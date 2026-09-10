@@ -34,6 +34,7 @@
     "node_modules",
     "src/lib/supabase/__tests__/**",
     "src/components/__tests__/**",
-    "src/lib/__tests__/**"
+    "src/lib/__tests__/**",
+    "src/lib/taste/__tests__/**"
   ]
 }
