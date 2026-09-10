@@ -69,6 +69,25 @@ export type EventName =
   | 'spotlight_view'
   | 'spotlight_click'
   | 'storeos_click'
+  // VERITY Taste Check v1（診断体験。パッケージ選択→好み傾向→女優/作品推薦）。
+  // ログイン不要・DB書き込み無し（診断状態はクライアント側のみ）。既存 is_active_event()
+  // には含まれない（将来含める場合は forward-fix migration が必要）。
+  //   taste_view              … /verity/taste 表示（intro表示時・1回）
+  //   taste_start              … 「診断をはじめる」押下（intro→selection遷移）
+  //   taste_answer              … 1問回答（metadata: cid, answer, step）
+  //   taste_complete             … 20問完了（metadata: answered_count/like_count/neutral_count/dislike_count）
+  //   taste_result_work_click     … 結果画面の推薦作品クリック（target_id=CID, metadata.rank）
+  //   taste_result_actress_click … 結果画面の推薦女優クリック（target_id=女優external_id, metadata.rank）
+  //   taste_retry                … 「もう一度診断する」押下
+  //   taste_entry_click           … トップページ等の入口CTAクリック（target無し・metadata.position）
+  | 'taste_view'
+  | 'taste_entry_click'
+  | 'taste_start'
+  | 'taste_answer'
+  | 'taste_complete'
+  | 'taste_result_work_click'
+  | 'taste_result_actress_click'
+  | 'taste_retry'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -107,6 +126,9 @@ const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' |
   hero_auto_fanza_click:    { type: 'article', idKey: 'cid' },
   // 週間ランキングのFANZA補助計測は作品単位（target_id=CID / metadata.position 規約に揃える）
   weekly_ranking_fanza_click: { type: 'article', idKey: 'cid' },
+  // Taste Check 結果画面のクリックは対象単位（target_id=CID/女優external_id、metadata.rank）
+  taste_result_work_click:    { type: 'article', idKey: 'cid' },
+  taste_result_actress_click: { type: 'actress', idKey: 'actressId' },
 }
 
 // target_id にマップされる構造キーは metadata から除外する
@@ -136,6 +158,46 @@ function readVp(): string | null {
     /* sessionStorage 不可時は無視 */
   }
   return null
+}
+
+// Taste Check アトリビューション: 結果画面で作品カードをクリックした際に
+// writeTasteReferral() が sessionStorage へ { cid, at } を書き込む。ここではその CID が
+// 今まさに計測しようとしているイベントの target_id（article の cid）と一致し、かつ
+// TTL 以内であれば metadata.source='taste' を合流させる。個人の回答内容・嗜好情報は
+// 一切保持しない（保持するのは「直前にTasteからクリックされたCID」のみ）。
+// vp と異なり CID 単位でスコープするため、無関係な別作品の閲覧には付与されない。
+const TASTE_REFERRAL_KEY = 'verity_taste_ref'
+const TASTE_REFERRAL_TTL_MS = 30 * 60 * 1000 // 30分。診断結果→作品詳細→FANZAの通常導線を十分にカバー
+
+function readTasteSource(targetType: string | null, targetId: string | null): string | null {
+  if (targetType !== 'article' || !targetId) return null
+  try {
+    const raw = sessionStorage.getItem(TASTE_REFERRAL_KEY)
+    if (!raw) return null
+    const parsed = JSON.parse(raw) as { cid?: unknown; at?: unknown }
+    if (
+      typeof parsed.cid === 'string' && parsed.cid === targetId &&
+      typeof parsed.at === 'number' && Date.now() - parsed.at < TASTE_REFERRAL_TTL_MS
+    ) {
+      return 'taste'
+    }
+  } catch {
+    /* sessionStorage 不可時は無視 */
+  }
+  return null
+}
+
+/**
+ * Taste Check 結果画面の作品カードクリック時に呼ぶ。次にその CID の記事ページで発火する
+ * video_view/fanza_click 等へ metadata.source='taste' を自動付与するための一時マーカー。
+ * 書き込むのは CID とタイムスタンプのみ（回答内容・嗜好情報は含まない）。
+ */
+export function writeTasteReferral(cid: string): void {
+  try {
+    sessionStorage.setItem(TASTE_REFERRAL_KEY, JSON.stringify({ cid, at: Date.now() }))
+  } catch {
+    /* sessionStorage 不可時は無視（attribution欠損のみで遷移自体は妨げない） */
+  }
 }
 
 // session_id 取得失敗（sessionStorage不可・プライベートモード等）でも例外を投げず null を返す。
@@ -174,6 +236,12 @@ export function trackEvent(eventName: EventName, payload: TrackPayload = {}): vo
   if (metadata.vp == null) {
     const vp = readVp()
     if (vp) metadata.vp = vp
+  }
+
+  // Taste Check アトリビューション（source）を合流。呼び出し側が明示指定していない場合のみ付与。
+  if (metadata.source == null) {
+    const tasteSource = readTasteSource(target_type, target_id)
+    if (tasteSource) metadata.source = tasteSource
   }
 
   // ── GA4 ──────────────────────────────────────────────────────────────────────
