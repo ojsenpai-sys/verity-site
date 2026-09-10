@@ -4,7 +4,7 @@ import Link from 'next/link'
 import { useRef } from 'react'
 import { Film } from 'lucide-react'
 import { ProxiedImage } from '@/components/ProxiedImage'
-import { trackEvent } from '@/lib/analytics'
+import { trackEvent, writeTasteReferral } from '@/lib/analytics'
 import type { ScoredWork } from '@/lib/taste/types'
 
 function proxyUrl(url: string): string {
@@ -26,6 +26,7 @@ export function TasteWorkRecommendations({ works }: Props) {
     lastFiredRef.current = now
     try {
       trackEvent('taste_result_work_click', { cid, rank })
+      writeTasteReferral(cid)
     } catch {
       /* 計測失敗は遷移を妨げない */
     }

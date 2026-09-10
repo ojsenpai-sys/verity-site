@@ -190,7 +190,7 @@ export function TasteApp({ pool }: Props) {
   if (phase === 'selection' && questions[answers.length]) {
     const current = questions[answers.length]
     return (
-      <div className="pb-32 sm:pb-4">
+      <div className="pb-[calc(9rem+env(safe-area-inset-bottom))] sm:pb-4">
         <div className="mx-auto max-w-sm">
           <TasteProgress current={answers.length + 1} total={questions.length} />
         </div>
