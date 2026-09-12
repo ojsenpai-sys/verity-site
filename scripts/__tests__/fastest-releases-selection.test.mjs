@@ -16,6 +16,8 @@ import {
   pickDisplayFloor,
   isFuturePublished,
   selectFastestCards,
+  selectFastestCardsVariable,
+  sortMakerSections,
   canonicalCidBase,
   isSameWorkTitleGroup,
   dedupeSameWork,
@@ -275,4 +277,157 @@ test('[ケース9] floor CTA整合: dedupe後の代表行もfloorプロパティ
   ]
   const result = selectFastestCards(rows, NOW, 10)
   assert.equal(result[0].floor, 'dvd')
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// selectFastestCardsVariable (Phase 1: 最新作最速更新情報 Refresh・5〜10可変表示+補完)
+// ═════════════════════════════════════════════════════════════════════════════
+const BATCH_TIME = '2026-08-17T10:00:00+00:00'
+const POOL_TIMES = [
+  '2026-08-16T10:00:00+00:00',
+  '2026-08-15T10:00:00+00:00',
+  '2026-08-14T10:00:00+00:00',
+  '2026-08-13T10:00:00+00:00',
+]
+
+function variableRow(id, { fetchedAt, publishedAt, floor = 'videoa', title }) {
+  return { external_id: id, floor, title: title ?? id, published_at: publishedAt, fetched_at: fetchedAt }
+}
+function makeBatch(n) {
+  return Array.from({ length: n }, (_, i) =>
+    variableRow(`b${i}`, { fetchedAt: BATCH_TIME, publishedAt: `2026-08-17T${String(9 - i).padStart(2, '0')}:00:00+00:00` }),
+  )
+}
+function makePool(n) {
+  return POOL_TIMES.slice(0, n).map((t, i) => variableRow(`p${i}`, { fetchedAt: t, publishedAt: t }))
+}
+
+for (const n of [1, 2, 3, 4]) {
+  test(`selectFastestCardsVariable: batch${n}件→不足分(${5 - n}件)をpoolから補完し合計5件になる(ケース${n})`, () => {
+    const rows = [...makeBatch(n), ...makePool(4)]
+    const result = selectFastestCardsVariable(rows, NOW)
+    assert.equal(result.length, 5)
+    assert.deepEqual(result.slice(0, n).map((r) => r.external_id), makeBatch(n).map((r) => r.external_id))
+    assert.deepEqual(result.slice(n).map((r) => r.external_id), makePool(5 - n).map((r) => r.external_id))
+  })
+}
+
+test('selectFastestCardsVariable: batch5件→補完なしでそのまま5件(ケース5)', () => {
+  const rows = [...makeBatch(5), ...makePool(4)]
+  const result = selectFastestCardsVariable(rows, NOW)
+  assert.deepEqual(result.map((r) => r.external_id), makeBatch(5).map((r) => r.external_id))
+})
+test('selectFastestCardsVariable: batch6件→そのまま6件表示(ケース6)', () => {
+  assert.equal(selectFastestCardsVariable(makeBatch(6), NOW).length, 6)
+})
+test('selectFastestCardsVariable: batch7件→そのまま7件表示(実装後Validation例: maker B)', () => {
+  assert.equal(selectFastestCardsVariable(makeBatch(7), NOW).length, 7)
+})
+test('selectFastestCardsVariable: batch13件→最大10件にクランプ(実装後Validation例: maker C)', () => {
+  assert.equal(selectFastestCardsVariable(makeBatch(13), NOW).length, 10)
+})
+test('selectFastestCardsVariable: batch9件→そのまま9件表示(ケース9)', () => {
+  assert.equal(selectFastestCardsVariable(makeBatch(9), NOW).length, 9)
+})
+test('selectFastestCardsVariable: batch10件→そのまま10件表示(ケース10)', () => {
+  assert.equal(selectFastestCardsVariable(makeBatch(10), NOW).length, 10)
+})
+test('selectFastestCardsVariable: batch11件以上→最大10件にクランプされる(ケース11)', () => {
+  assert.equal(selectFastestCardsVariable(makeBatch(13), NOW).length, 10)
+})
+test('selectFastestCardsVariable: 補完候補が不足する場合は存在する分だけ返す(無理な水増しをしない)', () => {
+  const rows = [...makeBatch(1), ...makePool(2)] // 全体で3件しか存在しない
+  const result = selectFastestCardsVariable(rows, NOW)
+  assert.equal(result.length, 3)
+})
+test('selectFastestCardsVariable: batchと補完候補にまたがる同一作品(派生SKU)は重複表示されない', () => {
+  const rows = [
+    variableRow('mngs082', { fetchedAt: BATCH_TIME, publishedAt: '2026-08-17T09:00:00+00:00', title: '単位が欲しい留年ギャルのお・ね・だ・り' }),
+    // pool側のBOD版はbatch側の'mngs082'と同一作品(canonicalCidBase一致+title接頭辞一致)としてdedupeされる
+    variableRow('mngs082bod', { fetchedAt: POOL_TIMES[0], publishedAt: POOL_TIMES[0], title: '単位が欲しい留年ギャルのお・ね・だ・り （BOD）' }),
+    variableRow('other1', { fetchedAt: POOL_TIMES[1], publishedAt: POOL_TIMES[1], title: '作品Y' }),
+    variableRow('other2', { fetchedAt: POOL_TIMES[2], publishedAt: POOL_TIMES[2], title: '作品Z' }),
+    variableRow('other3', { fetchedAt: POOL_TIMES[3], publishedAt: POOL_TIMES[3], title: '作品W' }),
+  ]
+  const result = selectFastestCardsVariable(rows, NOW)
+  const ids = result.map((r) => r.external_id)
+  assert.equal(new Set(ids).size, ids.length)
+  assert.ok(!ids.includes('mngs082bod'))
+  assert.deepEqual(ids, ['mngs082', 'other1', 'other2', 'other3'])
+})
+test('selectFastestCardsVariable: published_atがnullの候補は除外される(batch/pool両方)', () => {
+  const rows = [
+    variableRow('b0', { fetchedAt: BATCH_TIME, publishedAt: null }),
+    variableRow('b1', { fetchedAt: BATCH_TIME, publishedAt: '2026-08-17T09:00:00+00:00' }),
+    variableRow('p0', { fetchedAt: POOL_TIMES[0], publishedAt: null }),
+    variableRow('p1', { fetchedAt: POOL_TIMES[1], publishedAt: POOL_TIMES[1] }),
+  ]
+  const result = selectFastestCardsVariable(rows, NOW)
+  assert.deepEqual(result.map((r) => r.external_id), ['b1', 'p1'])
+})
+test('selectFastestCardsVariable: batchのfloorと異なるfloorの補完候補は使われない', () => {
+  const rows = [
+    variableRow('b0', { fetchedAt: BATCH_TIME, publishedAt: '2026-08-17T09:00:00+00:00', floor: 'videoa' }),
+    variableRow('p0', { fetchedAt: POOL_TIMES[0], publishedAt: POOL_TIMES[0], floor: 'dvd' }),
+  ]
+  const result = selectFastestCardsVariable(rows, NOW)
+  assert.deepEqual(result.map((r) => r.external_id), ['b0'])
+})
+test('selectFastestCardsVariable: 補完候補はfetched_at降順(直近に登録された順)で並ぶ(published_atの順とは独立)', () => {
+  const rows = [
+    variableRow('b0', { fetchedAt: BATCH_TIME, publishedAt: '2026-08-17T09:00:00+00:00' }),
+    variableRow('p1', { fetchedAt: POOL_TIMES[0], publishedAt: '2026-08-01T00:00:00+00:00' }),
+    variableRow('p2', { fetchedAt: POOL_TIMES[1], publishedAt: '2026-08-16T00:00:00+00:00' }),
+    variableRow('p3', { fetchedAt: POOL_TIMES[2], publishedAt: '2026-08-10T00:00:00+00:00' }),
+    variableRow('p4', { fetchedAt: POOL_TIMES[3], publishedAt: '2026-08-05T00:00:00+00:00' }),
+  ]
+  const result = selectFastestCardsVariable(rows, NOW)
+  assert.deepEqual(result.map((r) => r.external_id), ['b0', 'p1', 'p2', 'p3', 'p4'])
+})
+test('selectFastestCardsVariable: メーカーをまたいだ混入がない(関数はmaker非依存の純関数・呼び出し単位で完結)', () => {
+  const makerA = selectFastestCardsVariable(makeBatch(2), NOW)
+  const makerB = selectFastestCardsVariable([...makeBatch(1), ...makePool(4)], NOW)
+  assert.equal(makerA.length, 2) // poolを渡していないので無理な水増しはしない
+  assert.equal(makerB.length, 5)
+  assert.ok(makerA.every((r) => r.external_id.startsWith('b')))
+})
+test('selectFastestCardsVariable: 候補0件は空配列', () => {
+  assert.deepEqual(selectFastestCardsVariable([], NOW), [])
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// sortMakerSections (Phase 1: メーカー表示順・安定タイブレーク)
+// ═════════════════════════════════════════════════════════════════════════════
+test('sortMakerSections: 最新batchのfetched_at降順に並ぶ', () => {
+  const makers = [
+    { makerId: 'a', latestFetchedAt: '2026-08-15T00:00:00+00:00' },
+    { makerId: 'b', latestFetchedAt: '2026-08-17T00:00:00+00:00' },
+    { makerId: 'c', latestFetchedAt: '2026-08-16T00:00:00+00:00' },
+  ]
+  const result = sortMakerSections(makers, ['a', 'b', 'c'])
+  assert.deepEqual(result.map((m) => m.makerId), ['b', 'c', 'a'])
+})
+test('sortMakerSections: 同一fetched_atはmakerIdOrderの出現順で安定タイブレークする(何度実行しても同じ順序)', () => {
+  const makers = [
+    { makerId: 'z', latestFetchedAt: '2026-08-17T00:00:00+00:00' },
+    { makerId: 'a', latestFetchedAt: '2026-08-17T00:00:00+00:00' },
+    { makerId: 'm', latestFetchedAt: '2026-08-17T00:00:00+00:00' },
+  ]
+  const order = ['a', 'm', 'z']
+  assert.deepEqual(sortMakerSections(makers, order).map((m) => m.makerId), ['a', 'm', 'z'])
+  assert.deepEqual(sortMakerSections(makers, order).map((m) => m.makerId), ['a', 'm', 'z']) // 再実行しても同じ
+})
+test('sortMakerSections: 候補無し(latestFetchedAt=null)のメーカーは末尾へ', () => {
+  const makers = [
+    { makerId: 'a', latestFetchedAt: null },
+    { makerId: 'b', latestFetchedAt: '2026-08-17T00:00:00+00:00' },
+  ]
+  assert.deepEqual(sortMakerSections(makers, ['a', 'b']).map((m) => m.makerId), ['b', 'a'])
+})
+test('sortMakerSections: makerIdOrderに存在しないmakerIdは末尾側にフォールバックする', () => {
+  const makers = [
+    { makerId: 'unknown', latestFetchedAt: '2026-08-17T00:00:00+00:00' },
+    { makerId: 'a', latestFetchedAt: '2026-08-17T00:00:00+00:00' },
+  ]
+  assert.deepEqual(sortMakerSections(makers, ['a']).map((m) => m.makerId), ['a', 'unknown'])
 })

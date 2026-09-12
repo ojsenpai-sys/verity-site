@@ -160,6 +160,21 @@ export function dedupeSameWork(rows) {
 }
 
 /**
+ * 「現在に近い未来作品を優先し、足りなければ配信済みの新しい順で補完」する
+ * 表示順に candidates を並べ替える(published_at整理そのもの)。
+ * selectFastestCards / selectFastestCardsVariable の共通ロジック。
+ * @template {{ published_at: string | null }} T
+ * @param {T[]} candidates
+ * @param {string} nowIso
+ * @returns {T[]}
+ */
+export function orderByPublishedAt(candidates, nowIso) {
+  const future = candidates.filter((r) => isFuturePublished(r.published_at, nowIso)).sort(compareFutureAsc)
+  const past = candidates.filter((r) => !isFuturePublished(r.published_at, nowIso)).sort(comparePastDesc)
+  return [...future, ...past]
+}
+
+/**
  * 最新検知batch(同一fetched_atの行群)から、表示floorを決定し、同一作品の
  * 派生SKUを1件にまとめたうえで、「現在に近い未来作品を優先し、足りなければ
  * 配信済みの新しい順で補完」して最大 limit 件を返す。
@@ -179,8 +194,90 @@ export function selectFastestCards(batchRows, nowIso, limit) {
 
   const candidates = batchRows.filter((r) => r.floor === floor && r.published_at != null)
   const deduped = dedupeSameWork(candidates)
-  const future = deduped.filter((r) => isFuturePublished(r.published_at, nowIso)).sort(compareFutureAsc)
-  const past = deduped.filter((r) => !isFuturePublished(r.published_at, nowIso)).sort(comparePastDesc)
+  return orderByPublishedAt(deduped, nowIso).slice(0, limit)
+}
 
-  return [...future, ...past].slice(0, limit)
+/**
+ * Phase 1(最新作最速更新情報 Refresh): 1メーカー分の全候補行(fetched_at DESCで
+ * 取得済み・複数batchにまたがってよい)から、「最新batchの新着件数 N」に応じて
+ * 5〜10件の可変件数でカードを選定する。
+ *
+ * display_count = clamp(N, min, max)  (デフォルト min=5, max=10)
+ *   - N >= min: 最新batchの中からpublished_at整理でmax件まで(既存selectFastestCardsと同じ挙動)
+ *   - N <  min: 最新batchの全件 + 「batchより前の同メーカー候補」から (min-N)件を
+ *               fetched_at降順(直近に登録された順)で補完し、合計min件を目指す。
+ *               補完候補が足りない場合は存在する分だけ返す(無理な水増しをしない)。
+ *
+ * floorの決定は最新batchの行のみを見て行う(既存selectFastestCardsと同じ)。
+ * dedupeは「最新batch + 補完候補プール」を合わせた全体に対して行ってから
+ * batch/補完に分割し直す — これにより補完作品が最新batchの作品と同一作品
+ * (本編+BOD等の派生SKU)である場合の重複表示を防ぐ。
+ *
+ * @template {FastestBatchRow & { external_id: string, title: string | null }} T
+ * @param {T[]} allRows 1メーカー分の全候補行。fetched_at降順である必要はないが、
+ *   「同一fetched_at値の行群 = 最新batch」を判定するため、少なくとも
+ *   最大のfetched_atを持つ行が先頭付近に存在すること(呼び出し側はRPCの
+ *   `order by maker_id, fetched_at desc` 結果をそのまま渡せばよい)。
+ * @param {string} nowIso
+ * @param {{ min?: number, max?: number }} [opts]
+ * @returns {T[]}
+ */
+export function selectFastestCardsVariable(allRows, nowIso, opts = {}) {
+  const min = opts.min ?? 5
+  const max = opts.max ?? 10
+  if (allRows.length === 0) return []
+
+  const latestFetchedAt = allRows.reduce(
+    (latest, r) => (r.fetched_at > latest ? r.fetched_at : latest),
+    allRows[0].fetched_at,
+  )
+  const batchOnly = allRows.filter((r) => r.fetched_at === latestFetchedAt)
+  const floor = pickDisplayFloor(batchOnly)
+  if (!floor) return []
+
+  // floor決定後・dedupe前に「最新batch」「それより前の補完候補プール」へ分ける前に、
+  // 重複(同一作品の派生SKU)を全体でまとめて解消してから分割し直す(batch/補完をまたいだ
+  // 重複を防ぐため)。
+  const floorRows = allRows.filter((r) => r.floor === floor && r.published_at != null)
+  const deduped = dedupeSameWork(floorRows)
+  const batch = deduped.filter((r) => r.fetched_at === latestFetchedAt)
+  const pool = deduped.filter((r) => r.fetched_at !== latestFetchedAt)
+
+  const batchOrdered = orderByPublishedAt(batch, nowIso)
+  const n = batchOrdered.length
+  if (n === 0) return []
+
+  const target = Math.max(min, Math.min(n, max)) // clamp(n, min, max)
+  if (n >= target) return batchOrdered.slice(0, target)
+
+  // 補完: batchより前(fetched_at昇順で見て過去)の候補から、fetched_at降順
+  // (直近に登録された順)で不足分だけ追加する。batch作品の重複補完は上記の
+  // 全体dedupeで構造的に排除済み。
+  const need = target - n
+  const poolOrdered = [...pool].sort((a, b) => (a.fetched_at < b.fetched_at ? 1 : a.fetched_at > b.fetched_at ? -1 : 0))
+  return [...batchOrdered, ...poolOrdered.slice(0, need)]
+}
+
+/**
+ * Phase 1: メーカーセクションの表示順を決める。
+ * 「最新batchのfetched_at降順」を主基準にし、fetched_atが同一(または両方null=
+ * 候補無し)の場合は makerIdOrder 上の出現順で安定的にタイブレークする
+ * (同じ入力なら常に同じ順序になることを保証する)。
+ * makerIdOrder に無いmakerIdは末尾へ(見つからない場合の安全側フォールバック)。
+ * @param {{ makerId: string, latestFetchedAt: string | null }[]} makers
+ * @param {string[]} makerIdOrder 全メーカーの基本順序(例: src/lib/makers.ts の MAKERS 順)
+ * @returns {typeof makers}
+ */
+export function sortMakerSections(makers, makerIdOrder) {
+  const indexOf = new Map(makerIdOrder.map((id, i) => [id, i]))
+  return [...makers].sort((a, b) => {
+    if (a.latestFetchedAt !== b.latestFetchedAt) {
+      if (a.latestFetchedAt == null) return 1
+      if (b.latestFetchedAt == null) return -1
+      return a.latestFetchedAt < b.latestFetchedAt ? 1 : -1
+    }
+    const ia = indexOf.has(a.makerId) ? indexOf.get(a.makerId) : Number.MAX_SAFE_INTEGER
+    const ib = indexOf.has(b.makerId) ? indexOf.get(b.makerId) : Number.MAX_SAFE_INTEGER
+    return ia - ib
+  })
 }
