@@ -1,14 +1,23 @@
 #!/usr/bin/env node
 // ═════════════════════════════════════════════════════════════════════════════
-// generate-weekly-rankings.mjs — VERITY週間ランキング 生成バッチ（HTTP/nginx非経由）
+// generate-weekly-rankings.mjs — VERITY週間ランキング 生成バッチ（Direct DB接続・非PostgREST）
 // ═════════════════════════════════════════════════════════════════════════════
 // 「毎週日曜23:30発表」の週間ランキング(5種)を締切後に事前計算しスナップショット保存する。
 //   集計締切: 日曜 23:00:00 JST 未満   （23:00〜23:29 は両週から除外）
 //   バッチ実行: 日曜 23:10 JST 目安
 //   published_at: 日曜 23:30 JST      （フロントは published_at<=now() の週だけ表示）
 //
-// 依存: なし（Node v18+ の global fetch のみ）。Supabase は PostgREST /rpc を直叩き。
-//   041 migration の compute_weekly_rankings / apply_weekly_rankings（service_role限定）を呼ぶ。
+// Phase WR-2: PostgREST(authenticatorロールでログイン、statement_timeout=8s固定・
+//   SET ROLEでは再適用されないためservice_role個別設定でも回避不可。Phase WR-1.6実測確認済み)
+//   経由の rpc() 呼び出しから、Supabase PostgreSQLへの Direct/Pooler接続 + parameterized
+//   query 呼び出しへ変更した。Web API用authenticatorの8秒制限から週次バッチを切り離し、
+//   このスクリプト専用のstatement_timeout(60s・無制限にはしない)を設定する。
+//   compute_weekly_rankings/apply_weekly_rankings 自体のSQL・ランキング算出ロジック・
+//   human判定ロジック・apply_weekly_rankingsの原子性(delete→insert)は一切変更していない。
+//   週境界計算/SQL構築/実行制御は scripts/lib/weekly-rankings-window.mjs に分離済み
+//   (pure・node:testで直接テスト可能)。
+//
+// 依存: pg (node-postgres)。ORM等は導入しない。
 //
 // 使い方:
 //   node scripts/generate-weekly-rankings.mjs                 # dry-run（compute のみ・書込なし・既定）
@@ -24,11 +33,19 @@
 //
 // env 取得順（未設定キーのみ補完）: process.env → ./.env.local → ./.env →
 //   ./ecosystem.config.js の apps[].env（本番の権威ソース）
-//   必要キー: NEXT_PUBLIC_SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+//   必要キー: WEEKLY_RANKINGS_DATABASE_URL（Supabase Session Pooler接続文字列。
+//   このバッチ専用の最小権限ログイン verity_weekly_rankings を想定 — 汎用の
+//   SUPABASE_DATABASE_URL のような名前にしないのは、この接続文字列が「このバッチ
+//   専用の限定ロール」であり他用途に転用してはいけないことをコード上明示するため。
+//   Phase WR-3: 変数名を SUPABASE_DATABASE_URL から改名（値の意味・接続方式は変更なし）。
 // ═════════════════════════════════════════════════════════════════════════════
 import fs from 'node:fs'
 import path from 'node:path'
 import { createRequire } from 'node:module'
+import pg from 'pg'
+import { computeWindow, withClient, runWeeklyRankings, stripSslModeParam } from './lib/weekly-rankings-window.mjs'
+
+const { Client } = pg
 
 const ARGV = process.argv.slice(2)
 const APPLY = ARGV.includes('--apply')
@@ -62,58 +79,28 @@ function loadEcosystemEnv(file) {
 }
 loadEnvFile('.env.local'); loadEnvFile('.env'); loadEcosystemEnv('ecosystem.config.js')
 
-const SB_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
-const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
-for (const [k, v] of [['NEXT_PUBLIC_SUPABASE_URL', SB_URL], ['SUPABASE_SERVICE_ROLE_KEY', SB_KEY]]) {
-  if (!v) { console.error(`FATAL weekly-rankings missing env ${k}`); process.exit(2) }
+const DB_URL = process.env.WEEKLY_RANKINGS_DATABASE_URL
+if (!DB_URL) { console.error('FATAL weekly-rankings missing env WEEKLY_RANKINGS_DATABASE_URL'); process.exit(2) }
+
+// Phase WR-3 STEP7: connectionString内のsslmodeとClient()側ssl設定の競合を避けるため、
+// sslmodeだけを除いた接続文字列を使う（実機検証済み・STEP5/5B参照）。DB_URL自体はログしない。
+let CLEAN_DB_URL
+try {
+  CLEAN_DB_URL = stripSslModeParam(DB_URL)
+} catch {
+  console.error('FATAL weekly-rankings could not parse WEEKLY_RANKINGS_DATABASE_URL')
+  process.exit(2)
 }
+
 const NEWCOMER_DAYS = Number(argVal('newcomer-days') ?? 180)
 
-// ── JST 週境界の算出（TZ非依存: 常に +09:00 で明示構築）─────────────────────────
-// 与えられた now(UTC) から「現在のJST週」の月曜(00:00)を求める。--week=YYYY-MM-DD で上書き可。
-const pad = (n) => String(n).padStart(2, '0')
-const isoDate = (d) => `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`
+// PostgREST/authenticatorの8秒制限から独立した、このバッチ専用の上限。無制限にはしない。
+const STATEMENT_TIMEOUT = '60s'
+// Session Poolerへの接続確立自体がハングした場合に備えた上限（クエリのstatement_timeoutとは別軸）。
+const CONNECTION_TIMEOUT_MS = 10_000
+
 const jstIso = (d = new Date()) =>
   new Date(d.getTime() + 9 * 3600 * 1000).toISOString().replace(/\.\d+Z$/, '').replace(/Z$/, '') + '+09:00'
-
-function computeWindow() {
-  const weekArg = argVal('week')
-  let monday // UTC Date whose UTC y/m/d == JST暦の月曜日
-  if (weekArg) {
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(weekArg)) { console.error('FATAL --week must be YYYY-MM-DD'); process.exit(2) }
-    const [y, m, d] = weekArg.split('-').map(Number)
-    monday = new Date(Date.UTC(y, m - 1, d))
-  } else {
-    // 現在時刻を JST 壁時計に変換（UTCフィールドがJST日時になる）
-    const jstNow = new Date(Date.now() + 9 * 3600 * 1000)
-    const y = jstNow.getUTCFullYear(), m = jstNow.getUTCMonth(), d = jstNow.getUTCDate()
-    const dow = jstNow.getUTCDay() // 0=Sun..6=Sat (JST基準)
-    const deltaToMonday = dow === 0 ? -6 : 1 - dow
-    monday = new Date(Date.UTC(y, m, d) + deltaToMonday * 86400 * 1000)
-  }
-  const sunday = new Date(monday.getTime() + 6 * 86400 * 1000)
-  const prevMonday = new Date(monday.getTime() - 7 * 86400 * 1000)
-  const weekKey = isoDate(monday)
-  return {
-    weekKey,
-    periodStart: `${isoDate(monday)}T00:00:00+09:00`,
-    periodEnd:   `${isoDate(sunday)}T23:00:00+09:00`,
-    prevStart:   `${isoDate(prevMonday)}T00:00:00+09:00`,
-    prevEnd:     `${isoDate(monday)}T00:00:00+09:00`,
-    publishedAt: PUBLISH_NOW ? jstIso() : `${isoDate(sunday)}T23:30:00+09:00`,
-  }
-}
-
-// ── Supabase PostgREST /rpc（service_role・supabase-js不要）─────────────────────
-const SB_HEADERS = { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}`, 'Content-Type': 'application/json' }
-async function rpc(fn, args) {
-  const res = await fetch(`${SB_URL}/rest/v1/rpc/${fn}`, {
-    method: 'POST', headers: SB_HEADERS, body: JSON.stringify(args),
-  })
-  const text = await res.text()
-  if (!res.ok) throw new Error(`RPC ${fn} HTTP ${res.status}: ${text.slice(0, 300)}`)
-  return text ? JSON.parse(text) : null
-}
 
 // ── 集計結果の要約表示（dry-run / apply 共通）────────────────────────────────────
 const RANK_LABEL = {
@@ -141,39 +128,42 @@ function summarize(rows) {
 
 // ── メイン ───────────────────────────────────────────────────────────────────
 const t0 = Date.now()
-const w = computeWindow()
-console.log(`\nSTART weekly-rankings started_at=${jstIso()} mode=${APPLY ? 'APPLY' : 'DRY'} host=${new URL(SB_URL).host}`)
-console.log(`  week_key=${w.weekKey} newcomer_days=${NEWCOMER_DAYS}`)
-console.log(`  period_start=${w.periodStart}  period_end=${w.periodEnd}`)
-console.log(`  prev_start=${w.prevStart}  prev_end=${w.prevEnd}`)
-console.log(`  published_at=${w.publishedAt}`)
-
+let w
 try {
-  // 1) 集計（compute は読み取りのみ。dry-run/apply どちらでも実行して内容を表示）
-  const rows = await rpc('compute_weekly_rankings', {
-    p_period_start: w.periodStart, p_period_end: w.periodEnd,
-    p_prev_start: w.prevStart, p_prev_end: w.prevEnd,
-    p_week_key: w.weekKey, p_newcomer_days: NEWCOMER_DAYS,
-  })
-  const list = Array.isArray(rows) ? rows : []
-  console.log(`\ncompute_weekly_rankings -> ${list.length} rows`)
+  w = computeWindow({ weekArg: argVal('week'), publishNow: PUBLISH_NOW })
+  console.log(`\nSTART weekly-rankings started_at=${jstIso()} mode=${APPLY ? 'APPLY' : 'DRY'} connection=direct`)
+  console.log(`  week_key=${w.weekKey} newcomer_days=${NEWCOMER_DAYS}`)
+  console.log(`  period_start=${w.periodStart}  period_end=${w.periodEnd}`)
+  console.log(`  prev_start=${w.prevStart}  prev_end=${w.prevEnd}`)
+  console.log(`  published_at=${w.publishedAt}`)
+
+  const tCompute0 = Date.now()
+  const { rows: list, applyResult } = await withClient(
+    () => new Client({
+      connectionString: CLEAN_DB_URL,
+      ssl: { rejectUnauthorized: false },
+      connectionTimeoutMillis: CONNECTION_TIMEOUT_MS,
+    }),
+    STATEMENT_TIMEOUT,
+    (client) => runWeeklyRankings(client, { w, newcomerDays: NEWCOMER_DAYS, apply: APPLY }),
+  )
+  const computeDuration = ((Date.now() - tCompute0) / 1000).toFixed(1)
+
+  console.log(`\ncompute_weekly_rankings -> ${list.length} rows (compute_duration=${computeDuration}s)`)
   summarize(list)
 
-  // 2) 書き込み（--apply のみ。all-or-nothing で当該週を置換）
   if (APPLY) {
-    const result = await rpc('apply_weekly_rankings', {
-      p_period_start: w.periodStart, p_period_end: w.periodEnd,
-      p_prev_start: w.prevStart, p_prev_end: w.prevEnd,
-      p_published_at: w.publishedAt, p_week_key: w.weekKey, p_newcomer_days: NEWCOMER_DAYS,
-    })
-    console.log(`\nAPPLIED weekly-rankings ${JSON.stringify(result)}`)
+    console.log(`\nAPPLIED weekly-rankings ${JSON.stringify(applyResult)}`)
   } else {
     console.log(`\n(dry-run: 書き込みなし。公開するには --apply を付けて再実行)`)
   }
 
-  console.log(`\nDONE weekly-rankings mode=${APPLY ? 'APPLY' : 'DRY'} week_key=${w.weekKey} rows=${list.length} finished_at=${jstIso()} elapsed=${((Date.now() - t0) / 1000).toFixed(1)}s`)
+  console.log(
+    `\nDONE weekly-rankings mode=${APPLY ? 'APPLY' : 'DRY'} connection=direct week_key=${w.weekKey} ` +
+    `rows=${list.length} finished_at=${jstIso()} elapsed=${((Date.now() - t0) / 1000).toFixed(1)}s`
+  )
   process.exit(0)
 } catch (err) {
-  console.error(`FAILED weekly-rankings week_key=${w.weekKey} error=${String(err?.message ?? err)}`)
+  console.error(`FAILED weekly-rankings week_key=${w?.weekKey ?? '?'} error=${String(err?.message ?? err)}`)
   process.exit(1)
 }
