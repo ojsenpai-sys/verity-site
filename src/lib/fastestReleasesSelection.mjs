@@ -259,6 +259,61 @@ export function selectFastestCardsVariable(allRows, nowIso, opts = {}) {
 }
 
 /**
+ * Phase 1(1000行cap対応): 配列を size 件ずつのチャンクに分割する。
+ * PostgREST/Supabaseのレスポンス既定上限(1000行)を回避するため、
+ * fetchAllCandidatesRaw() がメーカーID配列を分割してRPCを複数回呼ぶ際に使う。
+ * size <= 0 の場合は分割不能として単一チャンク([arr])を返す(無限ループ防止)。
+ * @template T
+ * @param {T[]} arr
+ * @param {number} size
+ * @returns {T[][]}
+ */
+export function chunkArray(arr, size) {
+  if (size <= 0) return arr.length ? [arr] : []
+  const chunks = []
+  for (let i = 0; i < arr.length; i += size) chunks.push(arr.slice(i, i + size))
+  return chunks
+}
+
+/**
+ * Phase 1(1000行cap対応): 複数チャンクのRPC結果を1つにマージする(pure)。
+ * 各チャンク結果は { ok: true, rows: T[] }(成功) | { ok: false }(失敗) の
+ * 形に正規化して渡す(呼び出し元がPromise.allSettledの結果をこの形へ変換する)。
+ * - 失敗したチャンクは無視し、成功したチャンクのrowsだけをflattenする
+ *   (graceful degradation — 1チャンクの失敗で全体を失敗させない。理由は
+ *    fastestReleases.ts の fetchAllCandidatesRaw() 側コメント参照)。
+ * - external_id単位でdedupe(先勝ち)する。メーカーIDは1チャンクにのみ属する
+ *   ため境界を跨いだ重複は理論上発生しないが、安全側のマージとして行う。
+ * - allFailed: チャンクが1件以上あり、かつ全チャンクが失敗した場合にtrue
+ *   (呼び出し元はこれを見て例外を投げるかどうかを判断する)。
+ * @template {{ external_id: string }} T
+ * @param {({ ok: true, rows: T[] } | { ok: false })[]} chunkResults
+ * @returns {{ rows: T[], allFailed: boolean, failedCount: number }}
+ */
+export function mergeCandidateChunks(chunkResults) {
+  const rows = []
+  let failedCount = 0
+  for (const result of chunkResults) {
+    if (!result.ok) {
+      failedCount++
+      continue
+    }
+    rows.push(...result.rows)
+  }
+
+  const seen = new Set()
+  const deduped = []
+  for (const r of rows) {
+    if (seen.has(r.external_id)) continue
+    seen.add(r.external_id)
+    deduped.push(r)
+  }
+
+  const allFailed = chunkResults.length > 0 && failedCount === chunkResults.length
+  return { rows: deduped, allFailed, failedCount }
+}
+
+/**
  * Phase 1: メーカーセクションの表示順を決める。
  * 「最新batchのfetched_at降順」を主基準にし、fetched_atが同一(または両方null=
  * 候補無し)の場合は makerIdOrder 上の出現順で安定的にタイブレークする

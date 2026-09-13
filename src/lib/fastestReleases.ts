@@ -41,7 +41,7 @@ import { unstable_cache } from 'next/cache'
 import { withFetchTimeout, SUPABASE_FETCH_TIMEOUT_MS } from '@/lib/supabase/timeout'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
-import { selectFastestCardsVariable, sortMakerSections } from '@/lib/fastestReleasesSelection.mjs'
+import { selectFastestCardsVariable, sortMakerSections, chunkArray, mergeCandidateChunks } from '@/lib/fastestReleasesSelection.mjs'
 import { MAKERS as ALL_MAKERS, type Maker } from '@/lib/makers'
 
 export type FastestCard = {
@@ -81,11 +81,33 @@ const MAX_CARDS_PER_MAKER = 10
 const MIN_CARDS_PER_MAKER = 5
 
 // RPCが1メーカーあたり取得する候補行数(fetched_at降順の上位N件)。
-// 「batch最大10件 + 補完に必要な最大分」を安全に賄える値として40を採用
-// (batchが10件を超えて発生しても補完自体は不要になるため、実質的な下限は
-//  「補完が必要になりうる最悪ケース(batch=1件)でも4件の補完候補プールを
-//  確保できること」。40件あればdedupeで多少目減りしても十分な余裕がある)。
-const RPC_LIMIT_PER_MAKER = 40
+// Phase 1実装当初は40を採用したが、production read-only validationで
+// 「batchが1件しかなく、かつ同時期の他floor行がpoolを占有してしまい、
+//  limit=40では補完候補プールが0件になり5件未満表示になる」ケースを発見
+// (例: maker 3152/S1 — limit=40でfinal=1件)。
+// limit=40/60/80/100の4水準を本番データで比較した結果:
+//   - limit=60でmaker 3152のケースは解消(pool_available=15→表示5件達成)
+//   - 「limit=40時点で5件未満だった41メーカー」のうちlimit=60は38/41を
+//     5件表示まで回復させる。これはlimit=80/100と完全に同一の回復数であり、
+//     80/100へ引き上げても追加の回復効果はゼロ(残り3メーカーは母数不足による
+//     genuine低在庫・floor偏りで、5件未満表示が仕様どおりの許容ケース)。
+// → 60を採用する(80/100は無意味に行数を増やすだけでベネフィットが無い)。
+const RPC_LIMIT_PER_MAKER = 60
+
+// PostgREST/Supabaseはレスポンスを既定で最大1000行に切り詰める(超過分は
+// エラーにならず黙って欠落する)。57メーカー全件を1リクエストで
+// p_limit_per_maker=60 で取得すると理論上最大 57*60=3420行になり得るため、
+// production read-only validationで実際に約32/57メーカー分が無言で欠落する
+// ことを確認した(BLOCKER)。
+// 対策: メーカーID配列を複数チャンクへ分割し、チャンクごとに個別RPC呼び出しを
+// 行い、結果をマージする(DB/RPC/migration側は一切変更しない — 057/058は
+// 本番適用済みのため変更禁止。アプリ側のみで解決する)。
+// チャンクサイズの決め方: 1000件ちょうどを狙わず余裕を持たせる方針
+// (最大800 rows/chunk程度を目安)から、
+//   MAKERS_PER_CHUNK * RPC_LIMIT_PER_MAKER <= 800 を満たす最大値として
+//   13 * 60 = 780 (1000件上限に対し約22%の余裕)を採用。
+// 57メーカーを13件ずつに分けると ceil(57/13)=5 チャンク(13,13,13,13,5)。
+const MAKERS_PER_CHUNK = 13
 
 // ── 手動フォールバック配列(元 FastestNewReleases.tsx から移設。削除しない) ──────────────
 // 旧8メーカー分のみ。新規49メーカーには手動データが存在しないため対象外。
@@ -360,18 +382,55 @@ function toJstDateKey(iso: string): string {
 }
 
 /**
- * 全対象メーカー分の候補行を1回のRPC呼び出しでまとめて取得する(Phase 1: N+1解消)。
- * 057_fastest_releases_candidates_rpc.sql の get_fastest_releases_candidates を呼ぶだけ。
+ * 全対象メーカー分の候補行を取得する(Phase 1: N+1解消 → 1000行cap対応でchunk化)。
+ * 057_fastest_releases_candidates_rpc.sql の get_fastest_releases_candidates を
+ * メーカーIDをチャンク分割して複数回呼び出し、結果をマージする。
+ *
+ * 障害時の方針(graceful degradation採用): チャンク単位でPromise.allSettledを使い、
+ * 一部チャンクのRPC呼び出しが失敗しても他チャンクの結果は破棄しない
+ * (全チャンクが失敗した場合のみ例外を投げ、呼び出し元の既存catch節に委ねる)。
+ * 理由: chunk化により1回のfetchで発行するRPC呼び出し数が1→5に増えるため、
+ * 「1回でも失敗したら全体を失敗扱いにする」(fail-closed)を採用すると、
+ * 単一チャンクの一時的な不調だけで57メーカー全体が表示不可になり、
+ * chunk化前(RPC1本)より信頼性が悪化してしまう。本キャッシュのTTLは60秒と
+ * 短く次回revalidateで自然に回復するため、「失敗したチャンク分のメーカーだけ
+ * 今回は表示されない」方が「57メーカー全部が今回表示されない」より実害が
+ * 小さいと判断した。失敗したチャンクはconsole.errorで記録する。
  */
 async function fetchAllCandidatesRaw(): Promise<CandidateRow[]> {
   const supabase = getStatelessClient()
   const makerIds = ALL_MAKERS.map((m) => String(m.id))
-  const { data, error } = await supabase.rpc('get_fastest_releases_candidates', {
-    p_maker_ids: makerIds,
-    p_limit_per_maker: RPC_LIMIT_PER_MAKER,
+  const chunks = chunkArray(makerIds, MAKERS_PER_CHUNK) as string[][]
+
+  const settled = await Promise.allSettled(
+    chunks.map((chunk) =>
+      supabase.rpc('get_fastest_releases_candidates', {
+        p_maker_ids: chunk,
+        p_limit_per_maker: RPC_LIMIT_PER_MAKER,
+      }),
+    ),
+  )
+
+  const chunkResults = settled.map((result) => {
+    if (result.status === 'rejected') {
+      console.error('[FastestNewReleases] get_fastest_releases_candidates chunk rejected:', result.reason)
+      return { ok: false as const }
+    }
+    const { data, error } = result.value
+    if (error) {
+      console.error('[FastestNewReleases] get_fastest_releases_candidates chunk error:', error.message)
+      return { ok: false as const }
+    }
+    return { ok: true as const, rows: (data ?? []) as CandidateRow[] }
   })
-  if (error) throw new Error(`get_fastest_releases_candidates error: ${error.message}`)
-  return (data ?? []) as CandidateRow[]
+
+  const { rows, allFailed } = mergeCandidateChunks(chunkResults) as {
+    rows: CandidateRow[]
+    allFailed: boolean
+    failedCount: number
+  }
+  if (allFailed) throw new Error('get_fastest_releases_candidates: all chunks failed')
+  return rows
 }
 
 // Phase 1: 全メーカー分を1エントリにまとめてキャッシュする(旧: メーカーごとにN個)。

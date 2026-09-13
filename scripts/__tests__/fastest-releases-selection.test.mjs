@@ -21,6 +21,8 @@ import {
   canonicalCidBase,
   isSameWorkTitleGroup,
   dedupeSameWork,
+  chunkArray,
+  mergeCandidateChunks,
 } from '../../src/lib/fastestReleasesSelection.mjs'
 
 const NOW = '2026-08-18T00:00:00.000+00:00'
@@ -430,4 +432,99 @@ test('sortMakerSections: makerIdOrderに存在しないmakerIdは末尾側にフ
     { makerId: 'a', latestFetchedAt: '2026-08-17T00:00:00+00:00' },
   ]
   assert.deepEqual(sortMakerSections(makers, ['a']).map((m) => m.makerId), ['a', 'unknown'])
+})
+
+// ═════════════════════════════════════════════════════════════════════════════
+// chunkArray / mergeCandidateChunks (Phase 1: 1000行cap対応・chunk化)
+// ═════════════════════════════════════════════════════════════════════════════
+test('chunkArray: 割り切れる場合は均等に分割される', () => {
+  const arr = [1, 2, 3, 4, 5, 6]
+  assert.deepEqual(chunkArray(arr, 2), [[1, 2], [3, 4], [5, 6]])
+})
+test('chunkArray: 割り切れない場合は最後のチャンクだけ短くなる', () => {
+  const arr = [1, 2, 3, 4, 5]
+  assert.deepEqual(chunkArray(arr, 2), [[1, 2], [3, 4], [5]])
+})
+test('chunkArray: 本番設定(57メーカー・13件/chunk)は13,13,13,13,5の5チャンクになる', () => {
+  const makerIds = Array.from({ length: 57 }, (_, i) => String(i + 1))
+  const chunks = chunkArray(makerIds, 13)
+  assert.deepEqual(chunks.map((c) => c.length), [13, 13, 13, 13, 5])
+  assert.equal(chunks.length, 5)
+  // 5チャンク × 60(RPC_LIMIT_PER_MAKER) = 最大780行/chunk。1000件上限に対し余裕がある。
+  assert.ok(13 * 60 < 800, 'chunk1件あたりの最大行数が800を超えないこと')
+})
+test('chunkArray: 全要素がいずれかのチャンクに過不足なく含まれる(欠落・重複なし)', () => {
+  const arr = Array.from({ length: 57 }, (_, i) => `m${i + 1}`)
+  const chunks = chunkArray(arr, 13)
+  const flattened = chunks.flat()
+  assert.deepEqual(flattened, arr) // 順序も含めて完全一致
+  assert.equal(new Set(flattened).size, arr.length) // 重複なし
+})
+test('chunkArray: 空配列は空配列を返す', () => {
+  assert.deepEqual(chunkArray([], 13), [])
+})
+test('chunkArray: size <= 0 は分割せず単一チャンクを返す(無限ループ防止)', () => {
+  assert.deepEqual(chunkArray([1, 2, 3], 0), [[1, 2, 3]])
+  assert.deepEqual(chunkArray([1, 2, 3], -1), [[1, 2, 3]])
+  assert.deepEqual(chunkArray([], 0), [])
+})
+test('chunkArray: sizeが配列長以上なら単一チャンクになる', () => {
+  assert.deepEqual(chunkArray([1, 2, 3], 100), [[1, 2, 3]])
+})
+
+test('mergeCandidateChunks: 全チャンク成功時はflattenして返す(順序維持)', () => {
+  const result = mergeCandidateChunks([
+    { ok: true, rows: [{ external_id: 'a' }, { external_id: 'b' }] },
+    { ok: true, rows: [{ external_id: 'c' }] },
+  ])
+  assert.deepEqual(result.rows.map((r) => r.external_id), ['a', 'b', 'c'])
+  assert.equal(result.allFailed, false)
+  assert.equal(result.failedCount, 0)
+})
+test('mergeCandidateChunks: 一部チャンク失敗時はgraceful degradation(成功分だけ返す。allFailedはfalse)', () => {
+  const result = mergeCandidateChunks([
+    { ok: true, rows: [{ external_id: 'a' }] },
+    { ok: false },
+    { ok: true, rows: [{ external_id: 'c' }] },
+  ])
+  assert.deepEqual(result.rows.map((r) => r.external_id), ['a', 'c'])
+  assert.equal(result.allFailed, false)
+  assert.equal(result.failedCount, 1)
+})
+test('mergeCandidateChunks: 全チャンク失敗時はallFailed=trueかつrowsは空', () => {
+  const result = mergeCandidateChunks([{ ok: false }, { ok: false }])
+  assert.deepEqual(result.rows, [])
+  assert.equal(result.allFailed, true)
+  assert.equal(result.failedCount, 2)
+})
+test('mergeCandidateChunks: チャンク結果が空配列(chunks.length===0)ならallFailedはfalse', () => {
+  const result = mergeCandidateChunks([])
+  assert.deepEqual(result.rows, [])
+  assert.equal(result.allFailed, false)
+  assert.equal(result.failedCount, 0)
+})
+test('mergeCandidateChunks: external_id重複は先勝ちでdedupeされる(チャンク境界を跨いだ安全側マージ)', () => {
+  const result = mergeCandidateChunks([
+    { ok: true, rows: [{ external_id: 'dup', title: 'first' }] },
+    { ok: true, rows: [{ external_id: 'dup', title: 'second' }, { external_id: 'unique' }] },
+  ])
+  assert.deepEqual(result.rows.map((r) => r.external_id), ['dup', 'unique'])
+  assert.equal(result.rows[0].title, 'first') // 先勝ち
+})
+test('mergeCandidateChunks: 本番相当シミュレーション(57メーカー・5chunk中1chunk失敗)でも他4chunk分のメーカーは保持される', () => {
+  const makerIds = Array.from({ length: 57 }, (_, i) => String(i + 1))
+  const chunks = chunkArray(makerIds, 13)
+  const chunkResults = chunks.map((chunk, i) =>
+    i === 2
+      ? { ok: false } // 3番目のchunk(13,13,[13],13,5)だけRPC失敗を模擬
+      : { ok: true, rows: chunk.map((id) => ({ external_id: `ext-${id}`, maker_id: id })) },
+  )
+  const result = mergeCandidateChunks(chunkResults)
+  assert.equal(result.allFailed, false)
+  assert.equal(result.failedCount, 1)
+  // 失敗した13メーカー分を除く44メーカー分の行が保持されている
+  assert.equal(result.rows.length, 57 - 13)
+  const survivingMakerIds = new Set(result.rows.map((r) => r.maker_id))
+  const failedMakerIds = new Set(chunks[2])
+  for (const id of failedMakerIds) assert.equal(survivingMakerIds.has(id), false)
 })
