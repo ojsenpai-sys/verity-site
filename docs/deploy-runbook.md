@@ -29,13 +29,31 @@ every page crashes in the browser once client-side code tries to
 create a Supabase client (`@supabase/ssr: Your project's URL and API
 key are required...`). This happened in production on 2026-09-14.
 
-`deploy.sh` now runs `scripts/check-build-env.mjs` as its first step,
-before touching SSH or the build. If `NEXT_PUBLIC_SUPABASE_URL` or
-`NEXT_PUBLIC_SUPABASE_ANON_KEY` cannot be resolved (missing, empty, or
-whitespace-only), it exits 1 immediately — no build, no SSH connection,
-no VPS changes. Deploying without a correctly populated `.env.local`
-is no longer possible; the worktree-copy step above is still required,
-but forgetting it now fails loudly instead of shipping a broken build.
+The enforcement lives in `package.json`, not in `deploy.sh`:
+`npm run build` has a `prebuild` script
+(`node scripts/check-build-env.mjs`) that npm always runs before
+`build`, per npm's standard pre/post script lifecycle. If
+`NEXT_PUBLIC_SUPABASE_URL` or `NEXT_PUBLIC_SUPABASE_ANON_KEY` cannot be
+resolved (missing, empty, or whitespace-only), `check-build-env.mjs`
+exits 1 and `next build` never starts — this is true for `deploy.sh`,
+a developer running `npm run build` by hand, a worktree, or CI,
+because it is enforced by the committed `package.json` itself rather
+than by any local/gitignored script. `check-build-env.mjs` resolves
+env the same way `next build` does internally (via `@next/env`'s
+`loadEnvConfig`), so there is no separate resolution logic to drift
+out of sync.
+
+`deploy.sh` additionally calls `scripts/check-build-env.mjs` directly
+as its very first step, before touching SSH — this is redundant with
+the `prebuild` lifecycle (defense-in-depth only) and remains local to
+each machine since `deploy.sh` itself is gitignored. The `prebuild`
+script in `package.json` is the source of truth; do not rely on
+`deploy.sh`'s copy as the primary protection.
+
+Deploying without a correctly populated `.env.local` is no longer
+possible; the worktree-copy step above is still required, but
+forgetting it now fails loudly (in both `npm run build` and
+`deploy.sh`) instead of shipping a broken build.
 
 ## Production deployment completion criteria
 
