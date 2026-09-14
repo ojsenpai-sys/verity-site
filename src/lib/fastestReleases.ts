@@ -382,9 +382,44 @@ function toJstDateKey(iso: string): string {
 }
 
 /**
- * 全対象メーカー分の候補行を取得する(Phase 1: N+1解消 → 1000行cap対応でchunk化)。
+ * 1チャンク分(MAKERS_PER_CHUNK社)の候補行を取得する、キャッシュ無しのRPC呼び出し。
+ * unstable_cache でラップして使う(下記 getCachedChunkCandidates)。
+ */
+async function fetchChunkCandidatesRaw(chunkMakerIds: string[]): Promise<CandidateRow[]> {
+  const supabase = getStatelessClient()
+  const { data, error } = await supabase.rpc('get_fastest_releases_candidates', {
+    p_maker_ids: chunkMakerIds,
+    p_limit_per_maker: RPC_LIMIT_PER_MAKER,
+  })
+  if (error) throw new Error(`get_fastest_releases_candidates error: ${error.message}`)
+  return (data ?? []) as CandidateRow[]
+}
+
+// production incident対応(2026-09-14): 以前は57メーカー全体のマージ結果を
+// 1つのunstable_cache entryにまとめていたが、シリアライズ後サイズが約3.6〜3.9MBに
+// 達しNext.jsのcache entry上限(2MB)を恒常的に超過していた。cache書き込みが
+// 常に失敗する結果、/verity へのアクセスのたびにcacheが一切効かず、毎回5 RPC・
+// 約4MBのSupabase egressが発生し、Supabase Egress quota超過(Verity-Portal単体で
+// 320GB超・deploy当日26〜29GB/日)を引き起こした。
+// 対策: 「全体を1エントリ」ではなく「chunkごとに個別のunstable_cache entry」へ
+// 変更する。unstable_cacheは呼び出し引数(ここではchunkのmaker ID配列)を
+// 自動的にcache keyへ組み込むため、chunk内容が異なれば別entryになり、
+// 同じchunkであれば60秒間同じentryを再利用する(Next.js標準のparametrized cache
+// idiom)。各chunk(MAKERS_PER_CHUNK=13社・p_limit_per_maker=60)のシリアライズ後
+// サイズは本番read-only計測で1エントリあたり1MB未満(2MB上限に対し十分な安全
+// マージンあり)であることを確認済み。RPC_LIMIT_PER_MAKER=60・MAKERS_PER_CHUNK=13
+// (5chunk)・57 managed makers・PostgREST 1000行cap対策は一切変更しない。
+const getCachedChunkCandidates = unstable_cache(
+  fetchChunkCandidatesRaw,
+  ['fastest-releases-chunk-candidates'],
+  { revalidate: 60 },
+)
+
+/**
+ * 全対象メーカー分の候補行を取得する(Phase 1: N+1解消 → 1000行cap対応でchunk化 →
+ * production incident対応でchunk単位cache化)。
  * 057_fastest_releases_candidates_rpc.sql の get_fastest_releases_candidates を
- * メーカーIDをチャンク分割して複数回呼び出し、結果をマージする。
+ * メーカーIDをチャンク分割して複数回呼び出し(chunkごとに個別にcache済み)、結果をマージする。
  *
  * 障害時の方針(graceful degradation採用): チャンク単位でPromise.allSettledを使い、
  * 一部チャンクのRPC呼び出しが失敗しても他チャンクの結果は破棄しない
@@ -398,30 +433,17 @@ function toJstDateKey(iso: string): string {
  * 小さいと判断した。失敗したチャンクはconsole.errorで記録する。
  */
 async function fetchAllCandidatesRaw(): Promise<CandidateRow[]> {
-  const supabase = getStatelessClient()
   const makerIds = ALL_MAKERS.map((m) => String(m.id))
   const chunks = chunkArray(makerIds, MAKERS_PER_CHUNK) as string[][]
 
-  const settled = await Promise.allSettled(
-    chunks.map((chunk) =>
-      supabase.rpc('get_fastest_releases_candidates', {
-        p_maker_ids: chunk,
-        p_limit_per_maker: RPC_LIMIT_PER_MAKER,
-      }),
-    ),
-  )
+  const settled = await Promise.allSettled(chunks.map((chunk) => getCachedChunkCandidates(chunk)))
 
   const chunkResults = settled.map((result) => {
     if (result.status === 'rejected') {
       console.error('[FastestNewReleases] get_fastest_releases_candidates chunk rejected:', result.reason)
       return { ok: false as const }
     }
-    const { data, error } = result.value
-    if (error) {
-      console.error('[FastestNewReleases] get_fastest_releases_candidates chunk error:', error.message)
-      return { ok: false as const }
-    }
-    return { ok: true as const, rows: (data ?? []) as CandidateRow[] }
+    return { ok: true as const, rows: result.value }
   })
 
   const { rows, allFailed } = mergeCandidateChunks(chunkResults) as {
@@ -432,21 +454,6 @@ async function fetchAllCandidatesRaw(): Promise<CandidateRow[]> {
   if (allFailed) throw new Error('get_fastest_releases_candidates: all chunks failed')
   return rows
 }
-
-// Phase 1: 全メーカー分を1エントリにまとめてキャッシュする(旧: メーカーごとにN個)。
-// TTL=60秒とした理由(旧300秒から短縮):
-//   - 旧実装はメーカーごとに個別キャッシュ・個別クエリだったため、TTLを短くすると
-//     キャッシュミス時に最大114クエリが再発生するリスクがあった。
-//   - Phase 1でRPC1本化・キャッシュ1エントリ化した結果、キャッシュミス時のコストは
-//     「57メーカー分をカバーする1クエリ」のみになった。ミス時コストが約1/50に
-//     下がったため、同じ安全性を保ったままTTLを短縮できる。
-//   - maker-syncは1日1回(00:30 JST)のみ実行されるため、理論上は数分でも十分だが、
-//     「最速反映」の体感を優先しつつ、force-dynamicなHomepageで毎リクエストDBを
-//     叩く事態を避けるため、まずは60秒という保守的な値を採用する
-//     (maker-sync直接revalidate等の大規模変更は今回のスコープ外)。
-const getCachedCandidates = unstable_cache(fetchAllCandidatesRaw, ['fastest-releases-all-candidates'], {
-  revalidate: 60,
-})
 
 function dmmUrl(cid: string): string {
   return `https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=${cid}/`
@@ -585,12 +592,12 @@ async function enrichFallbackSections(sections: FastestMakerSection[]): Promise<
 /**
  * 全対象メーカー(src/lib/makers.ts の MAKERS 全件)の「最新作最速更新情報」セクションを
  * 構築する(cards付き・表示順ソート済み)。Homepage/latest ページ双方から呼ばれ、
- * 呼び出し側でスライスして使う(RPC/キャッシュは1回で共有される)。
+ * 呼び出し側でスライスして使う(chunkごとのRPC/キャッシュは全呼び出し元で共有される)。
  */
 export async function getFastestReleasesSections(): Promise<FastestMakerSection[]> {
   let rows: CandidateRow[] = []
   try {
-    rows = await getCachedCandidates()
+    rows = await fetchAllCandidatesRaw()
   } catch (err) {
     console.error('[FastestNewReleases] get_fastest_releases_candidates failed:', err instanceof Error ? err.message : err)
   }
