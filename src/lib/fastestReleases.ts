@@ -1,45 +1,48 @@
 /**
- * 最新作最速更新情報 — 自動抽出ロジック(Phase B / A案 → Phase F → Phase F-2)。
+ * 最新作最速更新情報 — 自動抽出ロジック(Phase B / A案 → Phase F → Phase F-2 → Phase 1 Refresh)。
  *
- * Phase F-2: 「検知」と「表示」を分離する設計。
+ * Phase 1 Refresh（今回）: 対象を旧8メーカーの手動配列から
+ * src/lib/makers.ts の MAKERS 全件（source of truth・件数はハードコードしない）へ拡張し、
+ * 以下を変更した:
+ *   - 取得方式: メーカーごと2クエリ×Nメーカー(N+1)から、RPC
+ *     get_fastest_releases_candidates(maker_ids, limit_per_maker) 1本へ統合
+ *     （057_fastest_releases_candidates_rpc.sql・window functionで全メーカー分を1クエリで取得）。
+ *   - キャッシュ: メーカーごとのunstable_cacheエントリ(N個)から、全メーカー分をまとめた
+ *     1エントリへ統合（TTLは60秒。理由は本ファイル末尾のコメント参照）。
+ *   - 表示件数: 「最新batch(同一fetched_at)の件数 N」に応じて5〜10件の可変表示
+ *     （selectFastestCardsVariable。batch<5件の場合は直前の同メーカー作品で5件まで補完）。
+ *   - メーカー表示順: 「最新batchのfetched_at」降順・同一値はMAKERS配列順で安定タイブレーク
+ *     （sortMakerSections）。
+ *   - Homepageは動的上位8メーカー、/verity/latest は全メーカーをページネーション表示。
+ *
+ * 「検知」と「表示」を分離する設計はPhase F-2から維持:
  *   - 検知: メーカーごとに floor∈{videoa, dvd} を合算した MAX(fetched_at) を
  *           「最新検知batch」とし、その時刻と完全一致する行を候補にする
  *           (fetched_atはINSERT時に一度だけ確定し、以降のcronで再取得されても
- *            更新されない — 同一トランザクションで挿入された行はfetched_atが
- *            完全一致する)。
+ *            更新されない — maker-sync.mjsはmissing CIDのみをINSERTし、
+ *            既存行へのUPDATE経路はコード上存在しない。Phase 1監査で再確認済み)。
  *   - 表示floor: batch内にvideoa行が1件以上あればvideoaのみ。0件のときのみ
- *           dvdをフォールバックとして採用する。videoa/dvdの同一作品をCID変換で
- *           マージすることはしない(DMM側に信頼できる同一作品キーが存在しないため)。
- *           後日videoa版がDBへ入れば、その時点のMAX(fetched_at)が新しいbatchに
- *           なり自然にvideoaへ切り替わる。
- *   - batch内の整理: published_at はフィルタではなく整理に使う。
- *           1. published_at >= now(未来) → published_at 昇順(現在に近い順)
- *           2. 1だけで件数が足りない場合、published_at < now(配信済み) →
- *              published_at 降順(新しい順)で補完
- *           3. published_at が null の行は除外
- *   選定ロジック本体は src/lib/fastestReleasesSelection.mjs (pure・node:testで直接テスト可能)。
+ *           dvdをフォールバックとして採用する。
+ *   - batch内の整理・同一作品(派生SKU)dedupeのロジックは
+ *     src/lib/fastestReleasesSelection.mjs に分離済み(pure・node:testで直接テスト可能)。
  *
- * メーカー間表示順(2026-08-04 オーナー指示 → Phase F-2で検知基準に統一):
- *   各メーカーの MAX(fetched_at)(JST日付)降順。同日は下記 TARGET_MAKERS の
- *   配列順(既存 MAKERS 基本順を踏襲)で安定表示する。
- *
- * メーカー単位のフォールバック方針:
+ * メーカー単位のフォールバック方針(旧8メーカーのみ・変更なし):
  *   - 個別メーカーの自動取得が失敗/0件 → そのメーカーだけ手動 CID 配列(FALLBACK_MAKERS)を使う
- *   - 全メーカー失敗しても同じ経路で自然に「全メーカー手動表示」へ縮退する(特別分岐は作らない)
+ *     (FALLBACK_MAKERSは旧8メーカー分の手動キュレーションのみ保持。新規49メーカーには
+ *      手動フォールバックデータが存在しないため、自動取得が0件の場合は単純にその
+ *      メーカーのセクションを表示しない — 存在しない作品を無理に補完しないという
+ *      今回の方針と一致する)。
  *   - フォールバック用の記事情報(タイトル/スラッグ)取得も失敗した場合は CID 直描画へ縮退する
- *     (元の FastestNewReleases.tsx が既に持っていた「DB記事が無ければCIDから直接カード化」と同じ設計)
  *
- * 本ファイルは読み取り専用(SELECT のみ)。cron_status_runs 等への書き込みは行わない。
+ * 本ファイルは読み取り専用(SELECT/RPCのみ)。cron_status_runs 等への書き込みは行わない。
  */
 import { createClient as createSupabaseClient, type SupabaseClient } from '@supabase/supabase-js'
 import { unstable_cache } from 'next/cache'
 import { withFetchTimeout, SUPABASE_FETCH_TIMEOUT_MS } from '@/lib/supabase/timeout'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
-import { selectFastestCards } from '@/lib/fastestReleasesSelection.mjs'
-
-export type FastestMakerKey =
-  | 's1' | 'ideapocket' | 'moodyz' | 'kawaii' | 'honchu' | 'premium' | 'ebody' | 'oppai'
+import { selectFastestCardsVariable, sortMakerSections, chunkArray, mergeCandidateChunks } from '@/lib/fastestReleasesSelection.mjs'
+import { MAKERS as ALL_MAKERS, type Maker } from '@/lib/makers'
 
 export type FastestCard = {
   cid: string
@@ -54,7 +57,9 @@ export type FastestCard = {
 }
 
 export type FastestMakerSection = {
-  id: FastestMakerKey
+  /** maker id(文字列化)。Reactのkey・セクション識別に使う。 */
+  id: string
+  makerId: number
   label: string
   /** JST 'YYYY-MM-DD'。自動取得時は最新入荷日、フォールバック時は手動 updatedAt の日付部分。 */
   updateDateKey: string
@@ -64,35 +69,60 @@ export type FastestMakerSection = {
   moreUrl: string
 }
 
-type TargetMaker = { id: number; key: FastestMakerKey; label: string }
+// Homepageに表示する「直近更新上位メーカー数」。全対象メーカー数(MAKERS.length)を
+// 表示するとページが際限なく伸びるため、上位のみを表示し残りは /verity/latest に委ねる。
+const HOMEPAGE_MAKER_COUNT = 8
 
-// scripts/maker-sync.mjs の MAKERS と同一 maker_id。
-// 配列順は旧 FastestNewReleases.tsx の手動 MAKERS 定義順(moodyz→honchu→premium→ebody→oppai→
-// s1→ideapocket→kawaii)をそのまま踏襲する — 同日タイブレークに使う「基本配列順」はこの順序を指す。
-// 追加・削除は行わない(オーナー指定)。
-const TARGET_MAKERS: TargetMaker[] = [
-  { id: 1509, key: 'moodyz',     label: 'ムーディーズ' },
-  { id: 6304, key: 'honchu',     label: '本中' },
-  { id: 3890, key: 'premium',    label: 'プレミアム' },
-  { id: 5032, key: 'ebody',      label: 'E-BODY' },
-  { id: 5238, key: 'oppai',      label: 'OPPAI' },
-  { id: 3152, key: 's1',         label: 'エスワン' },
-  { id: 1219, key: 'ideapocket', label: 'アイデアポケット' },
-  { id: 4469, key: 'kawaii',     label: 'kawaii' },
-]
+// /verity/latest の1ページあたりメーカー数(server-side pagination)。
+const LATEST_PAGE_MAKER_COUNT = 12
 
-// トップページ初期表示のメーカーごと件数(2026-08-04 性能最適化・オーナー指定)。
-// 「最新入荷日と同じ日付」への絞り込みは行わない(fetched_at降順で直近N件をそのまま採用)。
-// 残りは /verity/makers/[makerId](既存の全件一覧ページ)への「もっと見る」導線に委ねる。
-// サーバー側の取得件数自体をこの値に絞る(Client Componentへ全件渡してCSSで隠す方式は禁止)。
-const TOP_PAGE_CARDS_PER_MAKER = 10
+// トップページ/latest共通のメーカーごと最大表示件数。
+const MAX_CARDS_PER_MAKER = 10
+const MIN_CARDS_PER_MAKER = 5
+
+// RPCが1メーカーあたり取得する候補行数(fetched_at降順の上位N件)。
+// Phase 1実装当初は40を採用したが、production read-only validationで
+// 「batchが1件しかなく、かつ同時期の他floor行がpoolを占有してしまい、
+//  limit=40では補完候補プールが0件になり5件未満表示になる」ケースを発見
+// (例: maker 3152/S1 — limit=40でfinal=1件)。
+// limit=40/60/80/100の4水準を本番データで比較した結果:
+//   - limit=60でmaker 3152のケースは解消(pool_available=15→表示5件達成)
+//   - 「limit=40時点で5件未満だった41メーカー」のうちlimit=60は38/41を
+//     5件表示まで回復させる。これはlimit=80/100と完全に同一の回復数であり、
+//     80/100へ引き上げても追加の回復効果はゼロ(残り3メーカーは母数不足による
+//     genuine低在庫・floor偏りで、5件未満表示が仕様どおりの許容ケース)。
+// → 60を採用する(80/100は無意味に行数を増やすだけでベネフィットが無い)。
+const RPC_LIMIT_PER_MAKER = 60
+
+// PostgREST/Supabaseはレスポンスを既定で最大1000行に切り詰める(超過分は
+// エラーにならず黙って欠落する)。57メーカー全件を1リクエストで
+// p_limit_per_maker=60 で取得すると理論上最大 57*60=3420行になり得るため、
+// production read-only validationで実際に約32/57メーカー分が無言で欠落する
+// ことを確認した(BLOCKER)。
+// 対策: メーカーID配列を複数チャンクへ分割し、チャンクごとに個別RPC呼び出しを
+// 行い、結果をマージする(DB/RPC/migration側は一切変更しない — 057/058は
+// 本番適用済みのため変更禁止。アプリ側のみで解決する)。
+// チャンクサイズの決め方: 1000件ちょうどを狙わず余裕を持たせる方針
+// (最大800 rows/chunk程度を目安)から、
+//   MAKERS_PER_CHUNK * RPC_LIMIT_PER_MAKER <= 800 を満たす最大値として
+//   13 * 60 = 780 (1000件上限に対し約22%の余裕)を採用。
+// 57メーカーを13件ずつに分けると ceil(57/13)=5 チャンク(13,13,13,13,5)。
+const MAKERS_PER_CHUNK = 13
 
 // ── 手動フォールバック配列(元 FastestNewReleases.tsx から移設。削除しない) ──────────────
+// 旧8メーカー分のみ。新規49メーカーには手動データが存在しないため対象外。
 type FallbackMakerConfig = {
-  id: FastestMakerKey
+  id: 's1' | 'ideapocket' | 'moodyz' | 'kawaii' | 'honchu' | 'premium' | 'ebody' | 'oppai'
   updatedAt: string
   cids: readonly string[]
   actressMap: Record<string, string>
+}
+
+// フォールバックキー(旧FastestMakerKey相当) ⇔ 実際のmaker id の対応表。
+// FALLBACK_MAKERSのデータ自体(cids/actressMap)は変更しない。
+const LEGACY_FALLBACK_MAKER_IDS: Record<FallbackMakerConfig['id'], number> = {
+  moodyz: 1509, honchu: 6304, premium: 3890, ebody: 5032,
+  oppai: 5238, s1: 3152, ideapocket: 1219, kawaii: 4469,
 }
 
 export const FALLBACK_MAKERS: FallbackMakerConfig[] = [
@@ -318,8 +348,9 @@ export const FALLBACK_MAKERS: FallbackMakerConfig[] = [
   },
 ]
 
-// ── DB行の最小shape(必要カラムのみ) ────────────────────────────────────────────
-type ArticleRow = {
+// ── DB行の最小shape(RPC返却カラムに対応) ────────────────────────────────────────
+type CandidateRow = {
+  maker_id: string
   external_id: string
   title: string | null
   slug: string | null
@@ -345,52 +376,77 @@ function getStatelessClient(): SupabaseClient {
   return _client
 }
 
-const SELECT_COLUMNS = 'external_id,title,slug,image_url,metadata,published_at,fetched_at'
-
 function toJstDateKey(iso: string): string {
   const d = new Date(iso)
   return new Date(d.getTime() + 9 * 3600 * 1000).toISOString().slice(0, 10)
 }
 
-type MakerBatch = { latestFetchedAt: string | null; rows: ArticleRow[] }
-
-// 「表示floor決定」「batch内整理」の正本ロジックは
-// src/lib/fastestReleasesSelection.mjs に分離済み(pure・node:testで直接テスト可能)。
-// ここでは「検知」— videoa+dvd合算のMAX(fetched_at)と完全一致する行(最新検知batch)の
-// 取得のみを行う(2クエリ: 1.最新fetched_atを特定 → 2.その値と完全一致する行を取得)。
-async function fetchMakerRowsRaw(makerId: number): Promise<MakerBatch> {
+/**
+ * 全対象メーカー分の候補行を取得する(Phase 1: N+1解消 → 1000行cap対応でchunk化)。
+ * 057_fastest_releases_candidates_rpc.sql の get_fastest_releases_candidates を
+ * メーカーIDをチャンク分割して複数回呼び出し、結果をマージする。
+ *
+ * 障害時の方針(graceful degradation採用): チャンク単位でPromise.allSettledを使い、
+ * 一部チャンクのRPC呼び出しが失敗しても他チャンクの結果は破棄しない
+ * (全チャンクが失敗した場合のみ例外を投げ、呼び出し元の既存catch節に委ねる)。
+ * 理由: chunk化により1回のfetchで発行するRPC呼び出し数が1→5に増えるため、
+ * 「1回でも失敗したら全体を失敗扱いにする」(fail-closed)を採用すると、
+ * 単一チャンクの一時的な不調だけで57メーカー全体が表示不可になり、
+ * chunk化前(RPC1本)より信頼性が悪化してしまう。本キャッシュのTTLは60秒と
+ * 短く次回revalidateで自然に回復するため、「失敗したチャンク分のメーカーだけ
+ * 今回は表示されない」方が「57メーカー全部が今回表示されない」より実害が
+ * 小さいと判断した。失敗したチャンクはconsole.errorで記録する。
+ */
+async function fetchAllCandidatesRaw(): Promise<CandidateRow[]> {
   const supabase = getStatelessClient()
+  const makerIds = ALL_MAKERS.map((m) => String(m.id))
+  const chunks = chunkArray(makerIds, MAKERS_PER_CHUNK) as string[][]
 
-  const { data: maxRows, error: maxError } = await supabase
-    .from('articles')
-    .select('fetched_at')
-    .eq('is_active', true)
-    .in('metadata->>floor', ['videoa', 'dvd'])
-    .contains('metadata', { maker: [{ id: makerId }] })
-    .order('fetched_at', { ascending: false })
-    .limit(1)
-  if (maxError) throw new Error(`maker=${makerId} max fetched_at select error: ${maxError.message}`)
-  const latestFetchedAt = (maxRows?.[0] as { fetched_at: string } | undefined)?.fetched_at ?? null
-  if (!latestFetchedAt) return { latestFetchedAt: null, rows: [] }
+  const settled = await Promise.allSettled(
+    chunks.map((chunk) =>
+      supabase.rpc('get_fastest_releases_candidates', {
+        p_maker_ids: chunk,
+        p_limit_per_maker: RPC_LIMIT_PER_MAKER,
+      }),
+    ),
+  )
 
-  const { data, error } = await supabase
-    .from('articles')
-    .select(SELECT_COLUMNS)
-    .eq('is_active', true)
-    .in('metadata->>floor', ['videoa', 'dvd'])
-    .contains('metadata', { maker: [{ id: makerId }] })
-    .eq('fetched_at', latestFetchedAt)
-  if (error) throw new Error(`maker=${makerId} batch select error: ${error.message}`)
-  return { latestFetchedAt, rows: (data ?? []) as ArticleRow[] }
+  const chunkResults = settled.map((result) => {
+    if (result.status === 'rejected') {
+      console.error('[FastestNewReleases] get_fastest_releases_candidates chunk rejected:', result.reason)
+      return { ok: false as const }
+    }
+    const { data, error } = result.value
+    if (error) {
+      console.error('[FastestNewReleases] get_fastest_releases_candidates chunk error:', error.message)
+      return { ok: false as const }
+    }
+    return { ok: true as const, rows: (data ?? []) as CandidateRow[] }
+  })
+
+  const { rows, allFailed } = mergeCandidateChunks(chunkResults) as {
+    rows: CandidateRow[]
+    allFailed: boolean
+    failedCount: number
+  }
+  if (allFailed) throw new Error('get_fastest_releases_candidates: all chunks failed')
+  return rows
 }
 
-// maker-sync は 00:30 JST 起動・完了まで概ね2分未満(Phase A調査結果)。
-// revalidate=300s なら最悪でも 00:30 起動から5分以内(00:35まで)にトップページへ反映される。
-const getCachedMakerRows = unstable_cache(
-  (makerId: number) => fetchMakerRowsRaw(makerId),
-  ['fastest-releases-maker-batch'],
-  { revalidate: 300 },
-)
+// Phase 1: 全メーカー分を1エントリにまとめてキャッシュする(旧: メーカーごとにN個)。
+// TTL=60秒とした理由(旧300秒から短縮):
+//   - 旧実装はメーカーごとに個別キャッシュ・個別クエリだったため、TTLを短くすると
+//     キャッシュミス時に最大114クエリが再発生するリスクがあった。
+//   - Phase 1でRPC1本化・キャッシュ1エントリ化した結果、キャッシュミス時のコストは
+//     「57メーカー分をカバーする1クエリ」のみになった。ミス時コストが約1/50に
+//     下がったため、同じ安全性を保ったままTTLを短縮できる。
+//   - maker-syncは1日1回(00:30 JST)のみ実行されるため、理論上は数分でも十分だが、
+//     「最速反映」の体感を優先しつつ、force-dynamicなHomepageで毎リクエストDBを
+//     叩く事態を避けるため、まずは60秒という保守的な値を採用する
+//     (maker-sync直接revalidate等の大規模変更は今回のスコープ外)。
+const getCachedCandidates = unstable_cache(fetchAllCandidatesRaw, ['fastest-releases-all-candidates'], {
+  revalidate: 60,
+})
 
 function dmmUrl(cid: string): string {
   return `https://www.dmm.co.jp/digital/videoa/-/detail/=/cid=${cid}/`
@@ -402,7 +458,7 @@ function effectiveCoverUrl(cid: string, imageUrl: string | null | undefined): st
   const raw = imageUrl && !isBadImageUrl(imageUrl) ? imageUrl : null
   return toHighResPackageUrl(raw) ?? cidToCdnUrl(cid, 'pl')
 }
-function rowAffiliateUrl(row: Pick<ArticleRow, 'metadata'>): string | null {
+function rowAffiliateUrl(row: Pick<CandidateRow, 'metadata'>): string | null {
   const meta = row.metadata as Record<string, unknown> | null
   const raw =
     typeof meta?.affiliate_url === 'string' ? meta.affiliate_url
@@ -410,15 +466,15 @@ function rowAffiliateUrl(row: Pick<ArticleRow, 'metadata'>): string | null {
     : null
   return withAffiliate(raw)
 }
-function rowHasUrl(row: Pick<ArticleRow, 'metadata'>): boolean {
+function rowHasUrl(row: Pick<CandidateRow, 'metadata'>): boolean {
   const meta = row.metadata as Record<string, unknown> | null
   const url = typeof meta?.url === 'string' ? meta.url : null
   // Phase F-2: dvd floor(通販)を検知フォールバックとして正式に許可するため、
   // 旧 /mono/dvd/ 除外は撤廃(URLが存在することのみ確認する)。floorの採否は
-  // selectFastestCards() 側(pickDisplayFloor)が担う。
+  // selectFastestCardsVariable() 側(pickDisplayFloor)が担う。
   return !!url
 }
-function rowFloor(row: Pick<ArticleRow, 'metadata'>): string | null {
+function rowFloor(row: Pick<CandidateRow, 'metadata'>): string | null {
   const meta = row.metadata as Record<string, unknown> | null
   return typeof meta?.floor === 'string' ? meta.floor : null
 }
@@ -432,7 +488,7 @@ function formatActressName(actress: unknown): string {
   return `${list[0]} 他`
 }
 
-function rowToCard(row: ArticleRow): FastestCard {
+function rowToCard(row: CandidateRow): FastestCard {
   const cover = effectiveCoverUrl(row.external_id, row.image_url)
   return {
     cid: row.external_id,
@@ -446,132 +502,181 @@ function rowToCard(row: ArticleRow): FastestCard {
   }
 }
 
-/**
- * 1メーカー分の自動抽出(Phase F-2)。
- * updateDateKey は「検知batch自体の fetched_at」(videoa+dvd合算MAX)の JST日付。
- * 表示カードは selectFastestCards() が floor決定(videoa優先・dvdフォールバック)と
- * published_at整理(現在に近い未来優先→配信済み新しい順で補完)を行った結果。
- *
- * 戻り値 null = 自動取得結果が0件(=呼び出し側でフォールバックへ切り替える)。
- * 例外を投げた場合も呼び出し側でフォールバックへ切り替える(Supabaseエラー・タイムアウト等)。
- */
-// 「もっと見る」内部リンク先。既存 /verity/makers/[makerId](maker_idベースの全件一覧・ページネーション済み)を再利用する。
-function moreUrl(maker: TargetMaker): string {
-  return `/verity/makers/${maker.id}`
+function moreUrl(makerId: number): string {
+  return `/verity/makers/${makerId}`
 }
 
-async function getAutoMakerSection(maker: TargetMaker): Promise<FastestMakerSection | null> {
-  const { latestFetchedAt, rows } = await getCachedMakerRows(maker.id)
-  if (!latestFetchedAt) return null
-
-  const candidates = rows
-    .filter((r) => rowHasUrl(r) && !!r.external_id && !!r.title)
-    .map((r) => ({ ...r, floor: rowFloor(r) }))
-  const nowIso = new Date().toISOString()
-  const selected = selectFastestCards(candidates, nowIso, TOP_PAGE_CARDS_PER_MAKER) as ArticleRow[]
-  if (selected.length === 0) return null
-
+function buildFallbackSection(maker: Maker): FastestMakerSection | null {
+  const legacyKey = (Object.keys(LEGACY_FALLBACK_MAKER_IDS) as FallbackMakerConfig['id'][]).find(
+    (k) => LEGACY_FALLBACK_MAKER_IDS[k] === maker.id,
+  )
+  if (!legacyKey) return null // 新規メーカーには手動フォールバックが無い→セクション自体を出さない
+  const manual = FALLBACK_MAKERS.find((m) => m.id === legacyKey)
+  if (!manual) return null
+  const cards: FastestCard[] = manual.cids.slice(0, MAX_CARDS_PER_MAKER).map((cid) => ({
+    cid,
+    title: '',
+    slug: null,
+    coverUrl: cidToCdnUrl(cid, 'pl'),
+    imgSrc: proxied(cidToCdnUrl(cid, 'pl')),
+    href: withAffiliate(dmmUrl(cid)),
+    actressName: manual.actressMap[cid] ?? '',
+    floor: 'videoa', // FALLBACK_MAKERSは旧手動キュレーション由来ですべてvideoa作品(既知)
+  }))
   return {
-    id: maker.key,
-    label: maker.label,
-    updateDateKey: toJstDateKey(latestFetchedAt),
-    source: 'auto',
-    cards: selected.map(rowToCard),
-    moreUrl: moreUrl(maker),
-  }
-}
-
-function buildFallbackSection(
-  maker: TargetMaker,
-  articleMap: Map<string, ArticleRow> | null,
-): FastestMakerSection {
-  const manual = FALLBACK_MAKERS.find((m) => m.id === maker.key)
-  if (!manual) {
-    return { id: maker.key, label: maker.label, updateDateKey: '0000-00-00', source: 'fallback', cards: [], moreUrl: moreUrl(maker) }
-  }
-  // フォールバック時もトップページ表示は TOP_PAGE_CARDS_PER_MAKER 件まで(手動配列自体は全件保持)。
-  const cards: FastestCard[] = manual.cids.slice(0, TOP_PAGE_CARDS_PER_MAKER).map((cid) => {
-    const row = articleMap?.get(cid) ?? null
-    const cover = effectiveCoverUrl(cid, row?.image_url ?? null)
-    return {
-      cid,
-      title: row?.title ?? '',
-      slug: row?.slug ?? null,
-      coverUrl: cover,
-      imgSrc: proxied(cover),
-      href: (row ? rowAffiliateUrl(row) : null) ?? withAffiliate(dmmUrl(cid)),
-      actressName: manual.actressMap[cid] ?? '',
-      // FALLBACK_MAKERS は旧手動キュレーション由来ですべてvideoa作品(既知)。
-      floor: row ? rowFloor(row) : 'videoa',
-    }
-  })
-  return {
-    id: maker.key,
-    label: maker.label,
+    id: String(maker.id),
+    makerId: maker.id,
+    label: maker.name,
     updateDateKey: manual.updatedAt.slice(0, 10),
     source: 'fallback',
     cards,
-    moreUrl: moreUrl(maker),
+    moreUrl: moreUrl(maker.id),
   }
 }
 
 /**
- * 対象8メーカーの「最新作最速更新情報」セクションを構築する。
- * - 自動取得はメーカーごとに独立(Promise.all)。1メーカーの失敗が他メーカーへ波及しない。
- * - フォールバック発生メーカーのみ、CID→記事情報の補完クエリを1回追加実行する(失敗時はCID直描画に縮退)。
- * - 本番DBへの書き込み・cron_status_runsへの記録は行わない(SSR中の書き込み禁止)。
+ * フォールバックセクションのカードに、可能な範囲でDB記事情報(タイトル/スラッグ/画像)を
+ * 補完する。失敗してもCID直描画のまま(既存の縮退動作)。
+ */
+async function enrichFallbackSections(sections: FastestMakerSection[]): Promise<FastestMakerSection[]> {
+  const fallbackSections = sections.filter((s) => s.source === 'fallback')
+  if (fallbackSections.length === 0) return sections
+  try {
+    const cids = fallbackSections.flatMap((s) => s.cards.map((c) => c.cid))
+    const supabase = getStatelessClient()
+    const { data, error } = await supabase
+      .from('articles')
+      .select('external_id,title,slug,image_url,metadata')
+      .eq('is_active', true)
+      .in('external_id', cids)
+    if (error) throw new Error(error.message)
+    const articleMap = new Map(
+      (data ?? []).map((r) => [(r as { external_id: string }).external_id, r as Omit<CandidateRow, 'maker_id' | 'published_at' | 'fetched_at'>]),
+    )
+    return sections.map((s) => {
+      if (s.source !== 'fallback') return s
+      return {
+        ...s,
+        cards: s.cards.map((c) => {
+          const row = articleMap.get(c.cid)
+          if (!row) return c
+          const cover = effectiveCoverUrl(c.cid, row.image_url)
+          return {
+            ...c,
+            title: row.title ?? c.title,
+            slug: row.slug ?? c.slug,
+            coverUrl: cover,
+            imgSrc: proxied(cover),
+            href: rowAffiliateUrl(row) ?? c.href,
+            floor: rowFloor(row) ?? c.floor,
+          }
+        }),
+      }
+    })
+  } catch (err) {
+    console.warn(
+      '[FastestNewReleases] fallback article enrichment failed — rendering CID-only cards:',
+      err instanceof Error ? err.message : err,
+    )
+    return sections // 失敗時は元のCID直描画のまま(既存の縮退動作)
+  }
+}
+
+/**
+ * 全対象メーカー(src/lib/makers.ts の MAKERS 全件)の「最新作最速更新情報」セクションを
+ * 構築する(cards付き・表示順ソート済み)。Homepage/latest ページ双方から呼ばれ、
+ * 呼び出し側でスライスして使う(RPC/キャッシュは1回で共有される)。
  */
 export async function getFastestReleasesSections(): Promise<FastestMakerSection[]> {
-  const initial = await Promise.all(
-    TARGET_MAKERS.map(async (maker): Promise<FastestMakerSection> => {
-      try {
-        const auto = await getAutoMakerSection(maker)
-        if (auto) return auto
-        console.warn(`[FastestNewReleases] maker=${maker.key}(${maker.id}) auto batch empty — using manual fallback`)
-      } catch (err) {
-        console.error(
-          `[FastestNewReleases] maker=${maker.key}(${maker.id}) auto fetch failed — using manual fallback:`,
-          err instanceof Error ? err.message : err,
-        )
-      }
-      return buildFallbackSection(maker, null)
-    }),
-  )
-
-  const fallbackKeys = new Set(initial.filter((s) => s.source === 'fallback').map((s) => s.id))
-  let sections = initial
-
-  if (fallbackKeys.size > 0) {
-    try {
-      const cids = FALLBACK_MAKERS.filter((m) => fallbackKeys.has(m.id)).flatMap((m) => [...m.cids])
-      const supabase = getStatelessClient()
-      const { data, error } = await supabase
-        .from('articles')
-        .select(SELECT_COLUMNS)
-        .eq('is_active', true)
-        .in('external_id', cids)
-      if (error) throw new Error(error.message)
-      const articleMap = new Map((data ?? []).map((r) => [(r as ArticleRow).external_id, r as ArticleRow]))
-      sections = initial.map((s) => {
-        if (s.source !== 'fallback') return s
-        const maker = TARGET_MAKERS.find((m) => m.key === s.id)
-        return maker ? buildFallbackSection(maker, articleMap) : s
-      })
-    } catch (err) {
-      console.warn(
-        '[FastestNewReleases] fallback article enrichment failed — rendering CID-only cards:',
-        err instanceof Error ? err.message : err,
-      )
-      // sections は initial(記事情報なしのCID直描画)のまま — 既存の縮退動作と同じ。
-    }
+  let rows: CandidateRow[] = []
+  try {
+    rows = await getCachedCandidates()
+  } catch (err) {
+    console.error('[FastestNewReleases] get_fastest_releases_candidates failed:', err instanceof Error ? err.message : err)
   }
 
-  return sections
-    .filter((s) => s.cards.length > 0)
-    .sort((a, b) => {
-      if (a.updateDateKey !== b.updateDateKey) return a.updateDateKey < b.updateDateKey ? 1 : -1
-      const ia = TARGET_MAKERS.findIndex((m) => m.key === a.id)
-      const ib = TARGET_MAKERS.findIndex((m) => m.key === b.id)
-      return ia - ib
-    })
+  const byMaker = new Map<number, CandidateRow[]>()
+  for (const r of rows) {
+    const mid = Number(r.maker_id)
+    if (!Number.isFinite(mid)) continue
+    const list = byMaker.get(mid)
+    if (list) list.push(r)
+    else byMaker.set(mid, [r])
+  }
+
+  const nowIso = new Date().toISOString()
+  const sections: FastestMakerSection[] = []
+  const latestFetchedAtByMaker: { makerId: string; latestFetchedAt: string | null }[] = []
+
+  for (const maker of ALL_MAKERS) {
+    const makerRows = byMaker.get(maker.id) ?? []
+    const candidates = makerRows
+      .filter((r) => rowHasUrl(r) && !!r.external_id && !!r.title)
+      .map((r) => ({ ...r, floor: rowFloor(r) }))
+    const selected = candidates.length
+      ? (selectFastestCardsVariable(candidates, nowIso, { min: MIN_CARDS_PER_MAKER, max: MAX_CARDS_PER_MAKER }) as CandidateRow[])
+      : []
+
+    if (selected.length > 0) {
+      sections.push({
+        id: String(maker.id),
+        makerId: maker.id,
+        label: maker.name,
+        updateDateKey: toJstDateKey(selected[0].fetched_at),
+        source: 'auto',
+        cards: selected.map(rowToCard),
+        moreUrl: moreUrl(maker.id),
+      })
+      latestFetchedAtByMaker.push({ makerId: String(maker.id), latestFetchedAt: selected[0].fetched_at })
+      continue
+    }
+
+    const fallback = buildFallbackSection(maker)
+    if (fallback) {
+      sections.push(fallback)
+      latestFetchedAtByMaker.push({ makerId: String(maker.id), latestFetchedAt: null })
+    }
+    // フォールバックも無ければ、このメーカーはセクション自体を出さない(無理な補完をしない)。
+  }
+
+  const enriched = await enrichFallbackSections(sections)
+  const bySortKey = new Map(latestFetchedAtByMaker.map((m) => [m.makerId, m.latestFetchedAt]))
+  const orderedMakerIds = ALL_MAKERS.map((m) => String(m.id))
+
+  const sortable = enriched.map((s) => ({ makerId: s.id, latestFetchedAt: bySortKey.get(s.id) ?? null }))
+  const ordered = sortMakerSections(sortable, orderedMakerIds) as { makerId: string }[]
+  const order: string[] = ordered.map((s) => s.makerId)
+  const indexOf = new Map<string, number>(order.map((id, i) => [id, i]))
+  return [...enriched].sort((a, b) => (indexOf.get(a.id) ?? 0) - (indexOf.get(b.id) ?? 0))
+}
+
+/** Homepage向け: 直近更新順の上位N社のみ(N=HOMEPAGE_MAKER_COUNT)。 */
+export async function getHomepageFastestReleasesSections(): Promise<FastestMakerSection[]> {
+  const all = await getFastestReleasesSections()
+  return all.slice(0, HOMEPAGE_MAKER_COUNT)
+}
+
+export type FastestReleasesPage = {
+  sections: FastestMakerSection[]
+  page: number
+  totalPages: number
+  totalMakers: number
+}
+
+/**
+ * /verity/latest 向け: 全メーカーをserver-side paginationで返す(page=1始まり)。
+ * 570作品の一括renderを避けるため、1ページあたり LATEST_PAGE_MAKER_COUNT 社のみ。
+ */
+export async function getFastestReleasesPage(page: number): Promise<FastestReleasesPage> {
+  const all = await getFastestReleasesSections()
+  const totalMakers = all.length
+  const totalPages = Math.max(1, Math.ceil(totalMakers / LATEST_PAGE_MAKER_COUNT))
+  const clampedPage = Math.min(Math.max(1, Math.trunc(page) || 1), totalPages)
+  const from = (clampedPage - 1) * LATEST_PAGE_MAKER_COUNT
+  return {
+    sections: all.slice(from, from + LATEST_PAGE_MAKER_COUNT),
+    page: clampedPage,
+    totalPages,
+    totalMakers,
+  }
 }
