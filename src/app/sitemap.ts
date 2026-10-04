@@ -13,8 +13,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     { url: BASE,                            changeFrequency: 'daily',   priority: 1.0 },
     { url: `${BASE}/actresses`,             changeFrequency: 'daily',   priority: 0.9 },
     { url: `${BASE}/news`,                  changeFrequency: 'daily',   priority: 0.8 },
+    // イベントハブ — URL はページ側 canonical（/verity/events…）に合わせる
+    { url: `${BASE}/verity/events`,         changeFrequency: 'weekly',  priority: 0.6 },
+    { url: `${BASE}/verity/events/tre2026`, changeFrequency: 'daily',   priority: 0.7 },
     // VERITY Spotlight 特集
     { url: `${BASE}/verity/features`,       changeFrequency: 'weekly',  priority: 0.6 },
+    // VIDEO DISCOVERY — URL はページ側 canonical（/verity/videos）に合わせる
+    { url: `${BASE}/verity/videos`,         changeFrequency: 'daily',   priority: 0.6 },
     { url: `${BASE}/spotlight/mens-esthe`,  changeFrequency: 'weekly',  priority: 0.7 },
     { url: `${BASE}/spotlight/satsuki-nao`, changeFrequency: 'weekly',  priority: 0.7 },
   ]
