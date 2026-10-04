@@ -30,17 +30,21 @@ export default async function VideoDiscoveryPage() {
   const isEmpty = newReleases.length === 0 && popular.length === 0
 
   return (
-    <div className="mx-auto max-w-7xl space-y-10 px-4 py-10">
+    <div className="mx-auto max-w-7xl space-y-8 px-4 py-6 sm:space-y-10 sm:py-8">
       <nav className="flex items-center gap-2 text-xs text-[var(--text-muted)]" aria-label="パンくずリスト">
         <Link href="/verity" className="transition-colors hover:text-[var(--magenta)]">VERITY</Link>
         <ChevronRight size={12} />
         <span className="text-[var(--text)]">VIDEO DISCOVERY</span>
       </nav>
 
-      <header className="space-y-2">
-        <p className="text-[10px] font-black uppercase tracking-[0.3em] text-[var(--magenta)]">VERITY</p>
+      <header className="space-y-1.5">
         <h1 className="text-2xl font-black tracking-tight text-[var(--text)] sm:text-3xl">VIDEO DISCOVERY</h1>
-        <p className="text-sm text-[var(--text-muted)]">気になる作品を、まず見て探す。</p>
+        <p className="text-base font-bold leading-snug text-[var(--text)] sm:text-lg">
+          動画から、次に観たい一本を。
+        </p>
+        <p className="text-sm leading-relaxed text-[var(--text-muted)]">
+          VERITYで注目されている作品と最新作を、サンプル動画から探せます。
+        </p>
       </header>
 
       {isEmpty ? (

@@ -156,14 +156,15 @@ function ShelfRow({
 
   return (
     <section ref={ref} aria-labelledby={headingId} className="space-y-3">
-      <div className="flex items-baseline gap-3">
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span aria-hidden="true" className="h-4 w-1 rounded-full bg-[var(--magenta)]" />
         <h2 id={headingId} className="text-sm font-black uppercase tracking-[0.2em] text-[var(--text)] sm:text-base">
           {shelf.label}
         </h2>
         <p className="text-[11px] text-[var(--text-muted)]">{shelf.sub}</p>
       </div>
 
-      <ul className="-mx-4 flex gap-3 overflow-x-auto px-4 pb-2 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
+      <ul className="-mx-4 flex gap-3 overflow-x-auto scroll-px-4 px-4 pb-2 snap-x snap-mandatory [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden sm:gap-4">
         {shelf.items.map((item, i) => (
           <li key={item.cid} className="w-36 shrink-0 snap-start sm:w-44 lg:w-48">
             <VideoCard item={item} eager={i < eagerCount} reduceMotion={reduceMotion} onOpen={onOpen} />
@@ -192,19 +193,25 @@ function VideoCard({
 
   const body = (
     <>
-      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)] transition-colors group-hover:border-[var(--magenta)]/50 group-focus-visible:border-[var(--magenta)]">
+      <div className="relative aspect-[2/3] w-full overflow-hidden rounded-xl border border-[var(--border)] bg-[var(--surface-2)] transition-[border-color,box-shadow] duration-200 group-hover:border-[var(--magenta)]/60 group-hover:shadow-[0_0_20px_rgba(226,0,116,0.25)] group-focus-visible:border-[var(--magenta)] group-focus-visible:ring-2 group-focus-visible:ring-[var(--magenta)] group-focus-visible:ring-offset-2 group-focus-visible:ring-offset-[var(--bg)]">
         <ProxiedImage
           src={item.imgSrc}
           alt={item.title}
           loading={eager ? 'eager' : 'lazy'}
           className={`absolute inset-0 h-full w-full object-cover ${item.coverPos} ${motion}`}
         />
-        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
-        <span className={`absolute left-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-black tracking-widest shadow-lg ${badge.className}`}>
+        <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" aria-hidden="true" />
+        <span aria-hidden="true" className={`absolute left-2 top-2 rounded px-1.5 py-0.5 text-[9px] font-black tracking-widest shadow-lg ${badge.className}`}>
           {badge.text}
         </span>
-        <span className="pointer-events-none absolute inset-x-0 bottom-3 mx-auto w-fit rounded-full bg-white/90 px-3 py-1 text-[10px] font-bold text-gray-900 opacity-0 shadow-lg transition-opacity duration-200 group-hover:opacity-100 group-focus-visible:opacity-100">
-          ▶ プレビュー
+        {/* 動画プレビューの常時アフォーダンス（hover非依存＝Mobileでも見える）。
+            カード自体の aria-label が「…のプレビューを開く」のため読み上げ重複を避けて aria-hidden。 */}
+        <span
+          aria-hidden="true"
+          className="pointer-events-none absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full border border-white/15 bg-black/70 px-2.5 py-1 text-[9px] font-black tracking-[0.18em] text-white shadow-lg backdrop-blur-sm transition-colors duration-200 group-hover:border-transparent group-hover:bg-[var(--magenta)] group-focus-visible:border-transparent group-focus-visible:bg-[var(--magenta)]"
+        >
+          <span className="text-[var(--magenta)] transition-colors duration-200 group-hover:text-white group-focus-visible:text-white">▶</span>
+          PREVIEW
         </span>
       </div>
       <div className="mt-2 space-y-1 px-0.5">

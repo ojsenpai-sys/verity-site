@@ -26,6 +26,13 @@ const NATIVE_W = 740
 const NATIVE_H = 500
 const LOAD_TIMEOUT_MS = 12_000
 
+// Desktop(sm+) のダイアログ幅。動画を主役にするため最大 760px（≒ネイティブ 740px）まで広げつつ、
+//   - 横: 左右余白(sm:p-6 = 24px×2)を引いた幅
+//   - 縦: ビューポート高から上下余白(48px)と情報欄(タイトル2行/メタ/CTA/PR 実測≒180px＋余裕 → 210px)を引いた高さに
+//         動画アスペクト(740/500)を掛けた幅
+// の最小値に収める（小さい Desktop viewport でもダイアログ全体が画面内に収まる）。
+const DESKTOP_DIALOG_WIDTH = `min(760px, calc(100vw - 48px), calc((100dvh - 48px - 210px) * ${NATIVE_W / NATIVE_H}))`
+
 export type CloseReason = 'close_button' | 'escape' | 'backdrop' | 'article_cta'
 
 type Phase = 'loading' | 'ready' | 'failed' | 'suspended'
@@ -105,6 +112,8 @@ export function VideoPreviewDialog({
   const playerMounted = phase === 'loading' || phase === 'ready'
   const meta = catalogMeta(item.row, item.position)
   const anim = reduceMotion ? '' : 'motion-safe:animate-in motion-safe:fade-in motion-safe:duration-200'
+  // プレイヤー読込完了時のフェード（reduce-motion / Save-Data では即時切替）
+  const fade = reduceMotion ? '' : 'motion-safe:transition-opacity motion-safe:duration-300'
 
   return createPortal(
     <div
@@ -117,16 +126,19 @@ export function VideoPreviewDialog({
         aria-modal="true"
         aria-labelledby={titleId}
         onKeyDown={handleKeyDown}
-        className="relative max-h-[92dvh] w-full overflow-y-auto rounded-t-2xl border border-[var(--border)] bg-[var(--surface)] shadow-2xl sm:max-w-3xl sm:rounded-2xl"
+        // Mobile: 横幅いっぱいの bottom sheet（左右ボーダーなし＝動画を端まで使う）。
+        // Desktop: DESKTOP_DIALOG_WIDTH で動画中心の中央ダイアログ。
+        style={{ ['--vd-dialog-w' as string]: DESKTOP_DIALOG_WIDTH }}
+        className="relative max-h-[92dvh] w-full overflow-y-auto overscroll-contain rounded-t-2xl border-t border-[var(--border)] bg-[var(--surface)] shadow-2xl sm:w-[var(--vd-dialog-w)] sm:max-h-[calc(100dvh-48px)] sm:rounded-2xl sm:border"
       >
         <button
           ref={closeRef}
           type="button"
           onClick={() => onClose('close_button')}
           aria-label="プレビューを閉じる"
-          className="absolute right-3 top-3 z-10 flex h-9 w-9 items-center justify-center rounded-full bg-black/60 text-white transition-colors hover:bg-black/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--magenta)]"
+          className="absolute right-2 top-2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/65 text-white transition-colors hover:bg-black/85 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[var(--magenta)]"
         >
-          <X size={18} />
+          <X size={20} aria-hidden="true" />
         </button>
 
         {/* ── プレイヤー（ネイティブサイズ iframe を枠幅へ縮小表示） ── */}
@@ -135,14 +147,14 @@ export function VideoPreviewDialog({
           className="relative w-full overflow-hidden bg-black sm:rounded-t-2xl"
           style={{ aspectRatio: `${NATIVE_W} / ${NATIVE_H}` }}
         >
-          {/* ポスター（読み込み中・フォールバック時の表示） */}
-          {phase !== 'ready' && (
-            <ProxiedImage
-              src={item.imgSrc}
-              alt=""
-              className={`absolute inset-0 h-full w-full object-cover opacity-40 ${item.coverPos}`}
-            />
-          )}
+          {/* ポスター（読み込み中・フォールバック時の表示）。読込完了時はポスターをフェードアウト、
+              プレイヤーをフェードインのクロスフェードにする（即時消失→黒画面の点滅を避ける）。
+              litevideo ページはプレイヤー周囲が透過のため、ready 後もポスターを残すと縁に透けて見える。 */}
+          <ProxiedImage
+            src={item.imgSrc}
+            alt=""
+            className={`absolute inset-0 h-full w-full object-cover ${item.coverPos} ${fade} ${phase === 'ready' ? 'opacity-0' : 'opacity-40'}`}
+          />
 
           {playerMounted && scale > 0 && (
             <iframe
@@ -154,15 +166,20 @@ export function VideoPreviewDialog({
               allowFullScreen
               loading="lazy"
               onLoad={() => setPhase(p => (p === 'loading' ? 'ready' : p))}
-              className={`absolute left-0 top-0 border-0 ${phase === 'ready' ? 'opacity-100' : 'opacity-0'}`}
+              className={`absolute left-0 top-0 border-0 ${fade} ${phase === 'ready' ? 'opacity-100' : 'opacity-0'}`}
               style={{ transform: `scale(${scale})`, transformOrigin: '0 0' }}
             />
           )}
 
           {phase === 'loading' && (
-            <p className="absolute inset-x-0 bottom-3 text-center text-[11px] font-medium text-white/80" aria-live="polite">
-              プレビューを読み込み中…
-            </p>
+            <div className="absolute inset-0 flex items-center justify-center">
+              <p
+                className={`rounded-full bg-black/60 px-4 py-1.5 text-[11px] font-bold tracking-wider text-white/90 ${reduceMotion ? '' : 'motion-safe:animate-pulse'}`}
+                aria-live="polite"
+              >
+                プレビューを読み込み中…
+              </p>
+            </div>
           )}
 
           {(phase === 'failed' || phase === 'suspended') && (
@@ -182,7 +199,10 @@ export function VideoPreviewDialog({
         </div>
 
         {/* ── 作品情報＋CTA ── */}
-        <div className="space-y-4 p-5 sm:p-6">
+        <div
+          className="space-y-4 px-4 pt-4 sm:space-y-3.5 sm:px-6 sm:pt-5"
+          style={{ paddingBottom: 'max(1.25rem, env(safe-area-inset-bottom))' }}
+        >
           <div className="space-y-1.5">
             <h2 id={titleId} className="text-base font-bold leading-snug text-[var(--text)] line-clamp-3 sm:text-lg">
               {item.title}
@@ -196,12 +216,12 @@ export function VideoPreviewDialog({
             )}
           </div>
 
-          <div className="flex flex-col gap-2.5 sm:flex-row">
+          <div className="flex flex-col gap-2.5 sm:flex-row sm:gap-3">
             {item.slug && (
               <Link
                 href={`/verity/articles/${item.slug}`}
                 onClick={() => onClose('article_cta')}
-                className="inline-flex flex-1 items-center justify-center rounded-full border-2 border-[var(--magenta)] px-6 py-3 text-sm font-bold text-[var(--magenta)] transition-colors hover:bg-[var(--magenta)]/10"
+                className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full border-2 border-[var(--magenta)] px-6 py-3 text-sm font-bold text-[var(--magenta)] transition-colors hover:bg-[var(--magenta)]/10"
               >
                 作品を見る
               </Link>
@@ -212,10 +232,10 @@ export function VideoPreviewDialog({
                 targetId={item.cid}
                 position={fanzaPosition(item.row)}
                 meta={meta}
-                className="inline-flex flex-1 items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-6 py-3 text-sm font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.3)] transition-all hover:brightness-110"
+                className="inline-flex min-h-12 flex-1 items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-[var(--magenta)] to-rose-600 px-6 py-3 text-sm font-bold text-white shadow-[0_0_24px_rgba(226,0,116,0.3)] transition-all hover:brightness-110"
               >
                 FANZAで見る
-                <span className="opacity-70">↗</span>
+                <span className="opacity-70" aria-hidden="true">↗</span>
               </FanzaLink>
             )}
           </div>
