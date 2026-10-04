@@ -88,6 +88,18 @@ export type EventName =
   | 'taste_result_work_click'
   | 'taste_result_actress_click'
   | 'taste_retry'
+  // VERITY VIDEO DISCOVERY（/verity/videos・FANZA公式 litevideo iframe をユーザー操作時のみ1つ開く）。
+  // FANZA遷移は既存 fanza_click（position=video_discovery_<row>）、作品詳細は遷移先の video_view
+  // （＝作品ページ閲覧。動画再生の意味ではない）で従来どおり記録される。本イベントは補助計測。
+  //   impression    … 棚（row）が初めて可視になった時に1棚1回のみ（カード単位では発火しない）。
+  //                   末尾 _impression のため既存 is_auto_event() で自動/受動扱い（Human v3 能動から除外）。
+  //   preview_open  … ユーザーがカードを押してプレビューを開いた時のみ（target_id=CID）。
+  //   preview_close … プレビューを閉じた時（target_id=CID・metadata.dwell_ms / reason）。
+  //   ※ iframe 内の実再生状態はクロスオリジンで取得不可のため、再生秒数系イベントは作らない。
+  //   ※ is_active_event() には現時点で含めない（含める場合は forward-fix migration が必要）。
+  | 'video_catalog_impression'
+  | 'video_catalog_preview_open'
+  | 'video_catalog_preview_close'
 
 // ── ペイロード型 ───────────────────────────────────────────────────────────────
 export interface TrackPayload {
@@ -129,6 +141,9 @@ const TARGET_MAP: Partial<Record<EventName, { type: string; idKey: 'actressId' |
   // Taste Check 結果画面のクリックは対象単位（target_id=CID/女優external_id、metadata.rank）
   taste_result_work_click:    { type: 'article', idKey: 'cid' },
   taste_result_actress_click: { type: 'actress', idKey: 'actressId' },
+  // Video Discovery のプレビューは作品単位（target_id=CID / metadata.source/row/position）
+  video_catalog_preview_open:  { type: 'article', idKey: 'cid' },
+  video_catalog_preview_close: { type: 'article', idKey: 'cid' },
 }
 
 // target_id にマップされる構造キーは metadata から除外する

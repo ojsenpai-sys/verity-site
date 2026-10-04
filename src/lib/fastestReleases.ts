@@ -657,6 +657,49 @@ export async function getFastestReleasesSections(): Promise<FastestMakerSection[
   return [...enriched].sort((a, b) => (indexOf.get(a.id) ?? 0) - (indexOf.get(b.id) ?? 0))
 }
 
+/** VIDEO DISCOVERY(/verity/videos)向けの候補行補完情報(FastestCardに無い動画/発売日情報)。 */
+export type FastestCandidateVideoInfo = {
+  makerId: string
+  floor: string | null
+  sampleMovieUrl: string | null
+  publishedAt: string | null
+  fetchedAt: string
+  /** 地域変換前の生FANZA URL(metadata.affiliate_url ?? metadata.url)。呼び出し側で withAffiliateForRegion を通す。 */
+  rawFanzaUrl: string | null
+}
+
+/**
+ * getFastestReleasesSections() と同一のチャンクキャッシュ(getCachedChunkCandidates)から、
+ * CID → 動画/発売日情報 の Map を返す。追加のRPC/クエリは発生しない(キャッシュ共有)。
+ * FastestCard 自体には sample_movie_url を載せない(Homepage の RSC payload を増やさないため)。
+ * 取得失敗時は空 Map(呼び出し側は該当棚を空として扱う)。
+ */
+export async function getFastestCandidateVideoInfo(): Promise<Map<string, FastestCandidateVideoInfo>> {
+  let rows: CandidateRow[] = []
+  try {
+    rows = await fetchAllCandidatesRaw()
+  } catch (err) {
+    console.error('[VideoDiscovery] candidate rows unavailable:', err instanceof Error ? err.message : err)
+  }
+  const map = new Map<string, FastestCandidateVideoInfo>()
+  for (const r of rows) {
+    if (!r.external_id || map.has(r.external_id)) continue
+    const meta = r.metadata
+    map.set(r.external_id, {
+      makerId: r.maker_id,
+      floor: rowFloor(r),
+      sampleMovieUrl: typeof meta?.sample_movie_url === 'string' && meta.sample_movie_url ? meta.sample_movie_url : null,
+      publishedAt: r.published_at,
+      fetchedAt: r.fetched_at,
+      rawFanzaUrl:
+        typeof meta?.affiliate_url === 'string' ? meta.affiliate_url
+        : typeof meta?.url === 'string' ? meta.url
+        : null,
+    })
+  }
+  return map
+}
+
 /** Homepage向け: 直近更新順の上位N社のみ(N=HOMEPAGE_MAKER_COUNT)。 */
 export async function getHomepageFastestReleasesSections(): Promise<FastestMakerSection[]> {
   const all = await getFastestReleasesSections()
