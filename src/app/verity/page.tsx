@@ -40,6 +40,7 @@ import { TrendingWidget } from '@/components/TrendingWidget'
 import { RecentlyViewedSection } from '@/components/RecentlyViewedSection'
 import { MypagePromoSection } from '@/components/MypagePromoSection'
 import { TasteEntryCard } from '@/components/taste/TasteEntryCard'
+import { VideoDiscoveryEntryCard } from '@/components/video/VideoDiscoveryEntryCard'
 import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
 
 export const dynamic = 'force-dynamic'
@@ -612,6 +613,9 @@ export default async function DashboardPage({ searchParams }: PageProps) {
 
       {/* ── 0c-2. VERITY Taste Check 導入CTA（実験段階の入口。Heroは変更しない） ── */}
       <TasteEntryCard />
+
+      {/* ── 0c-3. VIDEO DISCOVERY 入口（トップに動画棚は置かず専用ページへの利用率を計測） ── */}
+      <VideoDiscoveryEntryCard />
 
       {/* ── 0c. 人気女優ランキング TOP（ファーストビュー最優先） ─────────── */}
       <section id="popular-ranking-top">
