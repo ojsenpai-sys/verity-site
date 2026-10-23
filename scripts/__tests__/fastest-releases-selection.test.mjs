@@ -23,6 +23,8 @@ import {
   dedupeSameWork,
   chunkArray,
   mergeCandidateChunks,
+  FASTEST_CANDIDATE_SELECT,
+  toCandidateRowFromSlim,
 } from '../../src/lib/fastestReleasesSelection.mjs'
 
 const NOW = '2026-08-18T00:00:00.000+00:00'
@@ -527,4 +529,53 @@ test('mergeCandidateChunks: 本番相当シミュレーション(57メーカー�
   const survivingMakerIds = new Set(result.rows.map((r) => r.maker_id))
   const failedMakerIds = new Set(chunks[2])
   for (const id of failedMakerIds) assert.equal(survivingMakerIds.has(id), false)
+})
+
+// ── Phase 1A: RPC返却列の絞り込み(FASTEST_CANDIDATE_SELECT / toCandidateRowFromSlim) ──────
+test('FASTEST_CANDIDATE_SELECT: 行の識別・選定・表示に使う列と metadata の5キーを含む', () => {
+  const cols = FASTEST_CANDIDATE_SELECT.split(',')
+  for (const c of ['maker_id', 'external_id', 'title', 'slug', 'image_url', 'published_at', 'fetched_at']) {
+    assert.ok(cols.includes(c), c)
+  }
+  for (const k of ['floor', 'url', 'affiliate_url', 'sample_movie_url']) {
+    assert.ok(cols.includes(`meta_${k}:metadata->>${k}`), k)
+  }
+  assert.ok(cols.includes('meta_actress:metadata->actress'))
+  // metadata 全体(jsonb)は取得しない
+  assert.equal(cols.includes('metadata'), false)
+})
+
+test('toCandidateRowFromSlim: 従来の CandidateRow 形(metadata に5キー)へ戻す', () => {
+  const actress = [{ id: 1, name: '林芽依', ruby: 'はやしめい' }]
+  const row = toCandidateRowFromSlim({
+    maker_id: '1219', external_id: 'ipzz00958', title: 't', slug: 's', image_url: 'https://x/pl.jpg',
+    published_at: '2026-11-05T00:00:00+00:00', fetched_at: '2026-10-14T15:30:10+00:00',
+    meta_floor: 'videoa', meta_url: 'https://u', meta_affiliate_url: 'https://a',
+    meta_sample_movie_url: null, meta_actress: actress,
+  })
+  assert.deepEqual(row, {
+    maker_id: '1219', external_id: 'ipzz00958', title: 't', slug: 's', image_url: 'https://x/pl.jpg',
+    published_at: '2026-11-05T00:00:00+00:00', fetched_at: '2026-10-14T15:30:10+00:00',
+    metadata: { floor: 'videoa', url: 'https://u', affiliate_url: 'https://a', sample_movie_url: null, actress },
+  })
+})
+
+test('toCandidateRowFromSlim: 欠落キーは null(呼び出し側の typeof/Array.isArray 判定で従来どおり無視される)', () => {
+  const row = toCandidateRowFromSlim({
+    maker_id: '1', external_id: 'x', title: null, slug: null, image_url: null,
+    published_at: null, fetched_at: '2026-10-01T00:00:00+00:00',
+  })
+  assert.deepEqual(row.metadata, { floor: null, url: null, affiliate_url: null, sample_movie_url: null, actress: null })
+})
+
+test('toCandidateRowFromSlim の結果は selectFastestCardsVariable にそのまま渡せる(floor は metadata から呼び出し側で付与)', () => {
+  const mk = (id, fetched, pub) => toCandidateRowFromSlim({
+    maker_id: '1', external_id: id, title: `title-${id}`, slug: id, image_url: null,
+    published_at: pub, fetched_at: fetched, meta_floor: 'videoa', meta_url: 'https://u',
+    meta_affiliate_url: null, meta_sample_movie_url: null, meta_actress: [],
+  })
+  const rows = [mk('a00001', '2026-10-23T00:00:00Z', '2026-10-27T00:00:00Z'), mk('b00002', '2026-10-21T00:00:00Z', '2026-10-20T00:00:00Z')]
+    .map((r) => ({ ...r, floor: r.metadata.floor }))
+  const out = selectFastestCardsVariable(rows, '2026-10-23T01:00:00Z', { min: 2, max: 10 })
+  assert.deepEqual(out.map((r) => r.external_id), ['a00001', 'b00002'])
 })

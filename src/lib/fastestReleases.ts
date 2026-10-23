@@ -41,7 +41,11 @@ import { unstable_cache } from 'next/cache'
 import { withFetchTimeout, SUPABASE_FETCH_TIMEOUT_MS } from '@/lib/supabase/timeout'
 import { withAffiliate } from '@/lib/affiliate'
 import { toHighResPackageUrl, cidToCdnUrl, isBadImageUrl } from '@/lib/cidUtils'
-import { selectFastestCardsVariable, sortMakerSections, chunkArray, mergeCandidateChunks } from '@/lib/fastestReleasesSelection.mjs'
+import {
+  selectFastestCardsVariable, sortMakerSections, chunkArray, mergeCandidateChunks,
+  FASTEST_CANDIDATE_SELECT, toCandidateRowFromSlim,
+} from '@/lib/fastestReleasesSelection.mjs'
+import { singleFlight } from '@/lib/singleFlight.mjs'
 import { MAKERS as ALL_MAKERS, type Maker } from '@/lib/makers'
 
 export type FastestCard = {
@@ -384,15 +388,22 @@ function toJstDateKey(iso: string): string {
 /**
  * 1チャンク分(MAKERS_PER_CHUNK社)の候補行を取得する、キャッシュ無しのRPC呼び出し。
  * unstable_cache でラップして使う(下記 getCachedChunkCandidates)。
+ *
+ * Phase 1A: RPC結果に FASTEST_CANDIDATE_SELECT を適用し、metadata は使用する5キーだけを
+ * 受け取る(転送量削減・RPC定義は不変)。受信後 toCandidateRowFromSlim で従来の行形へ戻す。
  */
 async function fetchChunkCandidatesRaw(chunkMakerIds: string[]): Promise<CandidateRow[]> {
   const supabase = getStatelessClient()
-  const { data, error } = await supabase.rpc('get_fastest_releases_candidates', {
-    p_maker_ids: chunkMakerIds,
-    p_limit_per_maker: RPC_LIMIT_PER_MAKER,
-  })
+  const { data, error } = await supabase
+    .rpc('get_fastest_releases_candidates', {
+      p_maker_ids: chunkMakerIds,
+      p_limit_per_maker: RPC_LIMIT_PER_MAKER,
+    })
+    .select(FASTEST_CANDIDATE_SELECT)
   if (error) throw new Error(`get_fastest_releases_candidates error: ${error.message}`)
-  return (data ?? []) as CandidateRow[]
+  return ((data ?? []) as unknown as Parameters<typeof toCandidateRowFromSlim>[0][]).map(
+    (r) => toCandidateRowFromSlim(r) as CandidateRow,
+  )
 }
 
 // production incident対応(2026-09-14): 以前は57メーカー全体のマージ結果を
@@ -409,8 +420,13 @@ async function fetchChunkCandidatesRaw(chunkMakerIds: string[]): Promise<Candida
 // サイズは本番read-only計測で1エントリあたり1MB未満(2MB上限に対し十分な安全
 // マージンあり)であることを確認済み。RPC_LIMIT_PER_MAKER=60・MAKERS_PER_CHUNK=13
 // (5chunk)・57 managed makers・PostgREST 1000行cap対策は一切変更しない。
+//
+// Phase 1A: unstable_cache の再取得の重複排除は1リクエスト内のみのため、キャッシュ切れの
+// 瞬間に同時到達した複数リクエストが同じchunkのRPCを並列に実行していた。singleFlight で
+// 同一プロセス内の同一chunk取得を1回に集約する(キーはchunkのmaker ID列のみ・TTL 60秒は不変)。
 const getCachedChunkCandidates = unstable_cache(
-  fetchChunkCandidatesRaw,
+  (chunkMakerIds: string[]) =>
+    singleFlight(`fastest-releases-chunk:${chunkMakerIds.join(',')}`, () => fetchChunkCandidatesRaw(chunkMakerIds)),
   ['fastest-releases-chunk-candidates'],
   { revalidate: 60 },
 )

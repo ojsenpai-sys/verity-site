@@ -1,7 +1,11 @@
 import { Suspense } from 'react'
 import Link from 'next/link'
 import { Bookmark, BookOpen, Clock, Newspaper } from 'lucide-react'
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { getStatelessSupabaseClient } from '@/lib/supabase/statelessClient'
+import { singleFlight } from '@/lib/singleFlight.mjs'
+import { filterOptionsOrThrowPartial, takePartialFilterOptions } from '@/lib/filterOptions.mjs'
 import { ArticleCard } from '@/components/ArticleCard'
 import { FilterBar } from '@/components/FilterBar'
 import { ActressMarquee } from '@/components/ActressMarquee'
@@ -76,51 +80,49 @@ type FilterOptions = {
 
 const EMPTY_FILTER_OPTIONS: FilterOptions = { categories: [], sources: [], tags: [], actresses: [] }
 
+// Phase 1A: トップページの毎リクエストで同一の4クエリ(約450KB)を実行していたため共有キャッシュする。
+// 結果は引数・ユーザー情報に依存しない公開データのみ(is_active の articles/actresses)。
+// 女優の monthly_rank やタグ分布は日次程度でしか動かないため15分で十分。
+const FILTER_OPTIONS_REVALIDATE_SECONDS = 900
+
+// 全クエリ成功時のみ完全な結果を返す(=キャッシュされる)。一部失敗時は、取得できたデータで
+// 集計した部分結果を載せて throw する(部分結果はキャッシュされない。filterOptions.mjs 参照)。
+async function getFilterOptionsRaw(): Promise<FilterOptions> {
+  const supabase = getStatelessSupabaseClient()
+  const [cat, src, tag, act] = await Promise.all([
+    supabase.from('articles').select('category').eq('is_active', true).not('category', 'is', null),
+    supabase.from('articles').select('source').eq('is_active', true),
+    supabase.from('articles').select('tags').eq('is_active', true).not('tags', 'is', null),
+    supabase.from('actresses').select('*').eq('is_active', true),
+  ])
+
+  if (cat.error) console.error('[page] categories error:', cat.error)
+  if (src.error) console.error('[page] sources error:', src.error)
+  if (tag.error) console.error('[page] tags error:', tag.error)
+  if (act.error) console.error('[page] actresses error:', act.error)
+
+  return filterOptionsOrThrowPartial({ cat, src, tag, act }) as FilterOptions
+}
+
+const getCachedFilterOptions = unstable_cache(
+  () => singleFlight('verity-home-filter-options', getFilterOptionsRaw),
+  ['verity-home-filter-options'],
+  { revalidate: FILTER_OPTIONS_REVALIDATE_SECONDS },
+)
+
 // ページshellを構成する必須データ。Supabaseがタイムアウト/例外を返してもページ全体を
-// クラッシュ/ハングさせず、空のフィルタ選択肢で継続する(Phase 3.2)。
+// クラッシュ/ハングさせず継続する(Phase 3.2)。一部クエリ失敗時はこのリクエストだけ
+// 取得できた分を表示し(従来と同じ)、全体失敗時は空のフィルタ選択肢で継続する。
+// いずれの失敗結果もキャッシュされない。
 async function getFilterOptions(): Promise<FilterOptions> {
   try {
-    const supabase = await createClient()
-    const [
-      { data: catRows,     error: catErr },
-      { data: srcRows,     error: srcErr },
-      { data: tagRows,     error: tagErr },
-      { data: actressRows, error: actErr },
-    ] = await Promise.all([
-      supabase.from('articles').select('category').eq('is_active', true).not('category', 'is', null),
-      supabase.from('articles').select('source').eq('is_active', true),
-      supabase.from('articles').select('tags').eq('is_active', true).not('tags', 'is', null),
-      supabase.from('actresses').select('*').eq('is_active', true),
-    ])
-
-    if (catErr)  console.error('[page] categories error:', catErr)
-    if (srcErr)  console.error('[page] sources error:', srcErr)
-    if (tagErr)  console.error('[page] tags error:', tagErr)
-    if (actErr)  console.error('[page] actresses error:', actErr)
-
-    const actresses = ((actressRows as Actress[]) ?? []).sort((a, b) => {
-      const ra = (a.metadata?.monthly_rank as number) ?? 9999
-      const rb = (b.metadata?.monthly_rank as number) ?? 9999
-      return ra - rb
-    })
-    const actressNames = new Set(actresses.map((a) => a.name))
-
-    const categories = [...new Set(catRows?.map((r) => r.category as string).filter(Boolean))].sort()
-    const sources    = [...new Set(srcRows?.map((r) => r.source as string).filter(Boolean))].sort()
-
-    // Count tag frequency, exclude actress names, take top 30 by occurrence
-    const tagCounts = new Map<string, number>()
-    for (const row of tagRows ?? []) {
-      for (const t of (row.tags as string[]) ?? []) {
-        if (t && !actressNames.has(t)) tagCounts.set(t, (tagCounts.get(t) ?? 0) + 1)
-      }
-    }
-    const tags = [...tagCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .map(([tag]) => tag)
-
-    return { categories, sources, tags, actresses }
+    return await getCachedFilterOptions()
   } catch (err) {
+    const partial = takePartialFilterOptions(err)
+    if (partial) {
+      console.warn(`[page] getFilterOptions partial result (not cached): failed=${partial.failed.join(',')}`)
+      return partial.options as FilterOptions
+    }
     handleSupabaseFetchError('page.getFilterOptions', err)
     return EMPTY_FILTER_OPTIONS
   }

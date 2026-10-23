@@ -1,6 +1,9 @@
 import Link from 'next/link'
 import { Tag, Flame, TrendingUp } from 'lucide-react'
-import { createClient } from '@/lib/supabase/server'
+import { unstable_cache } from 'next/cache'
+import { getStatelessSupabaseClient } from '@/lib/supabase/statelessClient'
+import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
+import { singleFlight } from '@/lib/singleFlight.mjs'
 
 type Props = {
   /** 現在の作品ジャンルタグ。これらは強調表示する。 */
@@ -9,18 +12,27 @@ type Props = {
   excludeNames?: Set<string>
 }
 
-/** DB全体のタグ出現を集計し、人気ジャンルと急上昇ジャンルを返す。 */
-async function loadGenres(): Promise<{
+type GenreAggregates = {
   popular: Array<{ name: string; count: number }>
   trending: Array<{ name: string; ratio: number; recent: number }>
-}> {
-  const supabase = await createClient()
+}
+
+// Phase 1A: 作品ページごとに同一の全体集計(4クエリ)を毎回実行していたため共有キャッシュする。
+// 集計は引数・ユーザー情報に依存しない(currentTags による強調は表示側で行う)。
+// タグ分布は日次の同期でしか動かないため15分で十分。
+const GENRE_AGGREGATES_REVALIDATE_SECONDS = 900
+
+/**
+ * DB全体のタグ出現を集計し、人気ジャンルと急上昇ジャンルを返す。
+ * クエリが1つでも失敗した場合は throw する(空/部分的な集計結果を15分間キャッシュしないため)。
+ */
+async function loadGenresRaw(): Promise<GenreAggregates> {
+  const supabase = getStatelessSupabaseClient()
   const now      = new Date()
   const d30      = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString()
   const d60      = new Date(now.getTime() - 60 * 24 * 60 * 60 * 1000).toISOString()
 
-  const [{ data: actressRows }, { data: allTagRows }, { data: recentTagRows }, { data: priorTagRows }] =
-    await Promise.all([
+  const results = await Promise.all([
       supabase.from('actresses').select('name').eq('is_active', true),
       supabase.from('articles')
         .select('tags')
@@ -45,6 +57,9 @@ async function loadGenres(): Promise<{
         .not('metadata->>url', 'like', '%/dc/doujin/%')
         .limit(2000),
     ])
+  const failed = results.find(r => r.error)
+  if (failed?.error) throw new Error(`GenreDiscoveryBlock aggregate query failed: ${failed.error.message}`)
+  const [{ data: actressRows }, { data: allTagRows }, { data: recentTagRows }, { data: priorTagRows }] = results
 
   const actressNameSet = new Set(
     ((actressRows ?? []) as { name: string }[]).map(r => r.name)
@@ -85,6 +100,22 @@ async function loadGenres(): Promise<{
     .slice(0, 8)
 
   return { popular, trending }
+}
+
+const getCachedGenreAggregates = unstable_cache(
+  () => singleFlight('genre-discovery-aggregates', loadGenresRaw),
+  ['genre-discovery-aggregates'],
+  { revalidate: GENRE_AGGREGATES_REVALIDATE_SECONDS },
+)
+
+/** 失敗時は空集計(=ブロック非表示)へ縮退する。失敗結果はキャッシュされない。 */
+async function loadGenres(): Promise<GenreAggregates> {
+  try {
+    return await getCachedGenreAggregates()
+  } catch (err) {
+    handleSupabaseFetchError('GenreDiscoveryBlock.loadGenres', err)
+    return { popular: [], trending: [] }
+  }
 }
 
 // ─── Component ────────────────────────────────────────────────────────────────

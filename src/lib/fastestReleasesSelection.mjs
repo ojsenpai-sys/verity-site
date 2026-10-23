@@ -336,3 +336,50 @@ export function sortMakerSections(makers, makerIdOrder) {
     return ia - ib
   })
 }
+
+// ── RPC返却列の絞り込み(Phase 1A) ─────────────────────────────────────────────
+//
+// get_fastest_releases_candidates は metadata(jsonb全体)を返すが、アプリが使うのは
+// floor / url / affiliate_url / sample_movie_url / actress の5キーのみ。PostgREST の
+// select(RPC結果に対しても適用可能)で必要なキーだけを受け取り、転送量を削減する
+// (RPC定義・migrationは変更しない。本番read-only計測: 1chunk 818,343→597,994文字・約27%減、
+//  780行の並び順・使用フィールド値は完全一致)。
+// 受け取った行は toCandidateRowFromSlim() で従来の CandidateRow 形
+// (metadata オブジェクトに上記5キー)へ戻すため、呼び出し側の読み取りロジックは変わらない。
+
+/** RPC結果に適用する PostgREST select 列。meta_* は metadata の個別キーを取り出す。 */
+export const FASTEST_CANDIDATE_SELECT = [
+  'maker_id', 'external_id', 'title', 'slug', 'image_url', 'published_at', 'fetched_at',
+  'meta_floor:metadata->>floor',
+  'meta_url:metadata->>url',
+  'meta_affiliate_url:metadata->>affiliate_url',
+  'meta_sample_movie_url:metadata->>sample_movie_url',
+  'meta_actress:metadata->actress',
+].join(',')
+
+/**
+ * FASTEST_CANDIDATE_SELECT で取得した1行を、従来の CandidateRow 形へ戻す(pure)。
+ * metadata には取得した5キーのみを入れる(値が null のキーも null のまま保持)。
+ * @param {{ maker_id: string, external_id: string, title: string | null, slug: string | null,
+ *   image_url: string | null, published_at: string | null, fetched_at: string,
+ *   meta_floor: string | null, meta_url: string | null, meta_affiliate_url: string | null,
+ *   meta_sample_movie_url: string | null, meta_actress: unknown }} r
+ */
+export function toCandidateRowFromSlim(r) {
+  return {
+    maker_id: r.maker_id,
+    external_id: r.external_id,
+    title: r.title,
+    slug: r.slug,
+    image_url: r.image_url,
+    published_at: r.published_at,
+    fetched_at: r.fetched_at,
+    metadata: {
+      floor: r.meta_floor ?? null,
+      url: r.meta_url ?? null,
+      affiliate_url: r.meta_affiliate_url ?? null,
+      sample_movie_url: r.meta_sample_movie_url ?? null,
+      actress: r.meta_actress ?? null,
+    },
+  }
+}
