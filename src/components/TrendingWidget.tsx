@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { Flame, Sparkles, ChevronRight, Tag } from 'lucide-react'
+import { unstable_cache } from 'next/cache'
 import { createClient } from '@/lib/supabase/server'
+import { getStatelessSupabaseClient } from '@/lib/supabase/statelessClient'
 import { handleSupabaseFetchError } from '@/lib/supabase/timeoutHandler'
+import { singleFlight } from '@/lib/singleFlight.mjs'
 import { ProxiedImage } from '@/components/ProxiedImage'
 import {
   toHighResPackageUrl, cidToCdnUrl, isBadImageUrl, coverPosClass,
@@ -36,13 +39,23 @@ function proxyActressImg(actress: Pick<Actress, 'image_url' | 'metadata'>): stri
   return null
 }
 
-async function loadTrendingGenres(): Promise<Array<{ name: string; ratio: number; recent: number }>> {
-  const supabase = await createClient()
+type TrendingGenre = { name: string; ratio: number; recent: number }
+
+// Phase 1A: トップページの毎リクエストで同一の全体集計(3クエリ)を実行していたため共有キャッシュする。
+// 集計は引数・ユーザー情報に依存しない。タグ分布は日次の同期でしか動かないため15分で十分。
+const TRENDING_GENRES_REVALIDATE_SECONDS = 900
+
+/**
+ * 直近30日のタグ出現を前30日と比較した急上昇ジャンル上位6件。
+ * クエリが1つでも失敗した場合は throw する(空/部分的な集計結果を15分間キャッシュしないため)。
+ */
+async function loadTrendingGenresRaw(): Promise<TrendingGenre[]> {
+  const supabase = getStatelessSupabaseClient()
   const now = Date.now()
   const d30 = new Date(now - 30 * 24 * 3_600_000).toISOString()
   const d60 = new Date(now - 60 * 24 * 3_600_000).toISOString()
 
-  const [{ data: actressRows }, { data: rec }, { data: pri }] = await Promise.all([
+  const results = await Promise.all([
     supabase.from('actresses').select('name').eq('is_active', true),
     supabase.from('articles')
       .select('tags')
@@ -58,6 +71,9 @@ async function loadTrendingGenres(): Promise<Array<{ name: string; ratio: number
       .not('metadata->>url', 'like', '%/dc/doujin/%')
       .limit(1500),
   ])
+  const failed = results.find(r => r.error)
+  if (failed?.error) throw new Error(`TrendingWidget genre aggregate query failed: ${failed.error.message}`)
+  const [{ data: actressRows }, { data: rec }, { data: pri }] = results
   const nameSet = new Set(((actressRows ?? []) as { name: string }[]).map(r => r.name))
   function count(rows: { tags: string[] | null }[] | null): Map<string, number> {
     const c = new Map<string, number>()
@@ -70,7 +86,7 @@ async function loadTrendingGenres(): Promise<Array<{ name: string; ratio: number
   }
   const rMap = count(rec as { tags: string[] | null }[] | null)
   const pMap = count(pri as { tags: string[] | null }[] | null)
-  const out: Array<{ name: string; ratio: number; recent: number }> = []
+  const out: TrendingGenre[] = []
   for (const [name, r] of rMap.entries()) {
     if (r < 3) continue
     const p = pMap.get(name) ?? 0
@@ -80,10 +96,29 @@ async function loadTrendingGenres(): Promise<Array<{ name: string; ratio: number
   return out.sort((a, b) => b.ratio - a.ratio).slice(0, 6)
 }
 
+const getCachedTrendingGenres = unstable_cache(
+  () => singleFlight('trending-widget-genres', loadTrendingGenresRaw),
+  ['trending-widget-genres'],
+  { revalidate: TRENDING_GENRES_REVALIDATE_SECONDS },
+)
+
+/**
+ * 失敗時は空配列へ縮退する(従来どおりジャンル列だけ空になり、作品/女優列は表示を継続)。
+ * 失敗結果はキャッシュされない。
+ */
+async function loadTrendingGenres(): Promise<TrendingGenre[]> {
+  try {
+    return await getCachedTrendingGenres()
+  } catch (err) {
+    handleSupabaseFetchError('TrendingWidget.loadTrendingGenres', err)
+    return []
+  }
+}
+
 type TrendingWidgetData = {
   topArticles: Article[]
   topActresses: Actress[]
-  trendingGenres: Array<{ name: string; ratio: number; recent: number }>
+  trendingGenres: TrendingGenre[]
 }
 
 async function loadTrendingWidgetData(): Promise<TrendingWidgetData | null> {
